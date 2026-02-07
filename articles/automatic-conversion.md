@@ -40,7 +40,7 @@ The generated directory contains:
 | File                  | Purpose                                                                                                  |
 |-----------------------|----------------------------------------------------------------------------------------------------------|
 | `app.R`               | Entrypoint that wires up UI and tools                                                                    |
-| `ui.html`             | UI built with shinymcp components                                                                        |
+| `ui.R`                | UI built with shinymcp components                                                                        |
 | `tools.R`             | [`ellmer::tool()`](https://ellmer.tidyverse.org/reference/tool.html) definitions for each reactive group |
 | `server.R`            | Server setup with state environment                                                                      |
 | `CONVERSION_NOTES.md` | Review notes (complex apps only)                                                                         |
