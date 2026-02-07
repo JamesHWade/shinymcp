@@ -115,6 +115,66 @@ McpApp <- R6::R6Class(
       })
     },
 
+    #' @description Get tool definitions for MCP tools/list responses
+    #' Returns a list of tool definition objects suitable for JSON-RPC.
+    tool_definitions = function() {
+      lapply(private$.tools, function(tool) {
+        if (inherits(tool, "ToolDef")) {
+          list(
+            name = tool$name,
+            description = tool$description %||% "",
+            inputSchema = tool$schema %||%
+              list(type = "object", properties = list())
+          )
+        } else if (is.list(tool)) {
+          list(
+            name = tool$name %||% "unnamed",
+            description = tool$description %||% "",
+            inputSchema = tool$inputSchema %||%
+              list(type = "object", properties = list())
+          )
+        } else {
+          list(
+            name = "unnamed",
+            description = "",
+            inputSchema = list(type = "object", properties = list())
+          )
+        }
+      })
+    },
+
+    #' @description Call a tool by name
+    #' @param tool_name Name of the tool to call
+    #' @param arguments Named list of arguments to pass to the tool
+    call_tool = function(tool_name, arguments = list()) {
+      tool <- NULL
+      for (t in private$.tools) {
+        name <- if (inherits(t, "ToolDef")) t$name else t$name
+        if (identical(name, tool_name)) {
+          tool <- t
+          break
+        }
+      }
+      if (is.null(tool)) {
+        rlang::abort(
+          cli::format_inline("Tool {.val {tool_name}} not found."),
+          class = "shinymcp_error_tool_not_found"
+        )
+      }
+      if (inherits(tool, "ToolDef")) {
+        do.call(tool$fun, arguments)
+      } else if (is.list(tool) && is.function(tool$fun)) {
+        do.call(tool$fun, arguments)
+      } else {
+        rlang::abort(
+          cli::format_inline(
+            "Tool {.val {tool_name}} does not have a callable function."
+          ),
+          class = "shinymcp_error_tool_not_callable"
+        )
+      }
+    },
+
     #' @description Get the ui:// resource URI for this app
     resource_uri = function() {
       paste0("ui://", self$name)
@@ -135,7 +195,7 @@ McpApp <- R6::R6Class(
     .ui = NULL,
     .tools = list(),
 
-    #' Read the bridge JS file, or return a placeholder if not found
+    #' Read the bridge JS file
     read_bridge_js = function() {
       js_path <- system.file(
         "js",
@@ -146,7 +206,10 @@ McpApp <- R6::R6Class(
       if (nzchar(js_path) && file.exists(js_path)) {
         paste(readLines(js_path, warn = FALSE), collapse = "\n")
       } else {
-        "/* shinymcp-bridge.js not found - bridge will be loaded separately */"
+        cli::cli_warn(
+          "Bridge JS file not found. The MCP App will not have bridge functionality."
+        )
+        "/* shinymcp-bridge.js not found */"
       }
     },
 

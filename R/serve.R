@@ -69,15 +69,21 @@ serve_stdio <- function(app, registry) {
       next
     }
 
-    response <- tryCatch(
-      {
-        message <- from_json(line)
-        dispatch_message(message, app, registry)
-      },
-      error = function(e) {
-        jsonrpc_error(NULL, -32700, paste("Parse error:", e$message))
-      }
+    message <- tryCatch(
+      from_json(line),
+      error = function(e) NULL
     )
+    if (is.null(message)) {
+      response <- jsonrpc_error(NULL, -32700, "Parse error: invalid JSON")
+    } else {
+      response <- tryCatch(
+        dispatch_message(message, app, registry),
+        error = function(e) {
+          cli::cli_alert_danger("Internal error: {e$message}")
+          jsonrpc_error(message$id, -32603, paste("Internal error:", e$message))
+        }
+      )
+    }
 
     # Notifications (no id) don't get responses
     if (is.null(response)) {
@@ -102,7 +108,7 @@ serve_stdio <- function(app, registry) {
 #' @param port Port number
 #' @noRd
 serve_http <- function(app, registry, port) {
-  check_installed("httpuv", "for HTTP transport")
+  rlang::check_installed("httpuv", reason = "for HTTP transport")
 
   cli::cli_inform("shinymcp: serving over HTTP on port {port}")
 
@@ -122,15 +128,22 @@ serve_http <- function(app, registry, port) {
 
         body <- paste(req$rook.input$read_lines(), collapse = "\n")
 
-        response <- tryCatch(
-          {
-            message <- from_json(body)
-            dispatch_message(message, app, registry)
-          },
-          error = function(e) {
-            jsonrpc_error(NULL, -32700, paste("Parse error:", e$message))
-          }
-        )
+        message <- tryCatch(from_json(body), error = function(e) NULL)
+        if (is.null(message)) {
+          response <- jsonrpc_error(NULL, -32700, "Parse error: invalid JSON")
+        } else {
+          response <- tryCatch(
+            dispatch_message(message, app, registry),
+            error = function(e) {
+              cli::cli_alert_danger("Internal error: {e$message}")
+              jsonrpc_error(
+                message$id,
+                -32603,
+                paste("Internal error:", e$message)
+              )
+            }
+          )
+        }
 
         # Notifications return 204
         if (is.null(response)) {

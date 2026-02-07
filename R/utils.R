@@ -1,19 +1,5 @@
 # Internal utilities for shinymcp
 
-#' Check that a package is available
-#' @param pkg Package name
-#' @param reason Why the package is needed
-#' @noRd
-check_installed <- function(pkg, reason = NULL) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    msg <- cli::format_inline("Package {.pkg {pkg}} is required")
-    if (!is.null(reason)) {
-      msg <- paste0(msg, " ", reason)
-    }
-    rlang::abort(msg, class = "shinymcp_error_missing_package")
-  }
-}
-
 #' Read a package file from inst/
 #' @param ... Path components relative to inst/
 #' @noRd
@@ -53,13 +39,6 @@ from_json <- function(x) {
 #' @param raw_content Raw bytes to encode
 #' @noRd
 base64_encode <- function(raw_content) {
-  check_installed("base64enc", "for base64 encoding")
+  rlang::check_installed("base64enc", reason = "for base64 encoding")
   base64enc::base64encode(raw_content)
-}
-
-#' Compact NULL values from a list
-#' @param x A list
-#' @noRd
-compact <- function(x) {
-  x[!vapply(x, is.null, logical(1))]
 }

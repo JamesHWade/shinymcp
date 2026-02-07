@@ -9,3 +9,4 @@
 ^README\.Rmd$
 ^README\.md$
 ^man-roxygen$
+^README\.html$

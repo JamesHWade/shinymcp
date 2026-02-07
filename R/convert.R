@@ -8,9 +8,20 @@
 #' @param path Path to a Shiny app directory
 #' @param output_dir Output directory for the generated MCP App.
 #'   Defaults to `{path}_mcp/`.
-#' @return The output directory path (invisibly)
+#' @return An [McpApp] object (invisibly). Generated files are also
+#'   written to `output_dir`.
 #' @export
 convert_app <- function(path, output_dir = NULL) {
+  if (!is.character(path) || length(path) != 1) {
+    rlang::abort(
+      cli::format_inline("{.arg path} must be a single character string."),
+      class = "shinymcp_error_validation"
+    )
+  }
+  if (!dir.exists(path)) {
+    shinymcp_error_parse("Directory does not exist", path = path)
+  }
+
   if (is.null(output_dir)) {
     output_dir <- paste0(normalizePath(path), "_mcp")
   }
@@ -42,7 +53,38 @@ convert_app <- function(path, output_dir = NULL) {
   cli::cli_h2("Generating")
   generate_mcp_app(analysis, ir, output_dir)
 
-  # Summary
+  # Build McpApp from generated files
+  app_file <- file.path(output_dir, "app.R")
+  ui_file <- file.path(output_dir, "ui.html")
+
+  # Read generated UI as HTML content and wrap in an McpApp
+  ui_html <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
+  ui <- htmltools::tags$div(htmltools::HTML(ui_html))
+
+  # Source tools if available
+  tools_file <- file.path(output_dir, "tools.R")
+  tools <- list()
+  if (file.exists(tools_file)) {
+    tools_env <- new.env(parent = baseenv())
+    tryCatch(
+      {
+        source(tools_file, local = tools_env)
+        if (exists("tools", envir = tools_env)) {
+          tools <- get("tools", envir = tools_env)
+        }
+      },
+      error = function(e) {
+        cli::cli_warn("Could not source tools.R: {e$message}")
+      }
+    )
+  }
+
+  app <- McpApp$new(
+    ui = ui,
+    tools = tools,
+    name = basename(normalizePath(path))
+  )
+
   cli::cli_alert_success("Conversion complete!")
 
   if (ir$complexity == "complex") {
@@ -51,5 +93,5 @@ convert_app <- function(path, output_dir = NULL) {
     )
   }
 
-  invisible(output_dir)
+  invisible(app)
 }

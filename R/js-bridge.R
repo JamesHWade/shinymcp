@@ -56,7 +56,7 @@ bridge_script_tag <- function() {
 #' @return An `htmltools::tags$script` HTML tag.
 #' @export
 bridge_config_tag <- function(config) {
-  json <- jsonlite::toJSON(config, auto_unbox = TRUE, null = "null")
+  json <- to_json(config)
   htmltools::tags$script(
     id = "shinymcp-config",
     type = "application/json",
