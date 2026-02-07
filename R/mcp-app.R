@@ -70,7 +70,7 @@ McpApp <- R6::R6Class(
       config_json <- to_json(list(
         appName = self$name,
         version = self$version,
-        tools = tool_names
+        tools = I(tool_names)
       ))
 
       bridge_js <- private$read_bridge_js()
