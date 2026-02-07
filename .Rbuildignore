@@ -13,3 +13,5 @@
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+^codecov\.yml$
+^CODE_OF_CONDUCT\.md$
