@@ -226,7 +226,7 @@ handle_initialize <- function(message, app, registry) {
   jsonrpc_response(
     message$id,
     list(
-      protocolVersion = "2024-11-05",
+      protocolVersion = "2025-11-25",
       capabilities = list(
         tools = empty_obj,
         resources = empty_obj

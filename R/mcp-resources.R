@@ -48,14 +48,14 @@ ResourceRegistry <- R6::R6Class(
     #' @description List all registered resources
     #' @return A list of resource declarations (without content functions)
     list_resources = function() {
-      lapply(private$.resources, function(r) {
+      unname(lapply(private$.resources, function(r) {
         list(
           uri = r$uri,
           name = r$name,
           description = r$description,
           mimeType = r$mimeType
         )
-      })
+      }))
     },
 
     #' @description Read a resource by URI
