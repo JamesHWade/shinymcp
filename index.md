@@ -122,6 +122,31 @@ value to the correct output element.
 For a full worked example converting a Shiny app step-by-step, see
 [`vignette("converting-shiny-apps")`](https://jameshwade.github.io/shinymcp/articles/converting-shiny-apps.md).
 
+## Automatic conversion
+
+shinymcp includes a parse-analyze-generate pipeline that can scaffold an
+MCP App from an existing Shiny app:
+
+``` r
+convert_app("path/to/my-shiny-app")
+```
+
+This parses the UI and server code, maps the reactive dependency graph
+into tool groups, and writes a working MCP App with tools, components,
+and a server entrypoint. The generated tool bodies contain placeholders
+that you fill in with the actual computation logic.
+
+For details, see
+[`vignette("automatic-conversion")`](https://jameshwade.github.io/shinymcp/articles/automatic-conversion.md).
+
+### AI-assisted conversion
+
+For complex Shiny apps, shinymcp ships a
+[deputy](https://github.com/JamesHWade/deputy) skill that guides an AI
+agent through the conversion process. The skill handles dynamic UI,
+modules, file uploads, and other patterns that require human judgment.
+See `inst/skills/convert-shiny-app/SKILL.md` for the full instructions.
+
 ## Component reference
 
 shinymcp provides input and output components that mirror Shiny

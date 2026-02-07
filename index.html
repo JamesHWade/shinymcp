@@ -44,6 +44,7 @@
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
 <li><a class="dropdown-item" href="articles/converting-shiny-apps.html">Converting Shiny Apps</a></li>
+    <li><a class="dropdown-item" href="articles/automatic-conversion.html">Automatic Conversion</a></li>
   </ul>
 </li>
       </ul>
@@ -167,6 +168,20 @@
 <p>For a full worked example converting a Shiny app step-by-step, see <code><a href="articles/converting-shiny-apps.html">vignette("converting-shiny-apps")</a></code>.</p>
 </div>
 <div class="section level2">
+<h2 id="automatic-conversion">Automatic conversion<a class="anchor" aria-label="anchor" href="#automatic-conversion"></a>
+</h2>
+<p>shinymcp includes a parse-analyze-generate pipeline that can scaffold an MCP App from an existing Shiny app:</p>
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/convert_app.html">convert_app</a></span><span class="op">(</span><span class="st">"path/to/my-shiny-app"</span><span class="op">)</span></span></code></pre></div>
+<p>This parses the UI and server code, maps the reactive dependency graph into tool groups, and writes a working MCP App with tools, components, and a server entrypoint. The generated tool bodies contain placeholders that you fill in with the actual computation logic.</p>
+<p>For details, see <code><a href="articles/automatic-conversion.html">vignette("automatic-conversion")</a></code>.</p>
+<div class="section level3">
+<h3 id="ai-assisted-conversion">AI-assisted conversion<a class="anchor" aria-label="anchor" href="#ai-assisted-conversion"></a>
+</h3>
+<p>For complex Shiny apps, shinymcp ships a <a href="https://github.com/JamesHWade/deputy" class="external-link">deputy</a> skill that guides an AI agent through the conversion process. The skill handles dynamic UI, modules, file uploads, and other patterns that require human judgment. See <code>inst/skills/convert-shiny-app/SKILL.md</code> for the full instructions.</p>
+</div>
+</div>
+<div class="section level2">
 <h2 id="component-reference">Component reference<a class="anchor" aria-label="anchor" href="#component-reference"></a>
 </h2>
 <p>shinymcp provides input and output components that mirror Shiny functions:</p>
@@ -250,7 +265,7 @@
 </tbody>
 </table>
 <p>Each component generates HTML with <code>data-shinymcp-*</code> attributes that the JS bridge reads at runtime:</p>
-<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="reference/mcp_select.html">mcp_select</a></span><span class="op">(</span><span class="st">"color"</span>, <span class="st">"Color"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"red"</span>, <span class="st">"green"</span>, <span class="st">"blue"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="co"># &lt;select data-shinymcp-input="color" ...&gt;</span></span>
 <span></span>
@@ -262,7 +277,7 @@
 <h2 id="examples">Examples<a class="anchor" aria-label="anchor" href="#examples"></a>
 </h2>
 <p>shinymcp ships with example apps:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="co"># Minimal: select input + text output</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"hello-mcp"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span>
 <span></span>
