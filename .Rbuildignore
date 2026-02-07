@@ -6,3 +6,6 @@
 ^\.claude$
 ^CLAUDE\.md$
 ^\.beads$
+^README\.Rmd$
+^README\.md$
+^man-roxygen$
