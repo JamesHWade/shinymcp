@@ -37,7 +37,7 @@ mcp_text <- function(id) {
     class = "shinymcp-output",
     `data-shinymcp-output` = id,
     `data-shinymcp-output-type` = "text",
-    style = "white-space: pre-wrap; margin: 0;"
+    style = "white-space: pre; overflow-x: auto; margin: 0; font-size: 0.85em;"
   )
 }
 
