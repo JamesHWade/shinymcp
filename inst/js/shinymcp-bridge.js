@@ -355,16 +355,15 @@
     attachInputListeners();
 
     // Send ui/initialize request per MCP Apps spec
+    // Fields must match McpUiInitializeRequestSchema exactly:
+    // appInfo (not clientInfo), appCapabilities, protocolVersion
     var initPromise = sendRequest("ui/initialize", {
       protocolVersion: "2025-06-18",
-      clientInfo: {
+      appInfo: {
         name: config.appName || "shinymcp-app",
         version: config.version || "0.0.1",
       },
-      capabilities: {},
-      appCapabilities: {
-        availableDisplayModes: ["inline"],
-      },
+      appCapabilities: {},
     });
 
     // Handle initialize response
@@ -374,8 +373,59 @@
 
         // Send initialized notification
         sendNotification("ui/notifications/initialized", {});
+
+        // Set up auto-resize notifications (like the official SDK)
+        setupAutoResize();
       });
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Auto-resize: notify host of content size changes
+  // ---------------------------------------------------------------------------
+  function setupAutoResize() {
+    if (typeof ResizeObserver === "undefined") return;
+
+    var lastWidth = 0;
+    var lastHeight = 0;
+    var scheduled = false;
+
+    function sendBodySizeChanged() {
+      if (scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(function () {
+        scheduled = false;
+        var html = document.documentElement;
+
+        // Measure actual content size
+        var origW = html.style.width;
+        var origH = html.style.height;
+        html.style.width = "fit-content";
+        html.style.height = "fit-content";
+        var rect = html.getBoundingClientRect();
+        html.style.width = origW;
+        html.style.height = origH;
+
+        var scrollbarWidth = window.innerWidth - html.clientWidth;
+        var width = Math.ceil(rect.width + scrollbarWidth);
+        var height = Math.ceil(rect.height);
+
+        if (width !== lastWidth || height !== lastHeight) {
+          lastWidth = width;
+          lastHeight = height;
+          sendNotification("ui/notifications/size-changed", {
+            width: width,
+            height: height,
+          });
+        }
+      });
+    }
+
+    sendBodySizeChanged();
+
+    var observer = new ResizeObserver(sendBodySizeChanged);
+    observer.observe(document.documentElement);
+    observer.observe(document.body);
   }
 
   // ---------------------------------------------------------------------------
