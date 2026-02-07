@@ -221,15 +221,15 @@ dispatch_message <- function(message, app, registry) {
 #' @param registry ResourceRegistry object
 #' @noRd
 handle_initialize <- function(message, app, registry) {
-  resources <- registry$list_resources()
+  empty_obj <- setNames(list(), character(0))
 
   jsonrpc_response(
     message$id,
     list(
       protocolVersion = "2024-11-05",
       capabilities = list(
-        tools = list(),
-        resources = list()
+        tools = empty_obj,
+        resources = empty_obj
       ),
       serverInfo = list(
         name = paste0("shinymcp-", app$name),
