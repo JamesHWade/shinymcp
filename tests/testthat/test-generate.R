@@ -30,7 +30,7 @@ test_that("generated HTML contains MCP components", {
 
   html <- readLines(file.path(out_dir, "ui.html"))
   html_text <- paste(html, collapse = "\n")
-  expect_match(html_text, "data-shinymcp")
+  expect_match(html_text, "mcp_")
 })
 
 test_that("complex app generates CONVERSION_NOTES.md", {

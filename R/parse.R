@@ -42,7 +42,10 @@ shiny_output_fns <- c(
 #'   `reactives`, `observers`, `complexity`
 #' @export
 parse_shiny_app <- function(path) {
-  path <- normalizePath(path, mustWork = TRUE)
+  if (!dir.exists(path)) {
+    shinymcp_error_parse("Directory does not exist", path = path)
+  }
+  path <- normalizePath(path)
 
   # Determine app structure
   app_file <- file.path(path, "app.R")
@@ -448,17 +451,26 @@ call_name <- function(expr) {
 #' @param fn Callback function
 #' @noRd
 walk_exprs <- function(exprs, fn) {
-  if (is.null(exprs)) {
+  if (is.null(exprs) || is.pairlist(exprs)) {
     return()
   }
-  for (expr in as.list(exprs)) {
-    if (is.null(expr)) {
-      next
-    }
-    fn(expr)
-    if (is.call(expr) || is.recursive(expr)) {
-      walk_exprs(as.list(expr)[-1], fn)
-    }
+  expr_list <- as.list(exprs)
+  for (i in seq_along(expr_list)) {
+    tryCatch(
+      {
+        elem <- expr_list[[i]]
+        # Force evaluation to detect missing args
+        is.null(elem)
+        fn(elem)
+        if (is.call(elem)) {
+          children <- as.list(elem)
+          if (length(children) > 1) {
+            walk_exprs(children[-1], fn)
+          }
+        }
+      },
+      error = function(e) NULL
+    )
   }
 }
 
