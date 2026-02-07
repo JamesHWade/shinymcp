@@ -277,14 +277,37 @@ handle_tools_call <- function(message, app) {
   tryCatch(
     {
       result <- app$call_tool(tool_name, arguments)
-      jsonrpc_response(
-        message$id,
-        list(
-          content = list(
-            list(type = "text", text = as.character(result))
+
+      if (is.list(result) && !is.null(names(result))) {
+        # Structured result: extract text parts for content, pass all as
+        # structuredContent so the bridge can update multiple outputs
+        text_parts <- vapply(result, function(x) {
+          if (is.character(x) && nchar(x) < 10000) x else ""
+        }, character(1))
+        text_summary <- paste(
+          text_parts[nzchar(text_parts)],
+          collapse = "\n\n"
+        )
+
+        jsonrpc_response(
+          message$id,
+          list(
+            content = list(
+              list(type = "text", text = text_summary)
+            ),
+            structuredContent = result
           )
         )
-      )
+      } else {
+        jsonrpc_response(
+          message$id,
+          list(
+            content = list(
+              list(type = "text", text = as.character(result))
+            )
+          )
+        )
+      }
     },
     error = function(e) {
       jsonrpc_response(
