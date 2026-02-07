@@ -17,7 +17,7 @@ generate_mcp_app <- function(analysis, ir, output_dir) {
 
   # Generate UI HTML
   html <- generate_html(ir$inputs, ir$outputs)
-  writeLines(html, file.path(output_dir, "ui.html"))
+  writeLines(html, file.path(output_dir, "ui.R"))
 
   # Generate tools.R
   tools_code <- generate_tools(analysis$tool_groups)
@@ -142,16 +142,17 @@ generate_input_component <- function(inp) {
       sprintf('mcp_radio(%s, %s, %s)', id, label, choices)
     },
     action = ,
+    actionButton = ,
     actionLink = {
       sprintf('mcp_action_button(%s, %s)', id, label)
     },
     # Default: text input fallback
     {
       sprintf(
-        'mcp_text_input(%s, %s)\n# NOTE: Unsupported input type "%s" converted to text input',
+        '# NOTE: Unsupported input type "%s" converted to text input\n  mcp_text_input(%s, %s)',
+        inp$type,
         id,
-        label,
-        inp$type
+        label
       )
     }
   )
@@ -176,9 +177,9 @@ generate_output_component <- function(out) {
     ui = sprintf('mcp_html(%s)', id),
     # Default
     sprintf(
-      'mcp_text(%s)\n# NOTE: Unsupported output type "%s" converted to text output',
-      id,
-      out$type
+      '# NOTE: Unsupported output type "%s" converted to text output\n  mcp_text(%s)',
+      out$type,
+      id
     )
   )
 }
@@ -349,12 +350,12 @@ generate_app_entry <- function(ir) {
     'source("server.R", local = TRUE)',
     "",
     "# Source UI definition",
-    'source("ui.html", local = TRUE)',
+    'source("ui.R", local = TRUE)',
     "",
     "# Create MCP App",
     sprintf('app <- mcp_app(ui = ui, tools = tools, name = "%s")', app_name),
     "",
-    "# The app object can be served with shinymcp::serve_mcp_app(app)"
+    "serve(app)"
   )
 
   paste(lines, collapse = "\n")

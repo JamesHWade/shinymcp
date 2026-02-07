@@ -10,7 +10,7 @@ test_that("generate_mcp_app creates output files", {
   analysis <- analyze_reactive_graph(ir)
   generate_mcp_app(analysis, ir, out_dir)
 
-  expect_true(file.exists(file.path(out_dir, "ui.html")))
+  expect_true(file.exists(file.path(out_dir, "ui.R")))
   expect_true(file.exists(file.path(out_dir, "tools.R")))
   expect_true(file.exists(file.path(out_dir, "server.R")))
   expect_true(file.exists(file.path(out_dir, "app.R")))
@@ -28,7 +28,7 @@ test_that("generated HTML contains MCP components", {
   analysis <- analyze_reactive_graph(ir)
   generate_mcp_app(analysis, ir, out_dir)
 
-  html <- readLines(file.path(out_dir, "ui.html"))
+  html <- readLines(file.path(out_dir, "ui.R"))
   html_text <- paste(html, collapse = "\n")
   expect_match(html_text, "mcp_")
 })

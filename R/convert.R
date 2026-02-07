@@ -53,30 +53,38 @@ convert_app <- function(path, output_dir = NULL) {
   cli::cli_h2("Generating")
   generate_mcp_app(analysis, ir, output_dir)
 
-  # Build McpApp from generated files
-  app_file <- file.path(output_dir, "app.R")
-  ui_file <- file.path(output_dir, "ui.html")
-
-  # Read generated UI as HTML content and wrap in an McpApp
-  ui_html <- paste(readLines(ui_file, warn = FALSE), collapse = "\n")
-  ui <- htmltools::tags$div(htmltools::HTML(ui_html))
-
-  # Source tools if available
+  # Build McpApp from generated files by sourcing them
+  app_env <- new.env(parent = globalenv())
+  ui_file <- file.path(output_dir, "ui.R")
   tools_file <- file.path(output_dir, "tools.R")
-  tools <- list()
+
+  # Source UI definition (creates `ui` variable)
+  tryCatch(
+    source(ui_file, local = app_env),
+    error = function(e) {
+      cli::cli_warn("Could not source ui.R: {e$message}")
+    }
+  )
+
+  # Source tools if available (creates `tools` variable)
   if (file.exists(tools_file)) {
-    tools_env <- new.env(parent = baseenv())
     tryCatch(
-      {
-        source(tools_file, local = tools_env)
-        if (exists("tools", envir = tools_env)) {
-          tools <- get("tools", envir = tools_env)
-        }
-      },
+      source(tools_file, local = app_env),
       error = function(e) {
         cli::cli_warn("Could not source tools.R: {e$message}")
       }
     )
+  }
+
+  ui <- if (exists("ui", envir = app_env)) {
+    get("ui", envir = app_env)
+  } else {
+    htmltools::tags$div("Conversion produced no UI")
+  }
+  tools <- if (exists("tools", envir = app_env)) {
+    get("tools", envir = app_env)
+  } else {
+    list()
   }
 
   app <- McpApp$new(
