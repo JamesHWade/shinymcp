@@ -55,7 +55,8 @@ serve <- function(app, type = c("stdio", "http"), port = 8080, ...) {
 serve_stdio <- function(app, registry) {
   cli::cli_inform("shinymcp: serving over stdio")
 
-  con <- stdin()
+  con <- file("stdin", "r")
+  on.exit(close(con))
 
   while (TRUE) {
     line <- readLines(con, n = 1)

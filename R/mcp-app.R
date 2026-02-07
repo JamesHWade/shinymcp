@@ -101,14 +101,7 @@ McpApp <- R6::R6Class(
     mcp_tools = function() {
       uri <- self$resource_uri()
       lapply(private$.tools, function(tool) {
-        if (inherits(tool, "ToolDef")) {
-          tool$extra <- c(
-            tool$extra,
-            list(
-              `_meta` = list(ui = list(resourceUri = uri))
-            )
-          )
-        } else if (is.list(tool)) {
+        if (is.list(tool)) {
           tool[["_meta"]] <- list(ui = list(resourceUri = uri))
         }
         tool
@@ -119,12 +112,11 @@ McpApp <- R6::R6Class(
     #' Returns a list of tool definition objects suitable for JSON-RPC.
     tool_definitions = function() {
       lapply(private$.tools, function(tool) {
-        if (inherits(tool, "ToolDef")) {
+        if (is_ellmer_tool(tool)) {
           list(
-            name = tool$name,
-            description = tool$description %||% "",
-            inputSchema = tool$schema %||%
-              list(type = "object", properties = list())
+            name = tool@name,
+            description = tool@description %||% "",
+            inputSchema = type_object_to_schema(tool@arguments)
           )
         } else if (is.list(tool)) {
           list(
@@ -149,8 +141,7 @@ McpApp <- R6::R6Class(
     call_tool = function(tool_name, arguments = list()) {
       tool <- NULL
       for (t in private$.tools) {
-        name <- if (inherits(t, "ToolDef")) t$name else t$name
-        if (identical(name, tool_name)) {
+        if (identical(tool_name(t), tool_name)) {
           tool <- t
           break
         }
@@ -161,8 +152,8 @@ McpApp <- R6::R6Class(
           class = "shinymcp_error_tool_not_found"
         )
       }
-      if (inherits(tool, "ToolDef")) {
-        do.call(tool$fun, arguments)
+      if (is_ellmer_tool(tool) || is.function(tool)) {
+        do.call(tool, arguments)
       } else if (is.list(tool) && is.function(tool$fun)) {
         do.call(tool$fun, arguments)
       } else {
@@ -217,15 +208,7 @@ McpApp <- R6::R6Class(
     get_tool_names = function() {
       vapply(
         private$.tools,
-        function(tool) {
-          if (inherits(tool, "ToolDef")) {
-            tool$name %||% "unnamed"
-          } else if (is.list(tool) && !is.null(tool$name)) {
-            tool$name
-          } else {
-            "unnamed"
-          }
-        },
+        tool_name,
         character(1),
         USE.NAMES = FALSE
       )

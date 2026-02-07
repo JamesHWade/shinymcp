@@ -42,3 +42,55 @@ base64_encode <- function(raw_content) {
   rlang::check_installed("base64enc", reason = "for base64 encoding")
   base64enc::base64encode(raw_content)
 }
+
+#' Check if an object is an ellmer ToolDef (S7)
+#' @param x Object to check
+#' @noRd
+is_ellmer_tool <- function(x) {
+  inherits(x, "ellmer::ToolDef")
+}
+
+#' Get the name of a tool (ellmer S7 or plain list)
+#' @param tool A tool object
+#' @noRd
+tool_name <- function(tool) {
+  if (is_ellmer_tool(tool)) {
+    tool@name %||% "unnamed"
+  } else if (is.list(tool)) {
+    tool$name %||% "unnamed"
+  } else {
+    "unnamed"
+  }
+}
+
+#' Build a JSON-ready input schema from an ellmer TypeObject
+#' @param arguments An ellmer TypeObject (tool@@arguments)
+#' @noRd
+type_object_to_schema <- function(arguments) {
+  props <- arguments@properties
+  schema <- list(
+    type = "object",
+    properties = lapply(props, function(p) {
+      compact_list(list(
+        type = p@type,
+        description = if (nzchar(p@description %||% "")) p@description
+      ))
+    })
+  )
+  required <- names(props)[vapply(
+    props,
+    function(p) isTRUE(p@required),
+    logical(1)
+  )]
+  if (length(required) > 0) {
+    schema$required <- as.list(required)
+  }
+  schema
+}
+
+#' Remove NULL entries from a list
+#' @param x A list
+#' @noRd
+compact_list <- function(x) {
+  x[!vapply(x, is.null, logical(1))]
+}
