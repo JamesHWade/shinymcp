@@ -16,15 +16,20 @@ McpApp <- R6::R6Class(
     version = NULL,
 
     #' @description Create a new McpApp
-    #' @param ui An htmltools tag or tagList defining the UI
+    #' @param ui An htmltools tag or tagList defining the UI. Can be a simple
+    #'   tagList of shinymcp components, or a full [bslib::page()] with theme.
     #' @param tools A list of tool definitions (ellmer tool objects or named list)
     #' @param name App name (used in resource URIs)
     #' @param version App version string
+    #' @param theme Optional bslib theme (a [bslib::bs_theme()] object). If
+    #'   provided, the UI will be wrapped in a themed page. Not needed if `ui`
+    #'   is already a [bslib::page()].
     initialize = function(
       ui,
       tools = list(),
       name = "shinymcp-app",
-      version = "0.1.0"
+      version = "0.1.0",
+      theme = NULL
     ) {
       if (!inherits(ui, c("shiny.tag", "shiny.tag.list"))) {
         rlang::abort(
@@ -41,6 +46,12 @@ McpApp <- R6::R6Class(
         )
       }
 
+      # If a theme is provided, wrap the UI in a bslib page
+      if (!is.null(theme)) {
+        rlang::check_installed("bslib", reason = "for themed MCP Apps")
+        ui <- bslib::page(theme = theme, ui)
+      }
+
       self$name <- name
       self$version <- version
       private$.ui <- ui
@@ -51,49 +62,65 @@ McpApp <- R6::R6Class(
 
     #' @description Generate the full HTML resource
     #' Returns a character string of the complete HTML page including
-    #' UI components, bridge script, and config.
+    #' UI components, bridge script, and config. HTML dependencies from
+    #' bslib or other htmltools-based packages are inlined automatically.
     html_resource = function() {
       tool_names <- private$get_tool_names()
 
-      bridge_config <- to_json(list(
+      config_json <- to_json(list(
         appName = self$name,
         version = self$version,
         tools = tool_names
       ))
 
-      config_tag <- htmltools::tags$script(
-        id = "shinymcp-config",
-        type = "application/json",
-        htmltools::HTML(bridge_config)
-      )
-
       bridge_js <- private$read_bridge_js()
-      bridge_tag <- htmltools::tags$script(htmltools::HTML(bridge_js))
 
-      page <- htmltools::tags$html(
-        lang = "en",
-        htmltools::tags$head(
-          htmltools::tags$meta(charset = "UTF-8"),
-          htmltools::tags$meta(
-            name = "viewport",
-            content = "width=device-width, initial-scale=1.0"
-          ),
-          htmltools::tags$title(self$name),
-          htmltools::tags$style(htmltools::HTML(private$default_css()))
-        ),
-        htmltools::tags$body(
-          htmltools::tags$div(
-            id = "shinymcp-app",
-            class = "shinymcp-container",
-            private$.ui
-          ),
-          config_tag,
-          bridge_tag
+      # Render UI to extract HTML and any dependencies (bslib, etc.)
+      rendered_ui <- htmltools::renderTags(private$.ui)
+      has_deps <- length(rendered_ui$dependencies) > 0
+
+      if (has_deps) {
+        # bslib/themed UI: inline all CSS/JS dependencies
+        head_content <- paste(
+          '<meta charset="UTF-8">',
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+          paste0("<title>", htmltools::htmlEscape(self$name), "</title>"),
+          private$inline_dependencies(rendered_ui$dependencies),
+          rendered_ui$head,
+          sep = "\n"
         )
-      )
+        body_content <- rendered_ui$html
+      } else {
+        # Simple UI: use default CSS, wrap in container
+        body_tag <- htmltools::tags$div(
+          id = "shinymcp-app",
+          class = "shinymcp-container",
+          private$.ui
+        )
+        rendered_body <- htmltools::renderTags(body_tag)
+        head_content <- paste(
+          '<meta charset="UTF-8">',
+          '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+          paste0("<title>", htmltools::htmlEscape(self$name), "</title>"),
+          paste0("<style>\n", private$default_css(), "\n</style>"),
+          sep = "\n"
+        )
+        body_content <- rendered_body$html
+      }
 
-      rendered <- htmltools::renderTags(page)
-      paste0("<!DOCTYPE html>\n", rendered$html)
+      # Assemble final HTML (built as string to avoid renderTags
+      # stripping <head> content)
+      paste0(
+        "<!DOCTYPE html>\n",
+        '<html lang="en">\n',
+        "<head>\n", head_content, "\n</head>\n",
+        "<body>\n",
+        body_content, "\n",
+        '<script id="shinymcp-config" type="application/json">',
+        config_json, "</script>\n",
+        "<script>\n", bridge_js, "\n</script>\n",
+        "</body>\n</html>"
+      )
     },
 
     #' @description Get tools annotated with MCP metadata
@@ -186,6 +213,47 @@ McpApp <- R6::R6Class(
     .ui = NULL,
     .tools = list(),
 
+    #' Inline HTML dependencies as <style> and <script> tags
+    #' @param deps List of htmlDependency objects
+    #' @return Character string of inlined CSS and JS tags
+    inline_dependencies = function(deps) {
+      parts <- character(0)
+      for (dep in deps) {
+        base_path <- dep$src$file
+        if (is.null(base_path) || !nzchar(base_path)) next
+
+        # Inline stylesheets
+        for (css in dep$stylesheet) {
+          css_path <- file.path(base_path, css)
+          if (file.exists(css_path)) {
+            content <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
+            parts <- c(parts, paste0(
+              "<style>/* ", dep$name, ": ", css, " */\n", content, "\n</style>"
+            ))
+          }
+        }
+
+        # Inline scripts
+        for (js_entry in dep$script) {
+          js_file <- if (is.list(js_entry)) js_entry$src else js_entry
+          js_path <- file.path(base_path, js_file)
+          if (file.exists(js_path)) {
+            content <- paste(readLines(js_path, warn = FALSE), collapse = "\n")
+            # Preserve type="module" if specified
+            type_attr <- ""
+            if (is.list(js_entry) && !is.null(js_entry$type)) {
+              type_attr <- paste0(' type="', js_entry$type, '"')
+            }
+            parts <- c(parts, paste0(
+              "<script", type_attr, ">/* ", dep$name, ": ", js_file,
+              " */\n", content, "\n</script>"
+            ))
+          }
+        }
+      }
+      paste(parts, collapse = "\n")
+    },
+
     #' Read the bridge JS file
     read_bridge_js = function() {
       js_path <- system.file(
@@ -238,10 +306,15 @@ McpApp <- R6::R6Class(
 #'
 #' Convenience function to create an [McpApp] object.
 #'
-#' @param ui UI definition (htmltools tags)
+#' @param ui UI definition (htmltools tags). Can be a simple
+#'   [htmltools::tagList()] of shinymcp components, or a full
+#'   [bslib::page()] with theme.
 #' @param tools List of tools
 #' @param name App name
 #' @param version App version
+#' @param theme Optional [bslib::bs_theme()] object. Supports
+#'   `brand` for [brand.yml](https://posit-dev.github.io/brand-yml/) theming.
+#'   Not needed if `ui` is already a [bslib::page()].
 #' @param ... Additional arguments passed to `McpApp$new()`
 #' @return An [McpApp] object
 #' @export
@@ -250,7 +323,11 @@ mcp_app <- function(
   tools = list(),
   name = "shinymcp-app",
   version = "0.1.0",
+  theme = NULL,
   ...
 ) {
-  McpApp$new(ui = ui, tools = tools, name = name, version = version, ...)
+  McpApp$new(
+    ui = ui, tools = tools, name = name, version = version,
+    theme = theme, ...
+  )
 }

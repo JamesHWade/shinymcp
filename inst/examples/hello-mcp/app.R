@@ -1,9 +1,18 @@
-# Minimal MCP App example
+# Minimal MCP App example with bslib theming
 library(shinymcp)
+library(bslib)
+library(htmltools)
 
-ui <- htmltools::tagList(
-  mcp_select("dataset", "Choose dataset", c("mtcars", "iris", "pressure")),
-  mcp_text("summary")
+ui <- page(
+  theme = bs_theme(preset = "shiny"),
+  card(
+    card_header("Dataset Explorer"),
+    layout_columns(
+      col_widths = c(4, 8),
+      mcp_select("dataset", "Choose dataset", c("mtcars", "iris", "pressure")),
+      mcp_text("summary")
+    )
+  )
 )
 
 tools <- list(

@@ -19,6 +19,7 @@ Imports:
     rlang
 Suggests:
     base64enc,
+    bslib,
     deputy,
     ellmer,
     grDevices,
