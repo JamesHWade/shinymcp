@@ -11,19 +11,7 @@ experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](h
 
 shinymcp converts [Shiny](https://shiny.posit.co/) apps into [MCP
 Apps](https://modelcontextprotocol.io/) — interactive UIs that render
-directly inside AI chat interfaces like Claude, ChatGPT, and VS Code
-Copilot.
-
-It provides:
-
-- A **parse-analyze-generate** pipeline that automatically converts
-  Shiny apps to MCP Apps
-- **MCP-compatible UI components** (`mcp_select()`, `mcp_text_input()`,
-  `mcp_plot()`, etc.) that mirror Shiny’s input/output API
-- A **self-contained JS bridge** that implements the MCP Apps
-  postMessage protocol
-- An **MCP server** that serves tools and `ui://` resources over stdio
-  or HTTP
+directly inside AI chat interfaces like Claude Desktop.
 
 ## Installation
 
@@ -35,18 +23,25 @@ You can install the development version of shinymcp from
 pak::pak("jameslairdsmith/shinymcp")
 ```
 
-## Usage
+## Quick start
 
-### Build an MCP App from scratch
-
-Create an MCP App by defining UI components and tools:
+An MCP App has two parts: **UI components** that render in the chat
+interface, and **tools** that run R code when inputs change.
 
 ``` r
 library(shinymcp)
+library(bslib)
 
-ui <- htmltools::tagList(
-  mcp_select("dataset", "Choose dataset", c("mtcars", "iris", "pressure")),
-  mcp_text("summary")
+ui <- page_sidebar(
+  theme = bs_theme(preset = "shiny"),
+  title = "Dataset Explorer",
+  sidebar = sidebar(
+    mcp_select("dataset", "Choose dataset", c("mtcars", "iris", "pressure"))
+  ),
+  card(
+    card_header("Summary"),
+    mcp_text("summary")
+  )
 )
 
 tools <- list(
@@ -63,107 +58,151 @@ tools <- list(
   )
 )
 
-app <- mcp_app(ui, tools, name = "hello-mcp")
+app <- mcp_app(ui, tools, name = "dataset-explorer")
 serve(app)
 ```
 
-### Convert an existing Shiny app
+Save this as `app.R`, then register it in your Claude Desktop config:
 
-Point `convert_app()` at a Shiny app directory and it will generate an
-equivalent MCP App:
-
-``` r
-convert_app("path/to/my-shiny-app")
+``` json
+{
+  "mcpServers": {
+    "dataset-explorer": {
+      "command": "Rscript",
+      "args": ["/path/to/app.R"]
+    }
+  }
+}
 ```
 
-This parses the app’s UI and server code, groups connected reactive
-chains into tool definitions, and writes the output to a new directory.
+Restart Claude Desktop. When the tool is invoked, an interactive UI
+appears inline in the conversation. Changing the dropdown calls the tool
+and updates the output — no page reload needed.
 
-### UI components
+## Converting a Shiny app
 
-shinymcp provides input and output components that mirror familiar Shiny
+The core idea: **flatten your reactive graph into tool functions**.
+
+Each connected group of inputs → reactives → outputs becomes a single
+tool that takes input values as arguments and returns a named list of
+outputs.
+
+``` r
+# --- Shiny ---
+server <- function(input, output, session) {
+  filtered <- reactive({
+    penguins[penguins$species == input$species, ]
+  })
+  output$scatter <- renderPlot({
+    ggplot(filtered(), aes(x, y)) + geom_point()
+  })
+  output$stats <- renderPrint({
+    summary(filtered())
+  })
+}
+
+# --- MCP App tool ---
+ellmer::tool(
+  fun = function(species = "Adelie") {
+    filtered <- penguins[penguins$species == species, ]
+
+    # Render plot to base64 PNG
+    tmp <- tempfile(fileext = ".png")
+    ggplot2::ggsave(tmp, my_plot, width = 7, height = 4, dpi = 144)
+    on.exit(unlink(tmp))
+
+    list(
+      scatter = base64enc::base64encode(tmp),
+      stats = paste(capture.output(summary(filtered)), collapse = "\n")
+    )
+  },
+  name = "explore",
+  description = "Filter and visualize penguins",
+  arguments = list(
+    species = ellmer::type_string("Penguin species")
+  )
+)
+```
+
+Return keys (`scatter`, `stats`) must match output IDs in the UI
+(`mcp_plot("scatter")`, `mcp_text("stats")`). The bridge routes each
+value to the correct output element.
+
+For a full worked example converting a Shiny app step-by-step, see
+`vignette("converting-shiny-apps")`.
+
+## Component reference
+
+shinymcp provides input and output components that mirror Shiny
 functions:
 
-``` r
-library(shinymcp)
+### Inputs
 
-# Inputs
+| Shiny             | shinymcp              |
+|-------------------|-----------------------|
+| `selectInput()`   | `mcp_select()`        |
+| `textInput()`     | `mcp_text_input()`    |
+| `numericInput()`  | `mcp_numeric_input()` |
+| `checkboxInput()` | `mcp_checkbox()`      |
+| `sliderInput()`   | `mcp_slider()`        |
+| `radioButtons()`  | `mcp_radio()`         |
+| `actionButton()`  | `mcp_action_button()` |
+
+### Outputs
+
+| Shiny | shinymcp | Notes |
+|----|----|----|
+| `textOutput()` / `verbatimTextOutput()` | `mcp_text()` | Renders in `<pre>` with monospace font |
+| `plotOutput()` | `mcp_plot()` | Tool returns base64-encoded PNG |
+| `tableOutput()` | `mcp_table()` | Tool returns HTML table string |
+| `htmlOutput()` | `mcp_html()` | Tool returns raw HTML |
+
+Each component generates HTML with `data-shinymcp-*` attributes that the
+JS bridge reads at runtime:
+
+``` r
 mcp_select("colour", "Colour", c("red", "green", "blue"))
-```
+# <select data-shinymcp-input="colour" ...>
 
-<div class="shinymcp-input-group">
-<label for="colour">Colour</label>
-<select id="colour" data-shinymcp-input="colour" data-shinymcp-type="select">
-<option value="red" selected>red</option>
-<option value="green">green</option>
-<option value="blue">blue</option>
-</select>
-</div>
-
-``` r
-mcp_numeric_input("n", "Count", value = 10, min = 1, max = 100)
-```
-
-<div class="shinymcp-input-group">
-<label for="n">Count</label>
-<input type="number" id="n" data-shinymcp-input="n" data-shinymcp-type="numeric" value="10" min="1" max="100"/>
-</div>
-
-``` r
-
-# Outputs
 mcp_plot("my_plot")
+# <div data-shinymcp-output="my_plot" data-shinymcp-output-type="plot" ...>
 ```
 
-<div id="my_plot" class="shinymcp-output" data-shinymcp-output="my_plot" data-shinymcp-output-type="plot" style="width: 100%; height: 400px;"></div>
+## Examples
+
+shinymcp ships with example apps:
 
 ``` r
-mcp_text("result")
-```
+# Minimal: select input + text output
+system.file("examples", "hello-mcp", "app.R", package = "shinymcp")
 
-<div id="result" class="shinymcp-output" data-shinymcp-output="result" data-shinymcp-output-type="text"></div>
-
-Each component generates standard HTML with `data-shinymcp-*` attributes
-that the JS bridge reads at runtime.
-
-### Serve as an MCP server
-
-`serve()` starts an MCP server that exposes your app’s tools and HTML UI
-as a `ui://` resource:
-
-``` r
-app <- mcp_app(ui, tools, name = "my-app")
-
-# Stdio transport (for Claude Desktop, VS Code, etc.)
-serve(app, type = "stdio")
-
-# HTTP transport (for development/testing)
-serve(app, type = "http", port = 8080)
+# Full dashboard: Palmer Penguins with ggplot2 scatter plot, multiple
+# inputs (species filter, axis selectors, trend line toggle), and
+# summary statistics
+system.file("examples", "penguins", "app.R", package = "shinymcp")
 ```
 
 ## How it works
 
-MCP Apps use sandboxed iframes and postMessage/JSON-RPC to communicate
-between the AI host and your app’s UI. shinymcp replaces Shiny’s
-JavaScript runtime (`shiny.js`) with a lightweight bridge that:
+MCP Apps render inside sandboxed iframes in the AI chat interface. A
+lightweight JavaScript bridge (no npm dependencies) handles
+communication via postMessage/JSON-RPC:
 
-1.  Collects input values from MCP components on user interaction
-2.  Calls server-side tools via JSON-RPC
-3.  Updates output elements with the tool results
+1.  User changes an input → bridge collects all input values
+2.  Bridge sends a `tools/call` request to the host
+3.  Host proxies the call to the MCP server (your R process)
+4.  R tool function runs, returns results
+5.  Bridge updates output elements with the response
 
-The conversion pipeline works in three stages:
-
-1.  **Parse** — Walk the Shiny app’s AST to extract inputs, outputs,
-    reactive expressions, and observers
-2.  **Analyze** — Build a dependency graph and group connected
-    components into tool clusters
-3.  **Generate** — Emit MCP-compatible HTML, tool definitions, and a
-    server entrypoint
+The bridge also implements the MCP Apps initialization handshake
+(`ui/initialize`), auto-resize notifications, and teardown handling.
 
 ## Related packages
 
 - [ellmer](https://ellmer.tidyverse.org/) — LLM framework that shinymcp
   uses for tool definitions
+- [bslib](https://rstudio.github.io/bslib/) — Bootstrap-based layout and
+  theming for the UI
 - [mcptools](https://github.com/posit-dev/mcptools) — MCP server
   framework (shinymcp extends this with resource support)
 - [deputy](https://github.com/jameslairdsmith/deputy) — Agentic AI

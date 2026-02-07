@@ -128,19 +128,43 @@ one or more tools. Prefix tool names with the module name for clarity:
 ### Plots
 
 For `plotOutput`, use `mcp_plot(id)` and return a base64-encoded PNG from
-the tool. The bridge will set it as an `<img>` src. Example:
+the tool. The bridge wraps it in an `<img>` tag automatically. Example:
 
 ```r
 fun = function(...) {
   tmp <- tempfile(fileext = ".png")
-  png(tmp, width = 600, height = 400)
+  grDevices::png(tmp, width = 600, height = 400, res = 96)
   plot(...)
-  dev.off()
-  base64 <- base64enc::base64encode(tmp)
-  unlink(tmp)
-  paste0("data:image/png;base64,", base64)
+  grDevices::dev.off()
+  on.exit(unlink(tmp))
+  base64enc::base64encode(tmp)
 }
 ```
+
+For ggplot2 plots, use `ggsave()`:
+
+```r
+fun = function(...) {
+  p <- ggplot2::ggplot(...) + ggplot2::geom_point()
+  tmp <- tempfile(fileext = ".png")
+  ggplot2::ggsave(tmp, p, width = 7, height = 4, dpi = 144, bg = "white")
+  on.exit(unlink(tmp))
+  base64enc::base64encode(tmp)
+}
+```
+
+When returning multiple outputs (plot + text), use a named list:
+
+```r
+fun = function(...) {
+  # ... generate plot_b64 and summary_text ...
+  list(my_plot = plot_b64, my_text = summary_text)
+}
+```
+
+The keys must match the output IDs in the UI (`mcp_plot("my_plot")`,
+`mcp_text("my_text")`). The server returns these as `structuredContent`
+and the bridge routes each value to the correct output element.
 
 ### Tables
 
