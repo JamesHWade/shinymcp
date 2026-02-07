@@ -141,7 +141,12 @@ McpApp <- R6::R6Class(
     #' UI resource, which tells MCP Apps-capable hosts to render the UI.
     tool_definitions = function() {
       uri <- self$resource_uri()
-      meta <- list(`_meta` = list(ui = list(resourceUri = uri)))
+      # Include both new and legacy _meta formats for compatibility
+      # ext-apps SDK normalizes both: _meta.ui.resourceUri and _meta["ui/resourceUri"]
+      meta <- list(`_meta` = list(
+        ui = list(resourceUri = uri),
+        `ui/resourceUri` = uri
+      ))
 
       lapply(private$.tools, function(tool) {
         def <- if (is_ellmer_tool(tool)) {
