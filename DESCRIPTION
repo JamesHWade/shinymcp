@@ -20,7 +20,6 @@ Imports:
 Suggests:
     base64enc,
     bslib,
-    deputy,
     ellmer,
     ggplot2,
     grDevices,
