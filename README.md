@@ -18,6 +18,8 @@ shinymcp converts [Shiny](https://shiny.posit.co/) apps into [MCP
 Apps](https://modelcontextprotocol.io/) — interactive UIs that render
 directly inside AI chat interfaces like Claude Desktop.
 
+<img src="man/figures/demo.gif" alt="shinymcp demo showing an interactive Palmer Penguins dashboard inside Claude Desktop" width="100%" />
+
 ## Installation
 
 You can install the development version of shinymcp from
