@@ -137,9 +137,14 @@ McpApp <- R6::R6Class(
 
     #' @description Get tool definitions for MCP tools/list responses
     #' Returns a list of tool definition objects suitable for JSON-RPC.
+    #' Each tool includes `_meta.ui.resourceUri` linking it to the app's
+    #' UI resource, which tells MCP Apps-capable hosts to render the UI.
     tool_definitions = function() {
+      uri <- self$resource_uri()
+      meta <- list(`_meta` = list(ui = list(resourceUri = uri)))
+
       lapply(private$.tools, function(tool) {
-        if (is_ellmer_tool(tool)) {
+        def <- if (is_ellmer_tool(tool)) {
           list(
             name = tool@name,
             description = tool@description %||% "",
@@ -159,6 +164,7 @@ McpApp <- R6::R6Class(
             inputSchema = list(type = "object", properties = list())
           )
         }
+        c(def, meta)
       })
     },
 
