@@ -1,0 +1,33 @@
+Package: shinymcp
+Title: Convert Shiny Apps to MCP Apps
+Version: 0.0.0.9000
+Authors@R:
+    person("James", "Laird-Smith", , "james@example.com", role = c("aut", "cre"))
+Description: Converts existing Shiny applications into MCP (Model Context
+    Protocol) Apps that render inside AI chat interfaces. Provides a
+    parse-analyze-generate pipeline for automatic conversion, MCP-compatible
+    UI components, a JavaScript bridge for the MCP Apps postMessage protocol,
+    and a runtime framework for serving MCP Apps with tools and ui:// resources.
+License: MIT + file LICENSE
+URL: https://github.com/jameslairdsmith/shinymcp
+BugReports: https://github.com/jameslairdsmith/shinymcp/issues
+Imports:
+    cli,
+    htmltools,
+    jsonlite,
+    R6,
+    rlang
+Suggests:
+    base64enc,
+    deputy,
+    ellmer,
+    grDevices,
+    httpuv,
+    knitr,
+    mcptools,
+    shiny,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2

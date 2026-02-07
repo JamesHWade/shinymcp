@@ -1,0 +1,13 @@
+name: convert-shiny-app
+description: |
+  Converts a Shiny app to an MCP App. Guides the AI through reading the
+  Shiny source, analyzing its reactive structure, and generating the
+  equivalent MCP App with tools and UI components.
+trigger:
+  - "convert shiny app"
+  - "convert this shiny app to mcp"
+  - "turn shiny into mcp app"
+tools:
+  - tool_read_file
+  - tool_write_file
+  - tool_list_files

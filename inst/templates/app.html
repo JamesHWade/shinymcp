@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{APP_NAME}}</title>
+  <style>
+    /* Basic shinymcp styles */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 16px; color: #1a1a1a; }
+    .shinymcp-input-group { margin-bottom: 12px; }
+    .shinymcp-input-group label { display: block; font-weight: 600; margin-bottom: 4px; font-size: 14px; }
+    .shinymcp-input-group select,
+    .shinymcp-input-group input[type="text"],
+    .shinymcp-input-group input[type="number"] { width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    .shinymcp-input-group input[type="range"] { width: 100%; }
+    .shinymcp-input-group button { padding: 8px 16px; background: #0066cc; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; }
+    .shinymcp-input-group button:hover { background: #0052a3; }
+    .shinymcp-output { margin-top: 16px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 4px; min-height: 40px; }
+    .shinymcp-output:empty::before { content: "Waiting for data..."; color: #999; font-style: italic; }
+    .shinymcp-output img { max-width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  {{CONTENT}}
+  {{BRIDGE_CONFIG}}
+  {{BRIDGE_SCRIPT}}
+</body>
+</html>

@@ -1,0 +1,10 @@
+.Rproj.user
+.Rhistory
+.Rdata
+.httr-oauth
+.DS_Store
+*.Rproj
+src/*.o
+src/*.so
+src/*.dll
+man/*.Rd
