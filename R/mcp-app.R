@@ -121,6 +121,7 @@ McpApp <- R6::R6Class(
     },
 
     #' @description Print method
+    #' @param ... Ignored.
     print = function(...) {
       cli::cli_h1("McpApp: {self$name}")
       cli::cli_text("Version: {self$version}")
