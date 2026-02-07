@@ -25,6 +25,8 @@ navbar:
       menu:
         - text: Converting Shiny Apps
           href: articles/converting-shiny-apps.html
+        - text: Automatic Conversion
+          href: articles/automatic-conversion.html
 
 reference:
   - title: Create MCP Apps

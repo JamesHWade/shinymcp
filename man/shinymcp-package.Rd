@@ -6,6 +6,8 @@
 \alias{shinymcp-package}
 \title{shinymcp: Convert Shiny Apps to MCP Apps}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
+
 Converts existing Shiny applications into MCP (Model Context Protocol) Apps that render inside AI chat interfaces. Provides a parse-analyze-generate pipeline for automatic conversion, MCP-compatible UI components, a JavaScript bridge for the MCP Apps postMessage protocol, and a runtime framework for serving MCP Apps with tools and ui:// resources.
 }
 \seealso{
