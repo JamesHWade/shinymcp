@@ -7,6 +7,11 @@
 
 [![Lifecycle:
 experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/shinymcp)](https://CRAN.R-project.org/package=shinymcp)
+[![R-CMD-check](https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml)
+[![Codecov test
+coverage](https://codecov.io/gh/JamesHWade/shinymcp/graph/badge.svg)](https://app.codecov.io/gh/JamesHWade/shinymcp)
 <!-- badges: end -->
 
 shinymcp converts [Shiny](https://shiny.posit.co/) apps into [MCP
@@ -20,7 +25,7 @@ You can install the development version of shinymcp from
 
 ``` r
 # install.packages("pak")
-pak::pak("jameslairdsmith/shinymcp")
+pak::pak("JamesHWade/shinymcp")
 ```
 
 ## Quick start
@@ -161,8 +166,8 @@ Each component generates HTML with `data-shinymcp-*` attributes that the
 JS bridge reads at runtime:
 
 ``` r
-mcp_select("colour", "Colour", c("red", "green", "blue"))
-# <select data-shinymcp-input="colour" ...>
+mcp_select("color", "Color", c("red", "green", "blue"))
+# <select data-shinymcp-input="color" ...>
 
 mcp_plot("my_plot")
 # <div data-shinymcp-output="my_plot" data-shinymcp-output-type="plot" ...>
@@ -205,5 +210,5 @@ The bridge also implements the MCP Apps initialization handshake
   theming for the UI
 - [mcptools](https://github.com/posit-dev/mcptools) — MCP server
   framework (shinymcp extends this with resource support)
-- [deputy](https://github.com/jameslairdsmith/deputy) — Agentic AI
-  framework with a bundled skill for AI-assisted Shiny conversion
+- [deputy](https://github.com/JamesHWade/deputy) — Agentic AI framework
+  with a bundled skill for AI-assisted Shiny conversion
