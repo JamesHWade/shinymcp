@@ -223,10 +223,17 @@ dispatch_message <- function(message, app, registry) {
 handle_initialize <- function(message, app, registry) {
   empty_obj <- setNames(list(), character(0))
 
+  # Negotiate protocol version: respond with the client's version or our
+
+  # maximum supported version, whichever is lower
+  client_version <- message$params$protocolVersion %||% "2024-11-05"
+  server_version <- "2025-06-18"
+  negotiated <- min(client_version, server_version)
+
   jsonrpc_response(
     message$id,
     list(
-      protocolVersion = "2025-11-25",
+      protocolVersion = negotiated,
       capabilities = list(
         tools = empty_obj,
         resources = empty_obj
