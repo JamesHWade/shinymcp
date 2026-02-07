@@ -1,5 +1,6 @@
 // shinymcp-bridge.js
 // MCP Apps postMessage/JSON-RPC bridge for shinymcp
+// Implements the official MCP Apps postMessage protocol (SEP-1865).
 // No external dependencies required.
 (function () {
   "use strict";
@@ -9,9 +10,11 @@
   // ---------------------------------------------------------------------------
   var config = {};
   var inputListeners = [];
-  var resizeObserver = null;
   var messageHandler = null;
   var tornDown = false;
+  var nextId = 1;
+  var pendingRequests = {};
+  var hostContext = null;
 
   // ---------------------------------------------------------------------------
   // Utility: read the value of a form element
@@ -21,27 +24,16 @@
     var tag = el.tagName.toLowerCase();
     var type = (el.getAttribute("type") || "").toLowerCase();
 
-    // Select element
-    if (tag === "select") {
-      return el.value;
-    }
+    if (tag === "select") return el.value;
+    if (tag === "textarea") return el.value;
 
-    // Textarea
-    if (tag === "textarea") {
-      return el.value;
-    }
-
-    // Input elements by type
     if (tag === "input") {
-      if (type === "checkbox") {
-        return el.checked;
-      }
+      if (type === "checkbox") return el.checked;
       if (type === "number" || type === "range") {
         var num = parseFloat(el.value);
         return isNaN(num) ? null : num;
       }
       if (type === "radio") {
-        // For radio buttons, find the checked one in the same name group
         var name = el.getAttribute("name");
         if (name) {
           var form = el.closest("form") || document;
@@ -52,16 +44,13 @@
         }
         return el.checked ? el.value : null;
       }
-      // text, email, url, date, etc.
       return el.value;
     }
 
-    // Button-like elements
     if (tag === "button" || type === "button" || type === "submit") {
       return el.value || el.textContent || true;
     }
 
-    // Fallback: try value, then textContent
     if (el.value !== undefined) return el.value;
     return el.textContent || null;
   }
@@ -97,32 +86,45 @@
       case "text":
         el.textContent = value;
         break;
-
       case "html":
-        // HTML output from trusted MCP host/R server
         el.innerHTML = value;
         break;
-
       case "plot":
-        // Base64 plot image from trusted MCP host/R server
         el.innerHTML =
           '<img src="data:image/png;base64,' + value + '" alt="Plot output">';
         break;
-
       case "table":
-        // HTML table from trusted MCP host/R server
         el.innerHTML = value;
         break;
-
       default:
         el.textContent = value;
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Utility: send a JSON-RPC message to the host via postMessage
+  // JSON-RPC messaging via postMessage
   // ---------------------------------------------------------------------------
-  function sendMessage(method, params) {
+  function sendRequest(method, params) {
+    if (tornDown) return null;
+    if (!window.parent || window.parent === window) return null;
+
+    var id = nextId++;
+    var message = {
+      jsonrpc: "2.0",
+      id: id,
+      method: method,
+    };
+    if (params !== undefined) {
+      message.params = params;
+    }
+
+    return new Promise(function (resolve) {
+      pendingRequests[id] = resolve;
+      window.parent.postMessage(message, "*");
+    });
+  }
+
+  function sendNotification(method, params) {
     if (tornDown) return;
     if (!window.parent || window.parent === window) return;
 
@@ -137,6 +139,20 @@
     window.parent.postMessage(message, "*");
   }
 
+  function sendResponse(id, result) {
+    if (tornDown) return;
+    if (!window.parent || window.parent === window) return;
+
+    window.parent.postMessage(
+      {
+        jsonrpc: "2.0",
+        id: id,
+        result: result || {},
+      },
+      "*"
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Input change handling
   // ---------------------------------------------------------------------------
@@ -144,14 +160,9 @@
     var el = event.target.closest("[data-shinymcp-input]");
     if (!el) return;
 
-    var inputId = el.getAttribute("data-shinymcp-input");
-    var value = getInputValue(el);
-    var allInputs = collectAllInputs();
-
-    sendMessage("ui/input-changed", {
-      inputId: inputId,
-      value: value,
-      allInputs: allInputs,
+    // Update model context with current input values
+    sendNotification("ui/update-model-context", {
+      structuredContent: collectAllInputs(),
     });
   }
 
@@ -162,7 +173,6 @@
       var tag = el.tagName.toLowerCase();
       var type = (el.getAttribute("type") || "").toLowerCase();
 
-      // Determine which event(s) to listen for
       var events = [];
       if (
         tag === "select" ||
@@ -195,19 +205,51 @@
     if (tornDown) return;
 
     var data = event.data;
-    if (!data || data.jsonrpc !== "2.0" || !data.method) return;
+    if (!data || data.jsonrpc !== "2.0") return;
+
+    // Handle responses to our requests
+    if (data.id !== undefined && data.result !== undefined) {
+      var resolve = pendingRequests[data.id];
+      if (resolve) {
+        delete pendingRequests[data.id];
+        resolve(data.result);
+      }
+      return;
+    }
+
+    // Handle notifications and requests from host
+    if (!data.method) return;
 
     switch (data.method) {
-      case "ui/tool-result":
+      case "ui/notifications/tool-result":
         handleToolResult(data.params);
         break;
 
-      case "ui/teardown":
+      case "ui/notifications/tool-input":
+        handleToolInput(data.params);
+        break;
+
+      case "ui/notifications/tool-input-partial":
+        // Streaming partial input - could update UI progressively
+        break;
+
+      case "ui/notifications/tool-cancelled":
+        // Tool was cancelled
+        break;
+
+      case "ui/notifications/host-context-changed":
+        if (data.params) {
+          hostContext = data.params;
+        }
+        break;
+
+      case "ui/resource-teardown":
+        // Respond to teardown request then clean up
+        sendResponse(data.id, {});
         teardown();
         break;
 
       default:
-        // Unknown method - ignore
         break;
     }
   }
@@ -215,50 +257,60 @@
   function handleToolResult(params) {
     if (!params) return;
 
-    var result = params.result;
+    var content = params.content;
+    if (!content || !Array.isArray(content)) return;
 
-    if (!result || typeof result !== "object") return;
+    // Extract text content from the tool result
+    var textContent = "";
+    for (var i = 0; i < content.length; i++) {
+      if (content[i].type === "text") {
+        textContent += content[i].text;
+      }
+    }
 
-    // result is a key-value map where keys are output IDs
-    var keys = Object.keys(result);
-    for (var i = 0; i < keys.length; i++) {
-      var outputId = keys[i];
-      var value = result[outputId];
-
-      // Look up the output element to determine its type
-      var el = document.querySelector(
-        '[data-shinymcp-output="' + outputId + '"]'
-      );
-      var outputType = el
-        ? el.getAttribute("data-shinymcp-output-type") || "text"
-        : "text";
-
-      updateOutput(outputId, value, outputType);
+    // Try to parse as structured content and update outputs
+    if (params.structuredContent && typeof params.structuredContent === "object") {
+      var keys = Object.keys(params.structuredContent);
+      for (var j = 0; j < keys.length; j++) {
+        updateOutput(keys[j], params.structuredContent[keys[j]]);
+      }
+    } else if (textContent) {
+      // Update all text outputs with the raw text result
+      var outputs = document.querySelectorAll("[data-shinymcp-output]");
+      if (outputs.length === 1) {
+        var outputType =
+          outputs[0].getAttribute("data-shinymcp-output-type") || "text";
+        updateOutput(
+          outputs[0].getAttribute("data-shinymcp-output"),
+          textContent,
+          outputType
+        );
+      }
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Size reporting via ResizeObserver
-  // ---------------------------------------------------------------------------
-  function setupResizeObserver() {
-    if (typeof ResizeObserver === "undefined") return;
+  function handleToolInput(params) {
+    if (!params || !params.arguments) return;
 
-    resizeObserver = new ResizeObserver(function (entries) {
-      if (tornDown) return;
-      for (var i = 0; i < entries.length; i++) {
-        var entry = entries[i];
-        if (entry.target === document.body) {
-          var rect = entry.contentRect;
-          sendMessage("ui/resize", {
-            width: Math.ceil(rect.width),
-            height: Math.ceil(rect.height),
-          });
-          break;
+    // Update input elements with the tool arguments
+    var args = params.arguments;
+    var keys = Object.keys(args);
+    for (var i = 0; i < keys.length; i++) {
+      var inputId = keys[i];
+      var value = args[inputId];
+      var el = document.querySelector(
+        '[data-shinymcp-input="' + inputId + '"]'
+      );
+      if (el) {
+        var tag = el.tagName.toLowerCase();
+        var type = (el.getAttribute("type") || "").toLowerCase();
+        if (type === "checkbox") {
+          el.checked = !!value;
+        } else if (tag === "select" || tag === "input" || tag === "textarea") {
+          el.value = value;
         }
       }
-    });
-
-    resizeObserver.observe(document.body);
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -268,20 +320,12 @@
     if (tornDown) return;
     tornDown = true;
 
-    // Remove input listeners
     for (var i = 0; i < inputListeners.length; i++) {
       var entry = inputListeners[i];
       entry.element.removeEventListener(entry.event, onInputChanged);
     }
     inputListeners = [];
 
-    // Disconnect resize observer
-    if (resizeObserver) {
-      resizeObserver.disconnect();
-      resizeObserver = null;
-    }
-
-    // Remove message listener
     if (messageHandler) {
       window.removeEventListener("message", messageHandler);
       messageHandler = null;
@@ -289,7 +333,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Initialization
+  // Initialization: implements the official MCP Apps ui/initialize handshake
   // ---------------------------------------------------------------------------
   function init() {
     // Read config from embedded JSON
@@ -310,16 +354,28 @@
     // Attach input change listeners
     attachInputListeners();
 
-    // Set up resize observer
-    setupResizeObserver();
-
-    // Notify host that UI is ready
-    sendMessage("ui/ready", {
-      appName: config.appName || "shinymcp-app",
-      tools: config.tools || [],
-      version: config.version || "0.0.1",
-      inputs: collectAllInputs(),
+    // Send ui/initialize request per MCP Apps spec
+    var initPromise = sendRequest("ui/initialize", {
+      protocolVersion: "2025-06-18",
+      clientInfo: {
+        name: config.appName || "shinymcp-app",
+        version: config.version || "0.0.1",
+      },
+      capabilities: {},
+      appCapabilities: {
+        availableDisplayModes: ["inline"],
+      },
     });
+
+    // Handle initialize response
+    if (initPromise) {
+      initPromise.then(function (result) {
+        hostContext = result.hostContext || null;
+
+        // Send initialized notification
+        sendNotification("ui/notifications/initialized", {});
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
