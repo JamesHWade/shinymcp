@@ -24,17 +24,20 @@ mcp_plot <- function(id, width = "100%", height = "400px") {
 
 #' Create an MCP text output
 #'
-#' Generates a placeholder div for text output with MCP data attributes.
+#' Generates a placeholder element for text output with MCP data attributes.
+#' Uses a `<pre>` tag so R console/summary output renders with monospace
+#' font and preserved whitespace.
 #'
 #' @param id Output ID
 #' @return An [htmltools::tag] object
 #' @export
 mcp_text <- function(id) {
-  htmltools::tags$div(
+  htmltools::tags$pre(
     id = id,
     class = "shinymcp-output",
     `data-shinymcp-output` = id,
-    `data-shinymcp-output-type` = "text"
+    `data-shinymcp-output-type` = "text",
+    style = "white-space: pre-wrap; margin: 0;"
   )
 }
 

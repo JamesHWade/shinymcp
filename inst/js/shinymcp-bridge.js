@@ -15,6 +15,7 @@
   var nextId = 1;
   var pendingRequests = {};
   var hostContext = null;
+  var callToolTimer = null;
 
   // ---------------------------------------------------------------------------
   // Utility: read the value of a form element
@@ -154,16 +155,46 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Server tool calling
+  // ---------------------------------------------------------------------------
+  function callServerTool(inputs) {
+    if (!config.tools || config.tools.length === 0) return;
+
+    // Call the first tool with all current input values
+    var toolName = config.tools[0];
+
+    var promise = sendRequest("tools/call", {
+      name: toolName,
+      arguments: inputs,
+    });
+
+    if (promise) {
+      promise.then(function (result) {
+        // tools/call response has same shape as tool-result notification
+        handleToolResult(result);
+      });
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Input change handling
   // ---------------------------------------------------------------------------
   function onInputChanged(event) {
     var el = event.target.closest("[data-shinymcp-input]");
     if (!el) return;
 
+    var inputs = collectAllInputs();
+
     // Update model context with current input values
     sendNotification("ui/update-model-context", {
-      structuredContent: collectAllInputs(),
+      structuredContent: inputs,
     });
+
+    // Debounce tool call to avoid hammering server on rapid changes
+    if (callToolTimer) clearTimeout(callToolTimer);
+    callToolTimer = setTimeout(function () {
+      callServerTool(inputs);
+    }, 250);
   }
 
   function attachInputListeners() {
@@ -376,6 +407,9 @@
 
         // Set up auto-resize notifications (like the official SDK)
         setupAutoResize();
+
+        // Call server tool with initial input values so output is populated
+        callServerTool(collectAllInputs());
       });
     }
   }
