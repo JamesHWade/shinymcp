@@ -10,3 +10,6 @@
 ^README\.md$
 ^man-roxygen$
 ^README\.html$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$

@@ -2,7 +2,7 @@ Package: shinymcp
 Title: Convert Shiny Apps to MCP Apps
 Version: 0.0.0.9000
 Authors@R:
-    person("James", "Laird-Smith", , "james@example.com", role = c("aut", "cre"))
+    person("James", "Wade", , "github@jameshwade.com", role = c("aut", "cre"))
 Description: Converts existing Shiny applications into MCP (Model Context
     Protocol) Apps that render inside AI chat interfaces. Provides a
     parse-analyze-generate pipeline for automatic conversion, MCP-compatible

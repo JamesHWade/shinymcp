@@ -21,12 +21,15 @@ ui <- page_sidebar(
   sidebar = sidebar(
     width = 260,
     mcp_select(
-      "species", "Species",
+      "species",
+      "Species",
       c("All", "Adelie", "Chinstrap", "Gentoo")
     ),
     mcp_select("x_var", "X axis", var_choices),
     mcp_select(
-      "y_var", "Y axis", var_choices,
+      "y_var",
+      "Y axis",
+      var_choices,
       selected = "bill_depth_mm"
     ),
     mcp_checkbox("trend", "Show trend line")
@@ -50,7 +53,7 @@ tools <- list(
       y_var = "bill_depth_mm",
       trend = FALSE
     ) {
-      data <- palmerpenguins::penguins
+      data <- penguins
       data <- data[complete.cases(data), ]
 
       if (species != "All") {
@@ -63,11 +66,17 @@ tools <- list(
         aes(x = .data[[x_var]], y = .data[[y_var]], color = species)
       ) +
         geom_point(alpha = 0.7, size = 2.5) +
-        scale_color_manual(values = c(
-          Adelie = "#ff6b35", Chinstrap = "#7b2d8e", Gentoo = "#0f7173"
-        )) +
+        scale_color_manual(
+          values = c(
+            Adelie = "#ff6b35",
+            Chinstrap = "#7b2d8e",
+            Gentoo = "#0f7173"
+          )
+        ) +
         labs(
-          x = var_labels[[x_var]], y = var_labels[[y_var]], color = "Species"
+          x = var_labels[[x_var]],
+          y = var_labels[[y_var]],
+          color = "Species"
         ) +
         theme_minimal(base_size = 13) +
         theme(legend.position = "bottom")
@@ -82,17 +91,22 @@ tools <- list(
       plot_b64 <- base64enc::base64encode(tmp)
 
       # Summary statistics
-      stats <- paste(capture.output({
-        cat(sprintf("Observations: %d penguins\n\n", nrow(data)))
-        print(summary(data[, c(x_var, y_var, "species")]))
-      }), collapse = "\n")
+      stats <- paste(
+        capture.output({
+          cat(sprintf("Observations: %d penguins\n\n", nrow(data)))
+          print(summary(data[, c(x_var, y_var, "species")]))
+        }),
+        collapse = "\n"
+      )
 
       list(scatter = plot_b64, stats = stats)
     },
     name = "explore_penguins",
     description = "Explore the Palmer Penguins dataset with interactive scatter plots and summary statistics",
     arguments = list(
-      species = ellmer::type_string("Species filter: All, Adelie, Chinstrap, or Gentoo"),
+      species = ellmer::type_string(
+        "Species filter: All, Adelie, Chinstrap, or Gentoo"
+      ),
       x_var = ellmer::type_string("X axis variable name"),
       y_var = ellmer::type_string("Y axis variable name"),
       trend = ellmer::type_boolean("Whether to show a linear trend line")
