@@ -33,13 +33,13 @@
 #' )
 #'
 #' # Opens in browser with working inputs/outputs
-#' srv <- preview(app)
+#' srv <- preview_app(app)
 #'
 #' # Stop when done
 #' srv$stop()
 #' }
 #' @export
-preview <- function(app, port = NULL, launch = TRUE) {
+preview_app <- function(app, port = NULL, launch = TRUE) {
   rlang::check_installed("httpuv", reason = "to preview MCP Apps in a browser")
 
   app <- as_mcp_app(app)
@@ -48,24 +48,32 @@ preview <- function(app, port = NULL, launch = TRUE) {
   host <- "127.0.0.1"
 
   # Pre-render the host HTML with the app name baked in
-
   host_html <- preview_host_html(app$name)
   app_html <- app$html_resource()
 
-  server <- httpuv::startServer(host, port, list(
-    call = function(req) {
-      tryCatch(
-        preview_route(req, app, host_html, app_html),
-        error = function(e) {
-          list(
-            status = 500L,
-            headers = list(`Content-Type` = "text/plain"),
-            body = paste("Internal server error:", conditionMessage(e))
-          )
-        }
-      )
-    }
-  ))
+  server <- httpuv::startServer(
+    host,
+    port,
+    list(
+      call = function(req) {
+        tryCatch(
+          preview_route(req, app, host_html, app_html),
+          error = function(e) {
+            list(
+              status = 500L,
+              headers = list(`Content-Type` = "text/plain"),
+              body = paste("Internal server error:", conditionMessage(e))
+            )
+          }
+        )
+      }
+    )
+  )
+
+  stop_server <- function() {
+    httpuv::stopServer(server)
+    cli::cli_inform("Preview server stopped.")
+  }
 
   url <- sprintf("http://%s:%d", host, port)
   cli::cli_inform(c(
@@ -74,17 +82,15 @@ preview <- function(app, port = NULL, launch = TRUE) {
   ))
 
   if (launch) {
-    utils::browseURL(url)
+    tryCatch(
+      utils::browseURL(url),
+      error = function(e) {
+        cli::cli_warn("Could not open browser: {e$message}")
+      }
+    )
   }
 
-  result <- list(
-    url = url,
-    stop = function() {
-      httpuv::stopServer(server)
-      cli::cli_inform("Preview server stopped.")
-    }
-  )
-
+  result <- list(url = url, stop = stop_server)
   invisible(result)
 }
 
@@ -105,8 +111,8 @@ as_mcp_app <- function(x) {
   }
 
   if (is.character(x) && length(x) == 1) {
-    # Try to source an app.R that creates an McpApp
-    app_file <- if (file.info(x)$isdir) {
+    # Resolve to an app.R file path
+    app_file <- if (file.exists(x) && file.info(x)$isdir) {
       file.path(x, "app.R")
     } else {
       x
@@ -145,7 +151,8 @@ as_mcp_app <- function(x) {
 #' @noRd
 preview_host_html <- function(app_name) {
   template_path <- system.file(
-    "preview", "host.html",
+    "preview",
+    "host.html",
     package = "shinymcp",
     mustWork = TRUE
   )
@@ -224,30 +231,4 @@ preview_handle_tool <- function(req, app) {
     headers = list(`Content-Type` = "application/json"),
     body = to_json(result)
   )
-}
-
-
-#' Format an R tool result into the MCP tool-result shape
-#'
-#' Mirrors the logic in `handle_tools_call()` from serve.R.
-#'
-#' @param result The raw result from `McpApp$call_tool()`.
-#' @return A list with `content` and optionally `structuredContent`.
-#' @noRd
-format_tool_result <- function(result) {
-  if (is.list(result) && !is.null(names(result))) {
-    text_parts <- vapply(result, function(x) {
-      if (is.character(x) && nchar(x) < 10000) x else ""
-    }, character(1))
-    text_summary <- paste(text_parts[nzchar(text_parts)], collapse = "\n\n")
-
-    list(
-      content = list(list(type = "text", text = text_summary)),
-      structuredContent = result
-    )
-  } else {
-    list(
-      content = list(list(type = "text", text = as.character(result)))
-    )
-  }
 }

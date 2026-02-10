@@ -72,7 +72,7 @@ test_that("preview_route returns 404 for unknown paths", {
   expect_equal(resp$status, 404L)
 })
 
-test_that("preview starts and stops server", {
+test_that("preview_app starts and stops server", {
   skip_if_not_installed("httpuv")
 
   ui <- htmltools::tagList(
@@ -89,7 +89,9 @@ test_that("preview starts and stops server", {
   )
   app <- McpApp$new(ui = ui, tools = tools, name = "preview-test")
 
-  srv <- preview(app, launch = FALSE)
+  srv <- preview_app(app, launch = FALSE)
+  on.exit(srv$stop(), add = TRUE)
+
   expect_type(srv$url, "character")
   expect_match(srv$url, "^http://")
   expect_type(srv$stop, "closure")
@@ -98,17 +100,14 @@ test_that("preview starts and stops server", {
   host_resp <- tryCatch(
     {
       con <- url(srv$url, open = "rb")
-      on.exit(close(con))
+      on.exit(close(con), add = TRUE)
       rawToChar(readBin(con, raw(), 100000))
     },
     error = function(e) NULL
   )
 
-  if (!is.null(host_resp)) {
-    expect_match(host_resp, "preview-test")
-    expect_match(host_resp, "shinymcp preview")
-  }
+  skip_if(is.null(host_resp), "Could not connect to preview server")
 
-  # Stop the server
-  expect_no_error(srv$stop())
+  expect_match(host_resp, "preview-test")
+  expect_match(host_resp, "shinymcp preview")
 })

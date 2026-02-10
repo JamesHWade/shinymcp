@@ -230,6 +230,7 @@ iframe {
   }
 
   function handleInitialize(data) {
+    // Keep in sync with SHINYMCP_PROTOCOL_VERSION in R/utils.R
     respond(data.id, {
       protocolVersion: "2025-06-18",
       hostInfo: {
