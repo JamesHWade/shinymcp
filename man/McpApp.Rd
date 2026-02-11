@@ -112,13 +112,13 @@ UI resource, which tells MCP Apps-capable hosts to render the UI.
 \subsection{Method \code{call_tool()}}{
 Call a tool by name
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$call_tool(tool_name, arguments = list())}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$call_tool(name, arguments = list())}\if{html}{\out{</div>}}
 }
 
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{tool_name}}{Name of the tool to call}
+\item{\code{name}}{Name of the tool to call}
 
 \item{\code{arguments}}{Named list of arguments to pass to the tool}
 }
