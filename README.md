@@ -33,7 +33,9 @@ pak::pak("JamesHWade/shinymcp")
 ## Quick start
 
 An MCP App has two parts: **UI components** that render in the chat
-interface, and **tools** that run R code when inputs change.
+interface, and **tools** that run R code when inputs change. Use
+standard shiny or bslib inputs — the bridge auto-detects them by
+matching tool argument names to element `id` attributes.
 
 ``` r
 library(shinymcp)
@@ -43,7 +45,8 @@ ui <- page_sidebar(
   theme = bs_theme(preset = "shiny"),
   title = "Dataset Explorer",
   sidebar = sidebar(
-    mcp_select("dataset", "Choose dataset", c("mtcars", "iris", "pressure"))
+    # Standard shiny input — auto-detected because id matches tool arg "dataset"
+    shiny::selectInput("dataset", "Choose dataset", c("mtcars", "iris", "pressure"))
   ),
   card(
     card_header("Summary"),
@@ -164,20 +167,31 @@ See `inst/skills/convert-shiny-app/SKILL.md` for the full instructions.
 
 ## Component reference
 
-shinymcp provides input and output components that mirror Shiny
-functions:
+### Inputs: use standard shiny/bslib
 
-### Inputs
+The bridge auto-detects standard form elements (`<select>`, `<input>`,
+etc.) whose `id` matches a tool argument name. This means you can use
+the Shiny and bslib inputs you already know:
 
-| Shiny             | shinymcp              |
-|-------------------|-----------------------|
-| `selectInput()`   | `mcp_select()`        |
-| `textInput()`     | `mcp_text_input()`    |
-| `numericInput()`  | `mcp_numeric_input()` |
-| `checkboxInput()` | `mcp_checkbox()`      |
-| `sliderInput()`   | `mcp_slider()`        |
-| `radioButtons()`  | `mcp_radio()`         |
-| `actionButton()`  | `mcp_action_button()` |
+``` r
+sidebar(
+  shiny::selectInput("species", "Species", choices),
+  shiny::numericInput("n", "Count", value = 10),
+  shiny::checkboxInput("trend", "Show trend line")
+)
+```
+
+For edge cases (id doesn’t match arg name, custom widgets), use
+`mcp_input()` to explicitly mark an element:
+
+``` r
+mcp_input(shiny::radioButtons("fmt", "Format", c("summary", "head")), id = "fmt")
+```
+
+shinymcp also provides lightweight `mcp_select()`, `mcp_text_input()`,
+etc. that generate minimal HTML without Shiny’s JS runtime. These are
+useful for simple apps and are what the automatic conversion pipeline
+generates.
 
 ### Outputs
 
@@ -188,15 +202,10 @@ functions:
 | `tableOutput()` | `mcp_table()` | Tool returns HTML table string |
 | `htmlOutput()` | `mcp_html()` | Tool returns raw HTML |
 
-Each component generates HTML with `data-shinymcp-*` attributes that the
-JS bridge reads at runtime:
+You can also turn any tag into an output target with `mcp_output()`:
 
 ``` r
-mcp_select("color", "Color", c("red", "green", "blue"))
-# <select data-shinymcp-input="color" ...>
-
-mcp_plot("my_plot")
-# <div data-shinymcp-output="my_plot" data-shinymcp-output-type="plot" ...>
+mcp_output(tags$pre(id = "result"), type = "text")
 ```
 
 ## Examples
@@ -204,11 +213,13 @@ mcp_plot("my_plot")
 shinymcp ships with example apps:
 
 ``` r
-# Minimal: select input + text output
+# Minimal: mcp_select() + text output
 system.file("examples", "hello-mcp", "app.R", package = "shinymcp")
 
-# Full dashboard: Palmer Penguins with ggplot2 scatter plot, multiple
-# inputs (species filter, axis selectors, trend line toggle), and
+# Native shiny/bslib inputs with auto-detection + mcp_input()/mcp_output()
+system.file("examples", "bslib-inputs", "app.R", package = "shinymcp")
+
+# Full dashboard: Palmer Penguins with native shiny inputs, ggplot2, and
 # summary statistics
 system.file("examples", "penguins", "app.R", package = "shinymcp")
 ```
@@ -219,7 +230,9 @@ MCP Apps render inside sandboxed iframes in the AI chat interface. A
 lightweight JavaScript bridge (no npm dependencies) handles
 communication via postMessage/JSON-RPC:
 
-1.  User changes an input → bridge collects all input values
+1.  User changes an input → bridge auto-detects which form elements are
+    inputs (by matching tool argument names to element ids) and collects
+    all values
 2.  Bridge sends a `tools/call` request to the host
 3.  Host proxies the call to the MCP server (your R process)
 4.  R tool function runs, returns results
