@@ -269,20 +269,82 @@
   // ---------------------------------------------------------------------------
   // Server tool calling
   // ---------------------------------------------------------------------------
-  function callServerTool(inputs) {
+
+  // Build reverse lookup: input arg name -> list of tool names that use it
+  function buildArgToToolsMap() {
+    var map = {};
+    if (!config.toolArgs || typeof config.toolArgs !== "object") return map;
+    var tools = Object.keys(config.toolArgs);
+    for (var i = 0; i < tools.length; i++) {
+      var args = config.toolArgs[tools[i]];
+      if (!Array.isArray(args)) continue;
+      for (var j = 0; j < args.length; j++) {
+        if (!map[args[j]]) {
+          map[args[j]] = [];
+        }
+        map[args[j]].push(tools[i]);
+      }
+    }
+    return map;
+  }
+
+  var argToToolsMap = {};
+
+  // Find which tools are affected by a set of changed input names.
+  // If changedInputNames is null, returns all tools (used for initial call).
+  function findAffectedTools(changedInputNames) {
+    if (!config.toolArgs || typeof config.toolArgs !== "object") {
+      // No toolArgs config: fall back to all tools
+      return config.tools || [];
+    }
+    if (!changedInputNames) {
+      return Object.keys(config.toolArgs);
+    }
+    var seen = {};
+    var result = [];
+    for (var i = 0; i < changedInputNames.length; i++) {
+      var tools = argToToolsMap[changedInputNames[i]];
+      if (!tools) continue;
+      for (var j = 0; j < tools.length; j++) {
+        if (!seen[tools[j]]) {
+          seen[tools[j]] = true;
+          result.push(tools[j]);
+        }
+      }
+    }
+    return result;
+  }
+
+  // Collect only the input values relevant to a specific tool
+  function collectToolInputs(toolName, allInputs) {
+    if (!config.toolArgs || !config.toolArgs[toolName]) return allInputs;
+    var argNames = config.toolArgs[toolName];
+    var result = {};
+    for (var i = 0; i < argNames.length; i++) {
+      if (argNames[i] in allInputs) {
+        result[argNames[i]] = allInputs[argNames[i]];
+      }
+    }
+    return result;
+  }
+
+  function callServerTools(inputs, changedInputNames) {
     if (!config.tools || config.tools.length === 0) return;
 
-    // Call the first tool with all current input values
-    var toolName = config.tools[0];
+    var toolNames = findAffectedTools(changedInputNames);
+    for (var i = 0; i < toolNames.length; i++) {
+      callSingleTool(toolNames[i], collectToolInputs(toolNames[i], inputs));
+    }
+  }
 
+  function callSingleTool(toolName, args) {
     var promise = sendRequest("tools/call", {
       name: toolName,
-      arguments: inputs,
+      arguments: args,
     });
 
     if (promise) {
       promise.then(function (result) {
-        // tools/call response has same shape as tool-result notification
         handleToolResult(result);
       });
     }
@@ -293,8 +355,11 @@
   // ---------------------------------------------------------------------------
   function onInputChanged(event) {
     // Check if the changed element is a tracked input (cached or explicit)
+    var changedArgName = null;
     var el = event.target.closest("[data-shinymcp-input]");
-    if (!el) {
+    if (el) {
+      changedArgName = el.getAttribute("data-shinymcp-input");
+    } else {
       // Check if target (or its ancestor) is a form element inside a cached element
       var targetTag = event.target.tagName.toLowerCase();
       var isFormEl =
@@ -304,15 +369,14 @@
         targetTag === "button";
       if (!isFormEl) return;
 
-      var found = false;
       var cacheKeys = Object.keys(inputCache);
       for (var i = 0; i < cacheKeys.length; i++) {
         if (inputCache[cacheKeys[i]].contains(event.target)) {
-          found = true;
+          changedArgName = cacheKeys[i];
           break;
         }
       }
-      if (!found) return;
+      if (!changedArgName) return;
     }
 
     var inputs = collectAllInputs();
@@ -323,9 +387,10 @@
     });
 
     // Debounce tool call to avoid hammering server on rapid changes
+    var changedInputNames = changedArgName ? [changedArgName] : null;
     if (callToolTimer) clearTimeout(callToolTimer);
     callToolTimer = setTimeout(function () {
-      callServerTool(inputs);
+      callServerTools(inputs, changedInputNames);
     }, 250);
   }
 
@@ -557,8 +622,9 @@
     messageHandler = handleHostMessage;
     window.addEventListener("message", messageHandler);
 
-    // Build auto-detect cache from toolArgs config, then attach listeners
+    // Build auto-detect cache and arg->tool reverse lookup, then attach listeners
     buildInputCache();
+    argToToolsMap = buildArgToToolsMap();
     attachInputListeners();
 
     // Send ui/initialize request per MCP Apps spec
@@ -584,8 +650,8 @@
         // Set up auto-resize notifications (like the official SDK)
         setupAutoResize();
 
-        // Call server tool with initial input values so output is populated
-        callServerTool(collectAllInputs());
+        // Call all server tools with initial input values so outputs are populated
+        callServerTools(collectAllInputs(), null);
       });
     }
   }
