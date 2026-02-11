@@ -239,6 +239,8 @@ Build and serve MCP Apps from UI components and tools.
   : MCP App
 - [`serve()`](https://jameshwade.github.io/shinymcp/reference/serve.md)
   : Serve an MCP App
+- [`preview_app()`](https://jameshwade.github.io/shinymcp/reference/preview_app.md)
+  : Preview an MCP App in a web browser
 
 ## Input Components
 

@@ -130,11 +130,11 @@ Call a tool by name
 
 #### Usage
 
-    McpApp$call_tool(tool_name, arguments = list())
+    McpApp$call_tool(name, arguments = list())
 
 #### Arguments
 
-- `tool_name`:
+- `name`:
 
   Name of the tool to call
 
