@@ -10,15 +10,28 @@
 #' @param id Output ID
 #' @param width CSS width (default "100%")
 #' @param height CSS height (default "400px")
-#' @return An [htmltools::tag] object
+#' @return An [htmltools::tagList] with a scoped style and the plot container
 #' @export
 mcp_plot <- function(id, width = "100%", height = "400px") {
-  htmltools::tags$div(
-    id = id,
-    class = "shinymcp-output",
-    `data-shinymcp-output` = id,
-    `data-shinymcp-output-type` = "plot",
-    style = paste0("width: ", width, "; height: ", height, ";")
+  htmltools::tagList(
+    htmltools::tags$style(htmltools::HTML(paste0(
+      "#",
+      id,
+      " img { max-width: 100%; height: auto; }"
+    ))),
+    htmltools::tags$div(
+      id = id,
+      class = "shinymcp-output",
+      `data-shinymcp-output` = id,
+      `data-shinymcp-output-type` = "plot",
+      style = paste0(
+        "width: ",
+        width,
+        "; height: ",
+        height,
+        "; overflow: hidden;"
+      )
+    )
   )
 }
 
