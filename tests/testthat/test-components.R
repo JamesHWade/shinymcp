@@ -144,6 +144,19 @@ test_that("mcp_input stamps only the first of multiple inputs", {
   expect_no_match(rendered, 'id="second" data-shinymcp-input')
 })
 
+test_that("mcp_input stamps only first when first has no id", {
+  tag <- htmltools::tags$div(
+    htmltools::tags$input(type = "text"),
+    htmltools::tags$input(type = "text", id = "second")
+  )
+  result <- mcp_input(tag, id = "my_id")
+  rendered <- as.character(result)
+  # First input gets stamped
+  expect_match(rendered, 'data-shinymcp-input="my_id"')
+  # Second input should NOT have the attribute
+  expect_no_match(rendered, 'id="second" data-shinymcp-input')
+})
+
 test_that("mcp_plot generates correct HTML", {
   html <- mcp_plot("myplot", width = "600px", height = "400px")
   rendered <- as.character(html)

@@ -54,11 +54,23 @@ mcp_input <- function(tag, id = NULL) {
           class = "shinymcp_error_validation"
         )
       }
-      # Target just the first element by its id to avoid stamping siblings
+      # Target just the first element to avoid stamping siblings
       if (!is.null(el_id) && found$length() > 1) {
         tq$find(paste0("#", el_id))$addAttrs(
           `data-shinymcp-input` = resolved_id
         )
+      } else if (found$length() > 1) {
+        # First element has no id and there are siblings — stamp manually
+        stamped <- htmltools::tagAppendAttributes(
+          first_el,
+          `data-shinymcp-input` = resolved_id
+        )
+        # Rebuild the tree: replace children of the parent tag
+        result_tag <- tag
+        result_tag$children <- lapply(tag$children, function(child) {
+          if (identical(child, first_el)) stamped else child
+        })
+        return(result_tag)
       } else {
         found$addAttrs(`data-shinymcp-input` = resolved_id)
       }
