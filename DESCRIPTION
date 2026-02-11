@@ -29,6 +29,7 @@ Suggests:
     mcptools,
     palmerpenguins,
     rmarkdown,
+    scales,
     shiny,
     testthat (>= 3.0.0),
     withr

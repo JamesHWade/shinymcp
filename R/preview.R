@@ -123,6 +123,8 @@ as_mcp_app <- function(x) {
     }
 
     env <- new.env(parent = globalenv())
+    # Replace serve() with a no-op so sourcing doesn't block on stdio
+    env$serve <- function(...) invisible(NULL)
     source(app_file, local = env)
 
     # Find the McpApp object in the sourced environment
