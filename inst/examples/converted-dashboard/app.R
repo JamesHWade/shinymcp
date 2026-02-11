@@ -12,19 +12,30 @@ ui <- htmltools::tagList(
 tools <- list(
   ellmer::tool(
     fun = function(dataset = "mtcars", obs = 10) {
-      data <- head(get(dataset, envir = asNamespace("datasets")), as.integer(obs))
+      data <- head(
+        get(dataset, envir = asNamespace("datasets")),
+        as.integer(obs)
+      )
       list(
         summary_text = paste("Showing", nrow(data), "rows of", dataset),
-        data_table = paste(capture.output(print(
-          htmltools::tags$table(
-            htmltools::tags$thead(htmltools::tags$tr(lapply(names(data), htmltools::tags$th))),
-            htmltools::tags$tbody(
-              lapply(seq_len(nrow(data)), function(i) {
-                htmltools::tags$tr(lapply(data[i, ], function(x) htmltools::tags$td(as.character(x))))
-              })
+        data_table = paste(
+          capture.output(print(
+            htmltools::tags$table(
+              htmltools::tags$thead(htmltools::tags$tr(lapply(
+                names(data),
+                htmltools::tags$th
+              ))),
+              htmltools::tags$tbody(
+                lapply(seq_len(nrow(data)), function(i) {
+                  htmltools::tags$tr(lapply(data[i, ], function(x) {
+                    htmltools::tags$td(as.character(x))
+                  }))
+                })
+              )
             )
-          )
-        )), collapse = "\n")
+          )),
+          collapse = "\n"
+        )
       )
     },
     name = "update_dashboard",

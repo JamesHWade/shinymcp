@@ -1,5 +1,7 @@
 # Palmer Penguins Explorer - MCP App example
-# Demonstrates multiple inputs, ggplot2 scatter plot, and summary statistics
+# Demonstrates auto-detection of bslib/shiny inputs by tool argument names.
+# No mcp_select() or mcp_checkbox() needed — the bridge finds <select id="species">
+# etc. automatically because the tool arguments match the element ids.
 library(shinymcp)
 library(bslib)
 library(htmltools)
@@ -20,19 +22,20 @@ ui <- page_sidebar(
   title = "Palmer Penguins Explorer",
   sidebar = sidebar(
     width = 260,
-    mcp_select(
+    # Native shiny inputs — auto-detected by matching tool argument names
+    shiny::selectInput(
       "species",
       "Species",
       c("All", "Adelie", "Chinstrap", "Gentoo")
     ),
-    mcp_select("x_var", "X axis", var_choices),
-    mcp_select(
+    shiny::selectInput("x_var", "X axis", var_choices),
+    shiny::selectInput(
       "y_var",
       "Y axis",
       var_choices,
       selected = "bill_depth_mm"
     ),
-    mcp_checkbox("trend", "Show trend line")
+    shiny::checkboxInput("trend", "Show trend line")
   ),
   card(
     full_screen = TRUE,

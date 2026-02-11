@@ -34,14 +34,23 @@ tools <- list(
       par(mar = c(4, 4, 2, 1))
       if (length(numeric_cols) >= 2) {
         plot(
-          data[[numeric_cols[1]]], data[[numeric_cols[2]]],
-          xlab = numeric_cols[1], ylab = numeric_cols[2],
-          main = dataset, pch = 19,
+          data[[numeric_cols[1]]],
+          data[[numeric_cols[2]]],
+          xlab = numeric_cols[1],
+          ylab = numeric_cols[2],
+          main = dataset,
+          pch = 19,
           col = adjustcolor("steelblue", 0.6)
         )
       } else {
-        plot(data[[numeric_cols[1]]], type = "l", col = "steelblue",
-             main = dataset, xlab = "Index", ylab = numeric_cols[1])
+        plot(
+          data[[numeric_cols[1]]],
+          type = "l",
+          col = "steelblue",
+          main = dataset,
+          xlab = "Index",
+          ylab = numeric_cols[1]
+        )
       }
       grDevices::dev.off()
 

@@ -49,6 +49,7 @@ reference:
       - mcp_slider
       - mcp_radio
       - mcp_action_button
+      - mcp_input
 
   - title: Output Components
     desc: >
@@ -59,6 +60,7 @@ reference:
       - mcp_plot
       - mcp_table
       - mcp_html
+      - mcp_output
 
   - title: Conversion Pipeline
     desc: >

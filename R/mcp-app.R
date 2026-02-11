@@ -66,11 +66,13 @@ McpApp <- R6::R6Class(
     #' bslib or other htmltools-based packages are inlined automatically.
     html_resource = function() {
       tool_names <- private$get_tool_names()
+      tool_args <- private$get_tool_arg_names()
 
       config_json <- to_json(list(
         appName = self$name,
         version = self$version,
-        tools = I(tool_names)
+        tools = I(tool_names),
+        toolArgs = tool_args
       ))
 
       bridge_js <- private$read_bridge_js()
@@ -320,6 +322,28 @@ McpApp <- R6::R6Class(
         character(1),
         USE.NAMES = FALSE
       )
+    },
+
+    #' Extract argument names from each tool
+    #' Returns a named list: tool_name -> character vector of arg names
+    get_tool_arg_names = function() {
+      result <- list()
+      for (tool in private$.tools) {
+        name <- tool_name(tool)
+        args <- if (is_ellmer_tool(tool)) {
+          names(tool@arguments@properties)
+        } else if (is.list(tool) && !is.null(tool$inputSchema$properties)) {
+          names(tool$inputSchema$properties)
+        } else if (is.list(tool) && is.function(tool$fun)) {
+          names(formals(tool$fun))
+        } else if (is.function(tool)) {
+          names(formals(tool))
+        } else {
+          character(0)
+        }
+        result[[name]] <- I(args)
+      }
+      result
     },
 
     #' Default CSS for shinymcp components

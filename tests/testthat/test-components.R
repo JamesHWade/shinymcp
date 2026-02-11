@@ -60,6 +60,103 @@ test_that("mcp_action_button generates correct HTML", {
   expect_match(rendered, "Go!")
 })
 
+test_that("mcp_input stamps attribute on a bare select tag", {
+  tag <- htmltools::tags$select(id = "species", htmltools::tags$option("A"))
+  result <- mcp_input(tag)
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-input="species"')
+})
+
+test_that("mcp_input finds nested input inside a div wrapper", {
+  tag <- htmltools::tags$div(
+    htmltools::tags$label("Name"),
+    htmltools::tags$input(type = "text", id = "user_name")
+  )
+  result <- mcp_input(tag)
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-input="user_name"')
+})
+
+test_that("mcp_input with explicit id override", {
+  tag <- htmltools::tags$select(
+    id = "original_id",
+    htmltools::tags$option("A")
+  )
+  result <- mcp_input(tag, id = "my_custom_id")
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-input="my_custom_id"')
+})
+
+test_that("mcp_input with id = NULL reads from element id", {
+  tag <- htmltools::tags$div(
+    htmltools::tags$select(id = "auto_id", htmltools::tags$option("A"))
+  )
+  result <- mcp_input(tag, id = NULL)
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-input="auto_id"')
+})
+
+test_that("mcp_output stamps both attributes", {
+  tag <- htmltools::tags$div(id = "result")
+  result <- mcp_output(tag, type = "plot")
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-output="result"')
+  expect_match(rendered, 'data-shinymcp-output-type="plot"')
+})
+
+test_that("mcp_output with id = NULL reads from element id", {
+  tag <- htmltools::tags$pre(id = "my_output")
+  result <- mcp_output(tag)
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-output="my_output"')
+  expect_match(rendered, 'data-shinymcp-output-type="text"')
+})
+
+test_that("mcp_input errors when no id can be determined", {
+  tag <- htmltools::tags$div(htmltools::tags$input(type = "text"))
+  expect_error(mcp_input(tag), class = "shinymcp_error_validation")
+})
+
+test_that("mcp_input errors for bare tag without id", {
+  tag <- htmltools::tags$select(htmltools::tags$option("A"))
+  expect_error(mcp_input(tag), class = "shinymcp_error_validation")
+})
+
+test_that("mcp_output errors when no id can be determined", {
+  tag <- htmltools::tags$div()
+  expect_error(mcp_output(tag), class = "shinymcp_error_validation")
+})
+
+test_that("mcp_output validates type argument", {
+  tag <- htmltools::tags$div(id = "x")
+  expect_error(mcp_output(tag, type = "invalid"))
+})
+
+test_that("mcp_input stamps only the first of multiple inputs", {
+  tag <- htmltools::tags$div(
+    htmltools::tags$input(type = "text", id = "first"),
+    htmltools::tags$input(type = "text", id = "second")
+  )
+  result <- mcp_input(tag)
+  rendered <- as.character(result)
+  expect_match(rendered, 'id="first" data-shinymcp-input="first"')
+  # Second input should NOT have the attribute
+  expect_no_match(rendered, 'id="second" data-shinymcp-input')
+})
+
+test_that("mcp_input stamps only first when first has no id", {
+  tag <- htmltools::tags$div(
+    htmltools::tags$input(type = "text"),
+    htmltools::tags$input(type = "text", id = "second")
+  )
+  result <- mcp_input(tag, id = "my_id")
+  rendered <- as.character(result)
+  # First input gets stamped
+  expect_match(rendered, 'data-shinymcp-input="my_id"')
+  # Second input should NOT have the attribute
+  expect_no_match(rendered, 'id="second" data-shinymcp-input')
+})
+
 test_that("mcp_plot generates correct HTML", {
   html <- mcp_plot("myplot", width = "600px", height = "400px")
   rendered <- as.character(html)
