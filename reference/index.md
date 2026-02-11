@@ -32,6 +32,8 @@ when the user interacts with them.
   : Create MCP radio button inputs
 - [`mcp_action_button()`](https://jameshwade.github.io/shinymcp/reference/mcp_action_button.md)
   : Create an MCP action button
+- [`mcp_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_input.md)
+  : Mark an element as an MCP input
 
 ## Output Components
 
@@ -46,6 +48,8 @@ outputs based on matching IDs.
   : Create an MCP table output
 - [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md)
   : Create an MCP HTML output
+- [`mcp_output()`](https://jameshwade.github.io/shinymcp/reference/mcp_output.md)
+  : Mark an element as an MCP output
 
 ## Conversion Pipeline
 

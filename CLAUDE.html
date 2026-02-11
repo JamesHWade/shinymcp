@@ -53,7 +53,7 @@
 │   ├── generate.R             # Code generator (HTML + tools.R + server.R)
 │   ├── convert.R              # Top-level convert_app() entry point
 │   ├── mcp-app.R              # McpApp R6 class (runtime)
-│   ├── components-input.R     # mcp_select(), mcp_text_input(), etc.
+│   ├── components-input.R     # mcp_select(), mcp_text_input(), mcp_input(), mcp_output()
 │   ├── components-output.R    # mcp_plot(), mcp_text(), mcp_table()
 │   ├── js-bridge.R            # JS bridge config generation + injection
 │   ├── serve.R                # MCP server with tools + ui:// resources
@@ -101,6 +101,12 @@
 <li>
 <strong>Style</strong>: tidyverse conventions, <code>%||%</code> operator from rlang</li>
 </ul><div class="section level3">
+<h3 id="input-binding">Input Binding<a class="anchor" aria-label="anchor" href="#input-binding"></a></h3>
+<p>The JS bridge auto-detects inputs by matching tool argument names to DOM element <code>id</code> attributes. This means native <code><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">shiny::selectInput()</a></code>, <code><a href="https://rdrr.io/pkg/shiny/man/numericInput.html" class="external-link">shiny::numericInput()</a></code>, etc. work without wrappers — as long as the element’s <code>id</code> matches a tool argument name.</p>
+<p>Resolution priority (in <code>resolveInputElement()</code>): 1. Explicit <code>data-shinymcp-input="{id}"</code> attribute (backward compat, <code><a href="reference/mcp_select.html">mcp_select()</a></code> etc.) 2. Standard form elements by id: <code>select#id</code>, <code>input#id</code>, <code>textarea#id</code>, <code>button#id</code> 3. Container with <code>id</code> holding radio inputs (radio group pattern)</p>
+<p>The <code>mcp_*()</code> input components (<code><a href="reference/mcp_select.html">mcp_select()</a></code>, <code><a href="reference/mcp_text_input.html">mcp_text_input()</a></code>, etc.) still work and are used by the conversion pipeline. <code>mcp_input(tag)</code> and <code>mcp_output(tag)</code> are escape hatches for stamping <code>data-shinymcp-*</code> attributes on arbitrary tags.</p>
+</div>
+<div class="section level3">
 <h3 id="ui-components-pattern">UI Components Pattern<a class="anchor" aria-label="anchor" href="#ui-components-pattern"></a></h3>
 <p>Components generate <code>htmltools</code> tags with <code>data-shinymcp-*</code> attributes: - Inputs: <code>data-shinymcp-input="{id}"</code>, <code>data-shinymcp-type="{type}"</code> - Outputs: <code>data-shinymcp-output="{id}"</code>, <code>data-shinymcp-output-type="{type}"</code></p>
 </div>
@@ -124,16 +130,18 @@
 </div>
 <div class="section level3">
 <h3 id="js-bridge">JS Bridge<a class="anchor" aria-label="anchor" href="#js-bridge"></a></h3>
-<p>The self-contained bridge (<code>inst/js/shinymcp-bridge.js</code>): - Reads config from <code>&lt;script id="shinymcp-config"&gt;</code> element - Listens for input changes → sends <code>ui/input-changed</code> to host - Receives <code>ui/tool-result</code> → updates DOM output elements - Reports size changes via ResizeObserver - Handles teardown cleanup</p>
+<p>The self-contained bridge (<code>inst/js/shinymcp-bridge.js</code>): - Reads config (including <code>toolArgs</code>) from <code>&lt;script id="shinymcp-config"&gt;</code> element - Builds input cache by matching tool arg names to DOM elements (<code>buildInputCache()</code>) - Listens for input changes → sends <code>ui/update-model-context</code> and debounced <code>tools/call</code> to host - Receives <code>ui/tool-result</code> → updates DOM output elements via <code>structuredContent</code> keys - Reports size changes via ResizeObserver - Handles teardown cleanup - ES5-compatible (no const/let/arrow functions/Set), includes CSS.escape polyfill</p>
 </div>
 <div class="section level3">
 <h3 id="key-design-decisions">Key Design Decisions<a class="anchor" aria-label="anchor" href="#key-design-decisions"></a></h3>
 <ol style="list-style-type: decimal"><li>
 <strong>htmltools, not Shiny runtime</strong> - No dependency on Shiny’s JS. The JS bridge replaces shiny.js entirely.</li>
 <li>
+<strong>Auto-detect inputs</strong> - The bridge matches tool argument names to DOM element ids, so native shiny/bslib inputs work without wrappers. <code>mcp_*()</code> components and <code>data-shinymcp-input</code> attributes remain as explicit overrides.</li>
+<li>
 <strong>One tool per reactive group</strong> - Connected inputs/reactives/outputs map to a single tool.</li>
 <li>
-<strong>Self-contained JS</strong> - No npm build step. Vanilla JS in an IIFE.</li>
+<strong>Self-contained JS</strong> - No npm build step. Vanilla ES5 JS in an IIFE.</li>
 <li>
 <strong>mcptools extension path</strong> - Resource handling in <code>mcp-resources.R</code> is designed for eventual upstream PR.</li>
 </ol></div>

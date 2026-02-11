@@ -81,7 +81,7 @@
 <div class="section level2">
 <h2 id="quick-start">Quick start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
 </h2>
-<p>An MCP App has two parts: <strong>UI components</strong> that render in the chat interface, and <strong>tools</strong> that run R code when inputs change.</p>
+<p>An MCP App has two parts: <strong>UI components</strong> that render in the chat interface, and <strong>tools</strong> that run R code when inputs change. Use standard shiny or bslib inputs — the bridge auto-detects them by matching tool argument names to element <code>id</code> attributes.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/JamesHWade/shinymcp" class="external-link">shinymcp</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
@@ -90,7 +90,8 @@
 <span>  theme <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/bs_theme.html" class="external-link">bs_theme</a></span><span class="op">(</span>preset <span class="op">=</span> <span class="st">"shiny"</span><span class="op">)</span>,</span>
 <span>  title <span class="op">=</span> <span class="st">"Dataset Explorer"</span>,</span>
 <span>  sidebar <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/sidebar.html" class="external-link">sidebar</a></span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="reference/mcp_select.html">mcp_select</a></span><span class="op">(</span><span class="st">"dataset"</span>, <span class="st">"Choose dataset"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mtcars"</span>, <span class="st">"iris"</span>, <span class="st">"pressure"</span><span class="op">)</span><span class="op">)</span></span>
+<span>    <span class="co"># Standard shiny input — auto-detected because id matches tool arg "dataset"</span></span>
+<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span><span class="st">"dataset"</span>, <span class="st">"Choose dataset"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mtcars"</span>, <span class="st">"iris"</span>, <span class="st">"pressure"</span><span class="op">)</span><span class="op">)</span></span>
 <span>  <span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span></span>
 <span>    <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card_body.html" class="external-link">card_header</a></span><span class="op">(</span><span class="st">"Summary"</span><span class="op">)</span>,</span>
@@ -185,46 +186,20 @@
 <div class="section level2">
 <h2 id="component-reference">Component reference<a class="anchor" aria-label="anchor" href="#component-reference"></a>
 </h2>
-<p>shinymcp provides input and output components that mirror Shiny functions:</p>
 <div class="section level3">
-<h3 id="inputs">Inputs<a class="anchor" aria-label="anchor" href="#inputs"></a>
+<h3 id="inputs-use-standard-shinybslib">Inputs: use standard shiny/bslib<a class="anchor" aria-label="anchor" href="#inputs-use-standard-shinybslib"></a>
 </h3>
-<table class="table">
-<thead><tr class="header">
-<th>Shiny</th>
-<th>shinymcp</th>
-</tr></thead>
-<tbody>
-<tr class="odd">
-<td><code>selectInput()</code></td>
-<td><code><a href="reference/mcp_select.html">mcp_select()</a></code></td>
-</tr>
-<tr class="even">
-<td><code>textInput()</code></td>
-<td><code><a href="reference/mcp_text_input.html">mcp_text_input()</a></code></td>
-</tr>
-<tr class="odd">
-<td><code>numericInput()</code></td>
-<td><code><a href="reference/mcp_numeric_input.html">mcp_numeric_input()</a></code></td>
-</tr>
-<tr class="even">
-<td><code>checkboxInput()</code></td>
-<td><code><a href="reference/mcp_checkbox.html">mcp_checkbox()</a></code></td>
-</tr>
-<tr class="odd">
-<td><code>sliderInput()</code></td>
-<td><code><a href="reference/mcp_slider.html">mcp_slider()</a></code></td>
-</tr>
-<tr class="even">
-<td><code>radioButtons()</code></td>
-<td><code><a href="reference/mcp_radio.html">mcp_radio()</a></code></td>
-</tr>
-<tr class="odd">
-<td><code>actionButton()</code></td>
-<td><code><a href="reference/mcp_action_button.html">mcp_action_button()</a></code></td>
-</tr>
-</tbody>
-</table>
+<p>The bridge auto-detects standard form elements (<code>&lt;select&gt;</code>, <code>&lt;input&gt;</code>, etc.) whose <code>id</code> matches a tool argument name. This means you can use the Shiny and bslib inputs you already know:</p>
+<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/sidebar.html" class="external-link">sidebar</a></span><span class="op">(</span></span>
+<span>  <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span><span class="st">"species"</span>, <span class="st">"Species"</span>, <span class="va">choices</span><span class="op">)</span>,</span>
+<span>  <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/numericInput.html" class="external-link">numericInput</a></span><span class="op">(</span><span class="st">"n"</span>, <span class="st">"Count"</span>, value <span class="op">=</span> <span class="fl">10</span><span class="op">)</span>,</span>
+<span>  <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/checkboxInput.html" class="external-link">checkboxInput</a></span><span class="op">(</span><span class="st">"trend"</span>, <span class="st">"Show trend line"</span><span class="op">)</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>For edge cases (id doesn’t match arg name, custom widgets), use <code><a href="reference/mcp_input.html">mcp_input()</a></code> to explicitly mark an element:</p>
+<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/mcp_input.html">mcp_input</a></span><span class="op">(</span><span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/radioButtons.html" class="external-link">radioButtons</a></span><span class="op">(</span><span class="st">"fmt"</span>, <span class="st">"Format"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"summary"</span>, <span class="st">"head"</span><span class="op">)</span><span class="op">)</span>, id <span class="op">=</span> <span class="st">"fmt"</span><span class="op">)</span></span></code></pre></div>
+<p>shinymcp also provides lightweight <code><a href="reference/mcp_select.html">mcp_select()</a></code>, <code><a href="reference/mcp_text_input.html">mcp_text_input()</a></code>, etc. that generate minimal HTML without Shiny’s JS runtime. These are useful for simple apps and are what the automatic conversion pipeline generates.</p>
 </div>
 <div class="section level3">
 <h3 id="outputs">Outputs<a class="anchor" aria-label="anchor" href="#outputs"></a>
@@ -265,25 +240,23 @@
 </tr>
 </tbody>
 </table>
-<p>Each component generates HTML with <code>data-shinymcp-*</code> attributes that the JS bridge reads at runtime:</p>
-<div class="sourceCode" id="cb6"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="fu"><a href="reference/mcp_select.html">mcp_select</a></span><span class="op">(</span><span class="st">"color"</span>, <span class="st">"Color"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"red"</span>, <span class="st">"green"</span>, <span class="st">"blue"</span><span class="op">)</span><span class="op">)</span></span>
-<span><span class="co"># &lt;select data-shinymcp-input="color" ...&gt;</span></span>
-<span></span>
-<span><span class="fu"><a href="reference/mcp_plot.html">mcp_plot</a></span><span class="op">(</span><span class="st">"my_plot"</span><span class="op">)</span></span>
-<span><span class="co"># &lt;div data-shinymcp-output="my_plot" data-shinymcp-output-type="plot" ...&gt;</span></span></code></pre></div>
+<p>You can also turn any tag into an output target with <code><a href="reference/mcp_output.html">mcp_output()</a></code>:</p>
+<div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="fu"><a href="reference/mcp_output.html">mcp_output</a></span><span class="op">(</span><span class="va">tags</span><span class="op">$</span><span class="fu">pre</span><span class="op">(</span>id <span class="op">=</span> <span class="st">"result"</span><span class="op">)</span>, type <span class="op">=</span> <span class="st">"text"</span><span class="op">)</span></span></code></pre></div>
 </div>
 </div>
 <div class="section level2">
 <h2 id="examples">Examples<a class="anchor" aria-label="anchor" href="#examples"></a>
 </h2>
 <p>shinymcp ships with example apps:</p>
-<div class="sourceCode" id="cb7"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Minimal: select input + text output</span></span>
+<div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="co"># Minimal: mcp_select() + text output</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"hello-mcp"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># Full dashboard: Palmer Penguins with ggplot2 scatter plot, multiple</span></span>
-<span><span class="co"># inputs (species filter, axis selectors, trend line toggle), and</span></span>
+<span><span class="co"># Native shiny/bslib inputs with auto-detection + mcp_input()/mcp_output()</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"bslib-inputs"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Full dashboard: Palmer Penguins with native shiny inputs, ggplot2, and</span></span>
 <span><span class="co"># summary statistics</span></span>
 <span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"penguins"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span></code></pre></div>
 </div>
@@ -292,7 +265,7 @@
 </h2>
 <p>MCP Apps render inside sandboxed iframes in the AI chat interface. A lightweight JavaScript bridge (no npm dependencies) handles communication via postMessage/JSON-RPC:</p>
 <ol style="list-style-type: decimal">
-<li>User changes an input → bridge collects all input values</li>
+<li>User changes an input → bridge auto-detects which form elements are inputs (by matching tool argument names to element ids) and collects all values</li>
 <li>Bridge sends a <code>tools/call</code> request to the host</li>
 <li>Host proxies the call to the MCP server (your R process)</li>
 <li>R tool function runs, returns results</li>

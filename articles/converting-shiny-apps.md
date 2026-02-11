@@ -105,24 +105,36 @@ From this app, we identify:
 
 ## Step 2: Map components
 
-Replace Shiny inputs with shinymcp equivalents:
+The JS bridge auto-detects inputs by matching tool argument names to
+element `id` attributes. This means you can keep your Shiny inputs as-is
+— just ensure the `id` matches a tool argument name:
 
-| Shiny                                        | shinymcp                                    |
-|----------------------------------------------|---------------------------------------------|
-| `selectInput("species", "Species", choices)` | `mcp_select("species", "Species", choices)` |
-| `selectInput("x_var", "X axis", choices)`    | `mcp_select("x_var", "X axis", choices)`    |
-| `checkboxInput("trend", "Show trend line")`  | `mcp_checkbox("trend", "Show trend line")`  |
-| `plotOutput("scatter")`                      | `mcp_plot("scatter")`                       |
-| `verbatimTextOutput("stats")`                | `mcp_text("stats")`                         |
+| Shiny input                                  | What to do                               |
+|----------------------------------------------|------------------------------------------|
+| `selectInput("species", "Species", choices)` | Keep it! Auto-detected by `id="species"` |
+| `selectInput("x_var", "X axis", choices)`    | Keep it! Auto-detected by `id="x_var"`   |
+| `checkboxInput("trend", "Show trend line")`  | Keep it! Auto-detected by `id="trend"`   |
 
-The IDs stay the same. The component APIs are intentionally similar.
+For outputs, replace Shiny outputs with shinymcp equivalents:
+
+| Shiny output                  | shinymcp              |
+|-------------------------------|-----------------------|
+| `plotOutput("scatter")`       | `mcp_plot("scatter")` |
+| `verbatimTextOutput("stats")` | `mcp_text("stats")`   |
+
+The IDs stay the same. If you need to mark a non-standard element as an
+output, use `mcp_output(tag, id, type)`.
 
 ## Step 3: Build the UI
 
 Use bslib for layout instead of Shiny’s
 [`fluidPage()`](https://rdrr.io/pkg/shiny/man/fluidPage.html) /
 [`sidebarLayout()`](https://rdrr.io/pkg/shiny/man/sidebarLayout.html).
-bslib components work directly with htmltools — no Shiny server needed:
+bslib components work directly with htmltools — no Shiny server needed.
+Standard
+[`shiny::selectInput()`](https://rdrr.io/pkg/shiny/man/selectInput.html),
+[`shiny::checkboxInput()`](https://rdrr.io/pkg/shiny/man/checkboxInput.html),
+etc. are auto-detected by the bridge:
 
 ``` r
 library(shinymcp)
@@ -134,23 +146,23 @@ ui <- page_sidebar(
   title = "Palmer Penguins Explorer",
   sidebar = sidebar(
     width = 260,
-    mcp_select(
+    shiny::selectInput(
       "species", "Species",
       c("All", "Adelie", "Chinstrap", "Gentoo")
     ),
-    mcp_select("x_var", "X axis", c(
+    shiny::selectInput("x_var", "X axis", c(
       "Bill Length (mm)" = "bill_length_mm",
       "Bill Depth (mm)" = "bill_depth_mm",
       "Flipper Length (mm)" = "flipper_length_mm",
       "Body Mass (g)" = "body_mass_g"
     )),
-    mcp_select("y_var", "Y axis", c(
+    shiny::selectInput("y_var", "Y axis", c(
       "Bill Depth (mm)" = "bill_depth_mm",
       "Bill Length (mm)" = "bill_length_mm",
       "Flipper Length (mm)" = "flipper_length_mm",
       "Body Mass (g)" = "body_mass_g"
     )),
-    mcp_checkbox("trend", "Show trend line")
+    shiny::checkboxInput("trend", "Show trend line")
   ),
   card(
     card_header("Scatter Plot"),
@@ -392,12 +404,11 @@ Since MCP Apps use htmltools directly (not Shiny’s `fluidPage`), use
 bslib for layout. Common patterns:
 
 ``` r
-# Sidebar layout
+# Sidebar layout (standard shiny inputs auto-detected)
 page_sidebar(
-
   sidebar = sidebar(
-    mcp_select("x", "Variable", choices),
-    mcp_checkbox("log", "Log scale")
+    shiny::selectInput("x", "Variable", choices),
+    shiny::checkboxInput("log", "Log scale")
   ),
   card(mcp_plot("main_plot")),
   card(mcp_text("summary"))
@@ -415,7 +426,7 @@ page(
 
 # Stacked cards
 page(
-  card(card_header("Controls"), mcp_select("x", "Pick", c("a", "b"))),
+  card(card_header("Controls"), shiny::selectInput("x", "Pick", c("a", "b"))),
   card(card_header("Output"), mcp_text("result"))
 )
 ```

@@ -223,48 +223,65 @@ axis/trend inputs</li>
 <div class="section level2">
 <h2 id="step-2-map-components">Step 2: Map components<a class="anchor" aria-label="anchor" href="#step-2-map-components"></a>
 </h2>
-<p>Replace Shiny inputs with shinymcp equivalents:</p>
+<p>The JS bridge auto-detects inputs by matching tool argument names to
+element <code>id</code> attributes. This means you can keep your Shiny
+inputs as-is — just ensure the <code>id</code> matches a tool argument
+name:</p>
 <table class="table">
 <colgroup>
 <col width="50%">
 <col width="50%">
 </colgroup>
 <thead><tr class="header">
-<th>Shiny</th>
-<th>shinymcp</th>
+<th>Shiny input</th>
+<th>What to do</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
 <td><code>selectInput("species", "Species", choices)</code></td>
-<td><code>mcp_select("species", "Species", choices)</code></td>
+<td>Keep it! Auto-detected by <code>id="species"</code>
+</td>
 </tr>
 <tr class="even">
 <td><code>selectInput("x_var", "X axis", choices)</code></td>
-<td><code>mcp_select("x_var", "X axis", choices)</code></td>
+<td>Keep it! Auto-detected by <code>id="x_var"</code>
+</td>
 </tr>
 <tr class="odd">
 <td><code>checkboxInput("trend", "Show trend line")</code></td>
-<td><code>mcp_checkbox("trend", "Show trend line")</code></td>
+<td>Keep it! Auto-detected by <code>id="trend"</code>
+</td>
 </tr>
-<tr class="even">
+</tbody>
+</table>
+<p>For outputs, replace Shiny outputs with shinymcp equivalents:</p>
+<table class="table">
+<thead><tr class="header">
+<th>Shiny output</th>
+<th>shinymcp</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
 <td><code>plotOutput("scatter")</code></td>
 <td><code>mcp_plot("scatter")</code></td>
 </tr>
-<tr class="odd">
+<tr class="even">
 <td><code>verbatimTextOutput("stats")</code></td>
 <td><code>mcp_text("stats")</code></td>
 </tr>
 </tbody>
 </table>
-<p>The IDs stay the same. The component APIs are intentionally
-similar.</p>
+<p>The IDs stay the same. If you need to mark a non-standard element as
+an output, use <code>mcp_output(tag, id, type)</code>.</p>
 </div>
 <div class="section level2">
 <h2 id="step-3-build-the-ui">Step 3: Build the UI<a class="anchor" aria-label="anchor" href="#step-3-build-the-ui"></a>
 </h2>
 <p>Use bslib for layout instead of Shiny’s <code><a href="https://rdrr.io/pkg/shiny/man/fluidPage.html" class="external-link">fluidPage()</a></code> /
 <code><a href="https://rdrr.io/pkg/shiny/man/sidebarLayout.html" class="external-link">sidebarLayout()</a></code>. bslib components work directly with
-htmltools — no Shiny server needed:</p>
+htmltools — no Shiny server needed. Standard
+<code><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">shiny::selectInput()</a></code>, <code><a href="https://rdrr.io/pkg/shiny/man/checkboxInput.html" class="external-link">shiny::checkboxInput()</a></code>,
+etc. are auto-detected by the bridge:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/JamesHWade/shinymcp" class="external-link">shinymcp</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
@@ -275,23 +292,23 @@ htmltools — no Shiny server needed:</p>
 <span>  title <span class="op">=</span> <span class="st">"Palmer Penguins Explorer"</span>,</span>
 <span>  sidebar <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/sidebar.html" class="external-link">sidebar</a></span><span class="op">(</span></span>
 <span>    width <span class="op">=</span> <span class="fl">260</span>,</span>
-<span>    <span class="fu"><a href="../reference/mcp_select.html">mcp_select</a></span><span class="op">(</span></span>
+<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span></span>
 <span>      <span class="st">"species"</span>, <span class="st">"Species"</span>,</span>
 <span>      <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"All"</span>, <span class="st">"Adelie"</span>, <span class="st">"Chinstrap"</span>, <span class="st">"Gentoo"</span><span class="op">)</span></span>
 <span>    <span class="op">)</span>,</span>
-<span>    <span class="fu"><a href="../reference/mcp_select.html">mcp_select</a></span><span class="op">(</span><span class="st">"x_var"</span>, <span class="st">"X axis"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span><span class="st">"x_var"</span>, <span class="st">"X axis"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>      <span class="st">"Bill Length (mm)"</span> <span class="op">=</span> <span class="st">"bill_length_mm"</span>,</span>
 <span>      <span class="st">"Bill Depth (mm)"</span> <span class="op">=</span> <span class="st">"bill_depth_mm"</span>,</span>
 <span>      <span class="st">"Flipper Length (mm)"</span> <span class="op">=</span> <span class="st">"flipper_length_mm"</span>,</span>
 <span>      <span class="st">"Body Mass (g)"</span> <span class="op">=</span> <span class="st">"body_mass_g"</span></span>
 <span>    <span class="op">)</span><span class="op">)</span>,</span>
-<span>    <span class="fu"><a href="../reference/mcp_select.html">mcp_select</a></span><span class="op">(</span><span class="st">"y_var"</span>, <span class="st">"Y axis"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
+<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span><span class="st">"y_var"</span>, <span class="st">"Y axis"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span></span>
 <span>      <span class="st">"Bill Depth (mm)"</span> <span class="op">=</span> <span class="st">"bill_depth_mm"</span>,</span>
 <span>      <span class="st">"Bill Length (mm)"</span> <span class="op">=</span> <span class="st">"bill_length_mm"</span>,</span>
 <span>      <span class="st">"Flipper Length (mm)"</span> <span class="op">=</span> <span class="st">"flipper_length_mm"</span>,</span>
 <span>      <span class="st">"Body Mass (g)"</span> <span class="op">=</span> <span class="st">"body_mass_g"</span></span>
 <span>    <span class="op">)</span><span class="op">)</span>,</span>
-<span>    <span class="fu"><a href="../reference/mcp_checkbox.html">mcp_checkbox</a></span><span class="op">(</span><span class="st">"trend"</span>, <span class="st">"Show trend line"</span><span class="op">)</span></span>
+<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/checkboxInput.html" class="external-link">checkboxInput</a></span><span class="op">(</span><span class="st">"trend"</span>, <span class="st">"Show trend line"</span><span class="op">)</span></span>
 <span>  <span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span></span>
 <span>    <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card_body.html" class="external-link">card_header</a></span><span class="op">(</span><span class="st">"Scatter Plot"</span><span class="op">)</span>,</span>
@@ -518,12 +535,11 @@ document valid values in the tool description</li>
 <p>Since MCP Apps use htmltools directly (not Shiny’s
 <code>fluidPage</code>), use bslib for layout. Common patterns:</p>
 <div class="sourceCode" id="cb9"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="co"># Sidebar layout</span></span>
+<code class="sourceCode R"><span><span class="co"># Sidebar layout (standard shiny inputs auto-detected)</span></span>
 <span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_sidebar.html" class="external-link">page_sidebar</a></span><span class="op">(</span></span>
-<span></span>
 <span>  sidebar <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/sidebar.html" class="external-link">sidebar</a></span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="../reference/mcp_select.html">mcp_select</a></span><span class="op">(</span><span class="st">"x"</span>, <span class="st">"Variable"</span>, <span class="va">choices</span><span class="op">)</span>,</span>
-<span>    <span class="fu"><a href="../reference/mcp_checkbox.html">mcp_checkbox</a></span><span class="op">(</span><span class="st">"log"</span>, <span class="st">"Log scale"</span><span class="op">)</span></span>
+<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span><span class="st">"x"</span>, <span class="st">"Variable"</span>, <span class="va">choices</span><span class="op">)</span>,</span>
+<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/checkboxInput.html" class="external-link">checkboxInput</a></span><span class="op">(</span><span class="st">"log"</span>, <span class="st">"Log scale"</span><span class="op">)</span></span>
 <span>  <span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span><span class="fu"><a href="../reference/mcp_plot.html">mcp_plot</a></span><span class="op">(</span><span class="st">"main_plot"</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span><span class="fu"><a href="../reference/mcp_text.html">mcp_text</a></span><span class="op">(</span><span class="st">"summary"</span><span class="op">)</span><span class="op">)</span></span>
@@ -541,7 +557,7 @@ document valid values in the tool description</li>
 <span></span>
 <span><span class="co"># Stacked cards</span></span>
 <span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/page.html" class="external-link">page</a></span><span class="op">(</span></span>
-<span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/card_body.html" class="external-link">card_header</a></span><span class="op">(</span><span class="st">"Controls"</span><span class="op">)</span>, <span class="fu"><a href="../reference/mcp_select.html">mcp_select</a></span><span class="op">(</span><span class="st">"x"</span>, <span class="st">"Pick"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a"</span>, <span class="st">"b"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
+<span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/card_body.html" class="external-link">card_header</a></span><span class="op">(</span><span class="st">"Controls"</span><span class="op">)</span>, <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span><span class="st">"x"</span>, <span class="st">"Pick"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"a"</span>, <span class="st">"b"</span><span class="op">)</span><span class="op">)</span><span class="op">)</span>,</span>
 <span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span><span class="fu"><a href="https://rstudio.github.io/bslib/reference/card_body.html" class="external-link">card_header</a></span><span class="op">(</span><span class="st">"Output"</span><span class="op">)</span>, <span class="fu"><a href="../reference/mcp_text.html">mcp_text</a></span><span class="op">(</span><span class="st">"result"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
 <p>All CSS and JS dependencies from bslib are automatically inlined into
