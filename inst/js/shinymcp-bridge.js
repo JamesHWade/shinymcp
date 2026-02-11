@@ -6,9 +6,22 @@
   "use strict";
 
   // ---------------------------------------------------------------------------
+  // Utility: CSS.escape polyfill for ES5 environments
+  // ---------------------------------------------------------------------------
+  var cssEscape =
+    typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? function (str) {
+          return CSS.escape(str);
+        }
+      : function (str) {
+          return str.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
+        };
+
+  // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
   var config = {};
+  var inputCache = {}; // argName -> element, built from config.toolArgs
   var inputListeners = [];
   var messageHandler = null;
   var tornDown = false;
@@ -24,6 +37,15 @@
     if (!el) return null;
     var tag = el.tagName.toLowerCase();
     var type = (el.getAttribute("type") || "").toLowerCase();
+
+    // Radio-group container: div or fieldset wrapping radio inputs
+    if (
+      (tag === "div" || tag === "fieldset") &&
+      el.querySelector('input[type="radio"]')
+    ) {
+      var selectedRadio = el.querySelector('input[type="radio"]:checked');
+      return selectedRadio ? selectedRadio.value : null;
+    }
 
     if (tag === "select") return el.value;
     if (tag === "textarea") return el.value;
@@ -57,18 +79,108 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Auto-detect: resolve form elements by tool argument names
+  // ---------------------------------------------------------------------------
+
+  // Deduplicated list of all argument names across all tools
+  function getAllArgNames() {
+    if (!config.toolArgs || typeof config.toolArgs !== "object") return [];
+    var seen = {};
+    var result = [];
+    var tools = Object.keys(config.toolArgs);
+    for (var i = 0; i < tools.length; i++) {
+      var args = config.toolArgs[tools[i]];
+      if (!Array.isArray(args)) continue;
+      for (var j = 0; j < args.length; j++) {
+        if (!seen[args[j]]) {
+          seen[args[j]] = true;
+          result.push(args[j]);
+        }
+      }
+    }
+    return result;
+  }
+
+  // Find the DOM element for a given argument name, with priority:
+  // 1. Explicit data-shinymcp-input attribute
+  // 2. Standard form elements by id (input, select, textarea, button)
+  // 3. Container with id holding radio inputs
+  function resolveInputElement(argName) {
+    var escaped = cssEscape(argName);
+
+    // Priority 1: explicit attribute
+    var explicit = document.querySelector(
+      '[data-shinymcp-input="' + escaped + '"]'
+    );
+    if (explicit) return explicit;
+
+    // Priority 2: standard form elements by id
+    var selectors = [
+      'select#' + escaped,
+      'input#' + escaped,
+      'textarea#' + escaped,
+      'button#' + escaped,
+    ];
+    for (var i = 0; i < selectors.length; i++) {
+      var el = document.querySelector(selectors[i]);
+      if (el) return el;
+    }
+
+    // Priority 3: container with id holding radio inputs
+    var container = document.getElementById(argName);
+    if (
+      container &&
+      container.querySelector('input[type="radio"]')
+    ) {
+      return container;
+    }
+
+    return null;
+  }
+
+  // Build the argName -> element cache from config.toolArgs
+  function buildInputCache() {
+    inputCache = {};
+    var argNames = getAllArgNames();
+    for (var i = 0; i < argNames.length; i++) {
+      var el = resolveInputElement(argNames[i]);
+      if (el) {
+        inputCache[argNames[i]] = el;
+      } else {
+        console.warn(
+          "[shinymcp-bridge] No DOM element found for tool argument '" +
+            argNames[i] +
+            "'. Use mcp_input() to explicitly mark it, or ensure an " +
+            "element with id='" +
+            argNames[i] +
+            "' exists."
+        );
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Utility: collect all current input values
   // ---------------------------------------------------------------------------
   function collectAllInputs() {
     var inputs = {};
+
+    // Collect from auto-detected cache first
+    var cacheKeys = Object.keys(inputCache);
+    for (var i = 0; i < cacheKeys.length; i++) {
+      inputs[cacheKeys[i]] = getInputValue(inputCache[cacheKeys[i]]);
+    }
+
+    // Fall back to explicit data-shinymcp-input scan (backward compat + extras)
     var elements = document.querySelectorAll("[data-shinymcp-input]");
-    for (var i = 0; i < elements.length; i++) {
-      var el = elements[i];
+    for (var j = 0; j < elements.length; j++) {
+      var el = elements[j];
       var id = el.getAttribute("data-shinymcp-input");
-      if (id) {
+      if (id && !(id in inputs)) {
         inputs[id] = getInputValue(el);
       }
     }
+
     return inputs;
   }
 
@@ -180,8 +292,28 @@
   // Input change handling
   // ---------------------------------------------------------------------------
   function onInputChanged(event) {
+    // Check if the changed element is a tracked input (cached or explicit)
     var el = event.target.closest("[data-shinymcp-input]");
-    if (!el) return;
+    if (!el) {
+      // Check if target (or its ancestor) is a form element inside a cached element
+      var targetTag = event.target.tagName.toLowerCase();
+      var isFormEl =
+        targetTag === "input" ||
+        targetTag === "select" ||
+        targetTag === "textarea" ||
+        targetTag === "button";
+      if (!isFormEl) return;
+
+      var found = false;
+      var cacheKeys = Object.keys(inputCache);
+      for (var i = 0; i < cacheKeys.length; i++) {
+        if (inputCache[cacheKeys[i]].contains(event.target)) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) return;
+    }
 
     var inputs = collectAllInputs();
 
@@ -197,34 +329,66 @@
     }, 250);
   }
 
+  function attachListenerToElement(el) {
+    var tag = el.tagName.toLowerCase();
+    var type = (el.getAttribute("type") || "").toLowerCase();
+
+    var events = [];
+    if (
+      tag === "select" ||
+      type === "checkbox" ||
+      type === "radio" ||
+      type === "range"
+    ) {
+      events.push("change");
+    } else if (tag === "input" || tag === "textarea") {
+      events.push("input");
+      events.push("change");
+    } else if (tag === "button" || type === "button" || type === "submit") {
+      events.push("click");
+    } else if (
+      (tag === "div" || tag === "fieldset") &&
+      el.querySelector('input[type="radio"]')
+    ) {
+      // Radio-group container: listen for change events bubbling up
+      events.push("change");
+    } else {
+      events.push("change");
+      events.push("input");
+    }
+
+    for (var j = 0; j < events.length; j++) {
+      el.addEventListener(events[j], onInputChanged);
+      inputListeners.push({ element: el, event: events[j] });
+    }
+  }
+
   function attachInputListeners() {
-    var elements = document.querySelectorAll("[data-shinymcp-input]");
-    for (var i = 0; i < elements.length; i++) {
-      var el = elements[i];
-      var tag = el.tagName.toLowerCase();
-      var type = (el.getAttribute("type") || "").toLowerCase();
+    var bound = [];
 
-      var events = [];
-      if (
-        tag === "select" ||
-        type === "checkbox" ||
-        type === "radio" ||
-        type === "range"
-      ) {
-        events.push("change");
-      } else if (tag === "input" || tag === "textarea") {
-        events.push("input");
-        events.push("change");
-      } else if (tag === "button" || type === "button" || type === "submit") {
-        events.push("click");
-      } else {
-        events.push("change");
-        events.push("input");
+    function isBound(el) {
+      for (var k = 0; k < bound.length; k++) {
+        if (bound[k] === el) return true;
       }
+      return false;
+    }
 
-      for (var j = 0; j < events.length; j++) {
-        el.addEventListener(events[j], onInputChanged);
-        inputListeners.push({ element: el, event: events[j] });
+    // Bind cached (auto-detected) elements
+    var cacheKeys = Object.keys(inputCache);
+    for (var i = 0; i < cacheKeys.length; i++) {
+      var el = inputCache[cacheKeys[i]];
+      if (!isBound(el)) {
+        attachListenerToElement(el);
+        bound.push(el);
+      }
+    }
+
+    // Bind explicit data-shinymcp-input elements (backward compat)
+    var elements = document.querySelectorAll("[data-shinymcp-input]");
+    for (var j = 0; j < elements.length; j++) {
+      if (!isBound(elements[j])) {
+        attachListenerToElement(elements[j]);
+        bound.push(elements[j]);
       }
     }
   }
@@ -329,17 +493,28 @@
     for (var i = 0; i < keys.length; i++) {
       var inputId = keys[i];
       var value = args[inputId];
-      var el = document.querySelector(
-        '[data-shinymcp-input="' + inputId + '"]'
-      );
-      if (el) {
-        var tag = el.tagName.toLowerCase();
-        var type = (el.getAttribute("type") || "").toLowerCase();
-        if (type === "checkbox") {
-          el.checked = !!value;
-        } else if (tag === "select" || tag === "input" || tag === "textarea") {
-          el.value = value;
+
+      // Try cache first, then explicit attribute
+      var el = inputCache[inputId] ||
+        document.querySelector('[data-shinymcp-input="' + inputId + '"]');
+      if (!el) continue;
+
+      var tag = el.tagName.toLowerCase();
+      var type = (el.getAttribute("type") || "").toLowerCase();
+
+      // Radio-group container
+      if (
+        (tag === "div" || tag === "fieldset") &&
+        el.querySelector('input[type="radio"]')
+      ) {
+        var radios = el.querySelectorAll('input[type="radio"]');
+        for (var j = 0; j < radios.length; j++) {
+          radios[j].checked = radios[j].value === String(value);
         }
+      } else if (type === "checkbox") {
+        el.checked = !!value;
+      } else if (tag === "select" || tag === "input" || tag === "textarea") {
+        el.value = value;
       }
     }
   }
@@ -382,7 +557,8 @@
     messageHandler = handleHostMessage;
     window.addEventListener("message", messageHandler);
 
-    // Attach input change listeners
+    // Build auto-detect cache from toolArgs config, then attach listeners
+    buildInputCache();
     attachInputListeners();
 
     // Send ui/initialize request per MCP Apps spec

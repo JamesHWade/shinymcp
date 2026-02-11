@@ -3,6 +3,115 @@
 # These functions generate static HTML with data-shinymcp-* attributes
 # that the JS bridge reads to construct MCP tool parameters.
 
+#' Mark an element as an MCP input
+#'
+#' Stamps `data-shinymcp-input` on a tag or its first form-element descendant.
+#' Use this as an escape hatch when auto-detection by tool argument name doesn't
+#' work (e.g., custom widgets or elements whose `id` doesn't match the tool
+#' argument name).
+#'
+#' @param tag An [htmltools::tag] object (e.g., from `shiny::selectInput()`
+#'   or `bslib::input_select()`).
+#' @param id The input ID to register. If `NULL` (the default), reads the
+#'   element's existing `id` attribute.
+#' @return The modified [htmltools::tag] with `data-shinymcp-input` stamped.
+#' @export
+mcp_input <- function(tag, id = NULL) {
+  form_selectors <- c("input", "select", "textarea", "button")
+  tag_name <- tag$name %||% ""
+
+  if (tolower(tag_name) %in% form_selectors) {
+    # Tag itself is a form element — stamp directly
+    resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
+    if (is.null(resolved_id)) {
+      rlang::abort(
+        cli::format_inline(
+          "Cannot determine input ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+    tag <- htmltools::tagAppendAttributes(
+      tag,
+      `data-shinymcp-input` = resolved_id
+    )
+    return(tag)
+  }
+
+  # Find the first form-element descendant using tagQuery
+  tq <- htmltools::tagQuery(tag)
+  for (sel in form_selectors) {
+    found <- tq$find(sel)
+    if (found$length() > 0) {
+      first_el <- found$selectedTags()[[1]]
+      el_id <- htmltools::tagGetAttribute(first_el, "id")
+      resolved_id <- id %||% el_id
+      if (is.null(resolved_id)) {
+        rlang::abort(
+          cli::format_inline(
+            "Cannot determine input ID. Provide {.arg id} or ensure the element has an {.field id} attribute."
+          ),
+          class = "shinymcp_error_validation"
+        )
+      }
+      # Target just the first element by its id to avoid stamping siblings
+      if (!is.null(el_id) && found$length() > 1) {
+        tq$find(paste0("#", el_id))$addAttrs(
+          `data-shinymcp-input` = resolved_id
+        )
+      } else {
+        found$addAttrs(`data-shinymcp-input` = resolved_id)
+      }
+      return(tq$allTags())
+    }
+  }
+
+  # No form element found — stamp the tag itself (e.g., radio group container)
+  resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
+  if (is.null(resolved_id)) {
+    rlang::abort(
+      cli::format_inline(
+        "Cannot determine input ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
+  htmltools::tagAppendAttributes(tag, `data-shinymcp-input` = resolved_id)
+}
+
+#' Mark an element as an MCP output
+#'
+#' Stamps `data-shinymcp-output` and `data-shinymcp-output-type` on a tag.
+#' Use this to turn any container element into a target for tool result output.
+#'
+#' @param tag An [htmltools::tag] object.
+#' @param id The output ID. If `NULL` (the default), reads the element's
+#'   existing `id` attribute.
+#' @param type Output type: `"text"`, `"html"`, `"plot"`, or `"table"`.
+#' @return The modified [htmltools::tag] with output attributes stamped.
+#' @export
+mcp_output <- function(
+  tag,
+  id = NULL,
+  type = c("text", "html", "plot", "table")
+) {
+  type <- rlang::arg_match(type)
+  resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
+  if (is.null(resolved_id)) {
+    rlang::abort(
+      cli::format_inline(
+        "Cannot determine output ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
+  htmltools::tagAppendAttributes(
+    tag,
+    `data-shinymcp-output` = resolved_id,
+    `data-shinymcp-output-type` = type
+  )
+}
+
 #' Create an MCP select input
 #'
 #' Generates a dropdown select element with MCP data attributes.

@@ -7,7 +7,11 @@
 # @param app_name Character string naming the MCP app.
 # @return A list with `appName`, `tools`, and `version`.
 # @noRd
-bridge_config <- function(tools = list(), app_name = "shinymcp-app") {
+bridge_config <- function(
+  tools = list(),
+  app_name = "shinymcp-app",
+  tool_args = NULL
+) {
   tool_names <- if (is.character(tools)) {
     tools
   } else {
@@ -20,11 +24,17 @@ bridge_config <- function(tools = list(), app_name = "shinymcp-app") {
     )
   }
 
-  list(
+  config <- list(
     appName = app_name,
     tools = as.list(tool_names),
     version = as.character(utils::packageVersion("shinymcp"))
   )
+
+  if (!is.null(tool_args)) {
+    config$toolArgs <- tool_args
+  }
+
+  config
 }
 
 #' Bridge script tag
