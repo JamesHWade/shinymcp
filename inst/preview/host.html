@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{APP_NAME}} — shinymcp preview</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+:root {
+  --bg: #f7f7f8;
+  --surface: #ffffff;
+  --border: #e0e0e4;
+  --text: #1a1a1a;
+  --muted: #6b6b76;
+  --accent: #0066cc;
+}
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 20px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+header .title {
+  font-weight: 600;
+}
+header .badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #e8f0fe;
+  color: var(--accent);
+  border-radius: 10px;
+  font-weight: 500;
+}
+header .spacer { flex: 1; }
+header .status {
+  font-size: 12px;
+  color: var(--muted);
+}
+header .status .dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ccc;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+header .status .dot.connected { background: #22c55e; }
+header .status .dot.error { background: #ef4444; }
+
+.frame-container {
+  display: flex;
+  justify-content: center;
+  padding: 24px 20px;
+}
+iframe {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  width: 100%;
+  max-width: 900px;
+  min-height: 200px;
+  transition: height 0.15s ease;
+}
+
+.log-toggle {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--muted);
+  z-index: 10;
+}
+.log-toggle:hover { color: var(--text); }
+
+.log-panel {
+  display: none;
+  position: fixed;
+  bottom: 48px;
+  right: 16px;
+  width: 480px;
+  max-height: 320px;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border-radius: 8px;
+  overflow: auto;
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 12px;
+  z-index: 10;
+  border: 1px solid #45475a;
+}
+.log-panel.visible { display: block; }
+.log-entry { padding: 2px 0; border-bottom: 1px solid #313244; }
+.log-entry .dir { font-weight: 600; }
+.log-entry .dir.in { color: #89b4fa; }
+.log-entry .dir.out { color: #a6e3a1; }
+.log-entry .method { color: #f9e2af; }
+.log-entry .detail { color: #6c7086; margin-left: 8px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="title">{{APP_NAME}}</span>
+  <span class="badge">shinymcp preview</span>
+  <span class="spacer"></span>
+  <span class="status" id="status">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">connecting&hellip;</span>
+  </span>
+</header>
+
+<div class="frame-container">
+  <iframe id="appFrame" src="/app.html" sandbox="allow-scripts allow-same-origin"></iframe>
+</div>
+
+<button class="log-toggle" id="logToggle">protocol log</button>
+<div class="log-panel" id="logPanel"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var iframe = document.getElementById("appFrame");
+  var statusDot = document.getElementById("statusDot");
+  var statusText = document.getElementById("statusText");
+  var logPanel = document.getElementById("logPanel");
+  var logToggle = document.getElementById("logToggle");
+  var toolCallEndpoint = "/tool";
+  var initialized = false;
+
+  // --- Logging ---
+  logToggle.addEventListener("click", function () {
+    logPanel.classList.toggle("visible");
+  });
+
+  function log(direction, method, detail) {
+    var entry = document.createElement("div");
+    entry.className = "log-entry";
+    var dirClass = direction === "in" ? "in" : "out";
+    var arrow = direction === "in" ? "\u2190" : "\u2192";
+    entry.innerHTML =
+      '<span class="dir ' + dirClass + '">' + arrow + "</span> " +
+      '<span class="method">' + escapeHtml(method) + "</span>" +
+      (detail ? '<span class="detail">' + escapeHtml(detail) + "</span>" : "");
+    logPanel.appendChild(entry);
+    logPanel.scrollTop = logPanel.scrollHeight;
+  }
+
+  function escapeHtml(s) {
+    var div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  // --- Status ---
+  function setStatus(state, text) {
+    statusDot.className = "dot " + state;
+    statusText.textContent = text;
+  }
+
+  // --- postMessage handling ---
+  window.addEventListener("message", function (event) {
+    var data = event.data;
+    if (!data || data.jsonrpc !== "2.0") return;
+
+    // It's a request (has id + method)
+    if (data.id !== undefined && data.method) {
+      log("in", data.method, data.id !== undefined ? "id=" + data.id : "");
+      handleRequest(data);
+      return;
+    }
+
+    // It's a notification (method, no id)
+    if (data.method) {
+      log("in", data.method, "notification");
+      handleNotification(data);
+      return;
+    }
+  });
+
+  function postToIframe(msg) {
+    iframe.contentWindow.postMessage(msg, "*");
+  }
+
+  function respond(id, result) {
+    var msg = { jsonrpc: "2.0", id: id, result: result };
+    log("out", "response", "id=" + id);
+    postToIframe(msg);
+  }
+
+  function notify(method, params) {
+    var msg = { jsonrpc: "2.0", method: method };
+    if (params !== undefined) msg.params = params;
+    log("out", method, "notification");
+    postToIframe(msg);
+  }
+
+  // --- Handle requests from iframe ---
+  function handleRequest(data) {
+    switch (data.method) {
+      case "ui/initialize":
+        handleInitialize(data);
+        break;
+
+      case "tools/call":
+        handleToolsCall(data);
+        break;
+
+      default:
+        // Unknown request: respond with empty result
+        respond(data.id, {});
+    }
+  }
+
+  function handleInitialize(data) {
+    // Keep in sync with SHINYMCP_PROTOCOL_VERSION in R/utils.R
+    respond(data.id, {
+      protocolVersion: "2025-06-18",
+      hostInfo: {
+        name: "shinymcp-preview",
+        version: "0.1.0"
+      },
+      hostCapabilities: {}
+    });
+
+    setStatus("connected", "connected");
+    initialized = true;
+  }
+
+  function handleToolsCall(data) {
+    var params = data.params || {};
+    var requestId = data.id;
+
+    setStatus("connected", "running tool\u2026");
+
+    fetch(toolCallEndpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: params.name,
+        arguments: params.arguments || {}
+      })
+    })
+    .then(function (res) { return res.json(); })
+    .then(function (result) {
+      // Forward the tool result as a response
+      respond(requestId, result);
+
+      // Also send as a tool-result notification (some bridges expect this)
+      notify("ui/notifications/tool-result", result);
+
+      setStatus("connected", "connected");
+    })
+    .catch(function (err) {
+      respond(requestId, {
+        content: [{ type: "text", text: "Preview error: " + err.message }],
+        isError: true
+      });
+      setStatus("error", "tool error");
+    });
+  }
+
+  // --- Handle notifications from iframe ---
+  function handleNotification(data) {
+    switch (data.method) {
+      case "ui/notifications/initialized":
+        // Handshake complete
+        break;
+
+      case "ui/notifications/size-changed":
+        if (data.params) {
+          var h = data.params.height;
+          if (h && typeof h === "number") {
+            iframe.style.height = Math.min(h + 2, 2000) + "px";
+          }
+        }
+        break;
+
+      case "ui/update-model-context":
+        // Could display input state in debug panel
+        break;
+    }
+  }
+})();
+</script>
+</body>
+</html>

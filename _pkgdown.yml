@@ -35,6 +35,7 @@ reference:
       - mcp_app
       - McpApp
       - serve
+      - preview_app
 
   - title: Input Components
     desc: >

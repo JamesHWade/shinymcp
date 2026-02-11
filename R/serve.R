@@ -227,7 +227,7 @@ handle_initialize <- function(message, app, registry) {
 
   # maximum supported version, whichever is lower
   client_version <- message$params$protocolVersion %||% "2024-11-05"
-  server_version <- "2025-06-18"
+  server_version <- SHINYMCP_PROTOCOL_VERSION
   negotiated <- min(client_version, server_version)
 
   jsonrpc_response(
@@ -277,37 +277,7 @@ handle_tools_call <- function(message, app) {
   tryCatch(
     {
       result <- app$call_tool(tool_name, arguments)
-
-      if (is.list(result) && !is.null(names(result))) {
-        # Structured result: extract text parts for content, pass all as
-        # structuredContent so the bridge can update multiple outputs
-        text_parts <- vapply(result, function(x) {
-          if (is.character(x) && nchar(x) < 10000) x else ""
-        }, character(1))
-        text_summary <- paste(
-          text_parts[nzchar(text_parts)],
-          collapse = "\n\n"
-        )
-
-        jsonrpc_response(
-          message$id,
-          list(
-            content = list(
-              list(type = "text", text = text_summary)
-            ),
-            structuredContent = result
-          )
-        )
-      } else {
-        jsonrpc_response(
-          message$id,
-          list(
-            content = list(
-              list(type = "text", text = as.character(result))
-            )
-          )
-        )
-      }
+      jsonrpc_response(message$id, format_tool_result(result))
     },
     error = function(e) {
       jsonrpc_response(

@@ -94,3 +94,37 @@ type_object_to_schema <- function(arguments) {
 compact_list <- function(x) {
   x[!vapply(x, is.null, logical(1))]
 }
+
+#' MCP protocol version supported by shinymcp
+#' @noRd
+SHINYMCP_PROTOCOL_VERSION <- "2025-06-18"
+
+#' Format an R tool result into the MCP tool-result shape
+#'
+#' Used by both the MCP server (`serve.R`) and the preview host (`preview.R`)
+#' to produce a consistent response structure.
+#'
+#' @param result The raw result from `McpApp$call_tool()`.
+#' @return A list with `content` and optionally `structuredContent`.
+#' @noRd
+format_tool_result <- function(result) {
+  if (is.list(result) && !is.null(names(result))) {
+    text_parts <- vapply(
+      result,
+      function(x) {
+        if (is.character(x) && nchar(x) < 10000) x else ""
+      },
+      character(1)
+    )
+    text_summary <- paste(text_parts[nzchar(text_parts)], collapse = "\n\n")
+
+    list(
+      content = list(list(type = "text", text = text_summary)),
+      structuredContent = result
+    )
+  } else {
+    list(
+      content = list(list(type = "text", text = as.character(result)))
+    )
+  }
+}

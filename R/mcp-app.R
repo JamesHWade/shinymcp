@@ -113,12 +113,18 @@ McpApp <- R6::R6Class(
       paste0(
         "<!DOCTYPE html>\n",
         '<html lang="en">\n',
-        "<head>\n", head_content, "\n</head>\n",
+        "<head>\n",
+        head_content,
+        "\n</head>\n",
         "<body>\n",
-        body_content, "\n",
+        body_content,
+        "\n",
         '<script id="shinymcp-config" type="application/json">',
-        config_json, "</script>\n",
-        "<script>\n", bridge_js, "\n</script>\n",
+        config_json,
+        "</script>\n",
+        "<script>\n",
+        bridge_js,
+        "\n</script>\n",
         "</body>\n</html>"
       )
     },
@@ -143,10 +149,12 @@ McpApp <- R6::R6Class(
       uri <- self$resource_uri()
       # Include both new and legacy _meta formats for compatibility
       # ext-apps SDK normalizes both: _meta.ui.resourceUri and _meta["ui/resourceUri"]
-      meta <- list(`_meta` = list(
-        ui = list(resourceUri = uri),
-        `ui/resourceUri` = uri
-      ))
+      meta <- list(
+        `_meta` = list(
+          ui = list(resourceUri = uri),
+          `ui/resourceUri` = uri
+        )
+      )
 
       lapply(private$.tools, function(tool) {
         def <- if (is_ellmer_tool(tool)) {
@@ -174,19 +182,19 @@ McpApp <- R6::R6Class(
     },
 
     #' @description Call a tool by name
-    #' @param tool_name Name of the tool to call
+    #' @param name Name of the tool to call
     #' @param arguments Named list of arguments to pass to the tool
-    call_tool = function(tool_name, arguments = list()) {
+    call_tool = function(name, arguments = list()) {
       tool <- NULL
       for (t in private$.tools) {
-        if (identical(tool_name(t), tool_name)) {
+        if (identical(tool_name(t), name)) {
           tool <- t
           break
         }
       }
       if (is.null(tool)) {
         rlang::abort(
-          cli::format_inline("Tool {.val {tool_name}} not found."),
+          cli::format_inline("Tool {.val {name}} not found."),
           class = "shinymcp_error_tool_not_found"
         )
       }
@@ -197,7 +205,7 @@ McpApp <- R6::R6Class(
       } else {
         rlang::abort(
           cli::format_inline(
-            "Tool {.val {tool_name}} does not have a callable function."
+            "Tool {.val {name}} does not have a callable function."
           ),
           class = "shinymcp_error_tool_not_callable"
         )
@@ -231,16 +239,27 @@ McpApp <- R6::R6Class(
       parts <- character(0)
       for (dep in deps) {
         base_path <- dep$src$file
-        if (is.null(base_path) || !nzchar(base_path)) next
+        if (is.null(base_path) || !nzchar(base_path)) {
+          next
+        }
 
         # Inline stylesheets
         for (css in dep$stylesheet) {
           css_path <- file.path(base_path, css)
           if (file.exists(css_path)) {
             content <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
-            parts <- c(parts, paste0(
-              "<style>/* ", dep$name, ": ", css, " */\n", content, "\n</style>"
-            ))
+            parts <- c(
+              parts,
+              paste0(
+                "<style>/* ",
+                dep$name,
+                ": ",
+                css,
+                " */\n",
+                content,
+                "\n</style>"
+              )
+            )
           }
         }
 
@@ -255,10 +274,20 @@ McpApp <- R6::R6Class(
             if (is.list(js_entry) && !is.null(js_entry$type)) {
               type_attr <- paste0(' type="', js_entry$type, '"')
             }
-            parts <- c(parts, paste0(
-              "<script", type_attr, ">/* ", dep$name, ": ", js_file,
-              " */\n", content, "\n</script>"
-            ))
+            parts <- c(
+              parts,
+              paste0(
+                "<script",
+                type_attr,
+                ">/* ",
+                dep$name,
+                ": ",
+                js_file,
+                " */\n",
+                content,
+                "\n</script>"
+              )
+            )
           }
         }
       }
@@ -338,7 +367,11 @@ mcp_app <- function(
   ...
 ) {
   McpApp$new(
-    ui = ui, tools = tools, name = name, version = version,
-    theme = theme, ...
+    ui = ui,
+    tools = tools,
+    name = name,
+    version = version,
+    theme = theme,
+    ...
   )
 }
