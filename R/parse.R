@@ -193,7 +193,7 @@ extract_function_body <- function(expr) {
 
 #' Extract reactive expressions from server body
 #' @param server_body Server function body expression
-#' @return List of reactive definitions (name, body_expr, input_deps)
+#' @return List of reactive definitions (name, body_expr, input_deps, reactive_deps)
 #' @noRd
 extract_reactives <- function(server_body) {
   if (is.null(server_body)) {
@@ -211,6 +211,25 @@ extract_reactives <- function(server_body) {
     list(server_body)
   }
 
+  # First pass: collect reactive names
+  reactive_names <- character()
+  for (stmt in stmts) {
+    if (!is.call(stmt)) {
+      next
+    }
+    fn_name <- call_name(stmt)
+    if (fn_name %in% c("<-", "=")) {
+      lhs <- stmt[[2]]
+      rhs <- stmt[[3]]
+      if (
+        is.name(lhs) && is.call(rhs) && identical(call_name(rhs), "reactive")
+      ) {
+        reactive_names <- c(reactive_names, as.character(lhs))
+      }
+    }
+  }
+
+  # Second pass: extract deps including reactive-to-reactive calls
   for (stmt in stmts) {
     if (!is.call(stmt)) {
       next
@@ -228,10 +247,24 @@ extract_reactives <- function(server_body) {
         } else {
           character()
         }
+        # Find calls to other reactives: reactive_name()
+        reactive_deps <- character()
+        current_name <- as.character(lhs)
+        if (!is.null(reactive_body)) {
+          walk_exprs(list(reactive_body), function(e) {
+            if (is.call(e) && is.name(e[[1]])) {
+              fn <- as.character(e[[1]])
+              if (fn %in% reactive_names && fn != current_name) {
+                reactive_deps[length(reactive_deps) + 1L] <<- fn
+              }
+            }
+          })
+        }
         reactives[[length(reactives) + 1L]] <- list(
           name = as.character(lhs),
           body_expr = reactive_body,
-          input_deps = input_deps
+          input_deps = input_deps,
+          reactive_deps = unique(reactive_deps)
         )
       }
     }

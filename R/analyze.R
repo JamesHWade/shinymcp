@@ -103,6 +103,14 @@ build_dependency_graph <- function(ir) {
         to = node_id
       )
     }
+    # Reactives depend on other reactives
+    for (dep in react$reactive_deps) {
+      edge_id <- paste0("reactive:", dep, "->reactive:", react$name)
+      edges[[edge_id]] <- list(
+        from = paste0("reactive:", dep),
+        to = node_id
+      )
+    }
   }
 
   list(nodes = nodes, edges = edges)
@@ -111,6 +119,7 @@ build_dependency_graph <- function(ir) {
 #' Find which inputs each output depends on
 #'
 #' Scans render* expressions in the server body to find input$xxx references.
+#' Transitively expands reactive dependencies to capture the full chain.
 #'
 #' @param server_body Server function body expression
 #' @param reactives List of reactive definitions
@@ -160,9 +169,13 @@ find_output_dependencies <- function(server_body, reactives) {
             }
           })
 
-          # Expand reactive deps to include their input deps
+          # Transitively expand reactive deps to capture the full chain
+          all_reactive_refs <- expand_reactive_deps(
+            unique(reactive_refs),
+            reactives
+          )
           expanded_input_refs <- input_refs
-          for (rname in unique(reactive_refs)) {
+          for (rname in all_reactive_refs) {
             ridx <- match(rname, reactive_names)
             if (!is.na(ridx)) {
               expanded_input_refs <- c(
@@ -174,7 +187,7 @@ find_output_dependencies <- function(server_body, reactives) {
 
           deps[[output_id]] <- list(
             input_deps = unique(expanded_input_refs),
-            reactive_deps = unique(reactive_refs),
+            reactive_deps = all_reactive_refs,
             render_expr = rhs
           )
         }
@@ -183,6 +196,48 @@ find_output_dependencies <- function(server_body, reactives) {
   }
 
   deps
+}
+
+#' Transitively expand reactive dependencies
+#'
+#' Given a set of reactive names, follows `reactive_deps` chains to collect
+#' the full transitive closure of all upstream reactives.
+#'
+#' @param initial Character vector of reactive names to start from
+#' @param reactives List of reactive definitions from the IR
+#' @return Character vector of all transitively reachable reactive names
+#' @noRd
+expand_reactive_deps <- function(initial, reactives) {
+  reactive_names <- vapply(reactives, function(r) r$name, character(1))
+  visited <- character()
+  queue <- initial
+
+  while (length(queue) > 0) {
+    current <- queue[[1]]
+    queue <- queue[-1]
+    if (current %in% visited) {
+      next
+    }
+    visited <- c(visited, current)
+
+    ridx <- match(current, reactive_names)
+    if (is.na(ridx)) {
+      cli::cli_warn(
+        "Reactive {.val {current}} referenced as a dependency but not found
+         in the reactive definitions. Its upstream inputs may be missing
+         from the tool group."
+      )
+      next
+    }
+    upstream <- reactives[[ridx]]$reactive_deps %||% character()
+    for (dep in upstream) {
+      if (!(dep %in% visited)) {
+        queue <- c(queue, dep)
+      }
+    }
+  }
+
+  visited
 }
 
 #' Find connected components in the dependency graph

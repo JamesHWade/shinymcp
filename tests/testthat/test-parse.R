@@ -53,3 +53,34 @@ test_that("parse_shiny_app errors on invalid path", {
     class = "shinymcp_error_parse"
   )
 })
+
+test_that("parse_shiny_app captures reactive_deps for chained reactives", {
+  app_dir <- fixture_chained_reactive_app()
+  withr::defer(unlink(app_dir, recursive = TRUE))
+
+  ir <- parse_shiny_app(app_dir)
+
+  # base_data has no reactive deps (only input$dataset)
+  base <- Filter(function(r) r$name == "base_data", ir$reactives)
+  expect_length(base, 1)
+  expect_equal(base[[1]]$reactive_deps, character(0))
+  expect_true("dataset" %in% base[[1]]$input_deps)
+
+  # filtered_data depends on base_data()
+  filtered <- Filter(function(r) r$name == "filtered_data", ir$reactives)
+  expect_length(filtered, 1)
+  expect_true("base_data" %in% filtered[[1]]$reactive_deps)
+  expect_true("n_rows" %in% filtered[[1]]$input_deps)
+})
+
+test_that("parser captures multiple reactive_deps on same reactive", {
+  app_dir <- fixture_multi_reactive_deps_app()
+  withr::defer(unlink(app_dir, recursive = TRUE))
+
+  ir <- parse_shiny_app(app_dir)
+  combined <- Filter(function(r) r$name == "combined", ir$reactives)
+  expect_length(combined, 1)
+  expect_true("val_x" %in% combined[[1]]$reactive_deps)
+  expect_true("val_y" %in% combined[[1]]$reactive_deps)
+  expect_length(combined[[1]]$reactive_deps, 2)
+})
