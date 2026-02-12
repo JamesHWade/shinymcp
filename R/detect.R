@@ -28,10 +28,7 @@ detect_mcp_role <- function(tag) {
   }
 
   if (grepl("shiny-text-output", classes, fixed = TRUE)) {
-    # verbatimTextOutput uses <pre>, textOutput uses <span>
-    tag_name <- tolower(tag$name %||% "")
-    type <- if (tag_name == "pre") "text" else "text"
-    return(list(role = "output", id = tag_id, type = type))
+    return(list(role = "output", id = tag_id, type = "text"))
   }
 
   if (grepl("shiny-html-output", classes, fixed = TRUE)) {

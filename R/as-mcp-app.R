@@ -90,6 +90,11 @@ as_mcp_app.shiny.appobj <- function(x, name = NULL, tools = NULL,
     }
   }
 
+  # Annotate the UI so the JS bridge can discover inputs/outputs.
+  # Inputs are auto-detected by the bridge via DOM ID matching, but
+  # outputs need explicit data-shinymcp-output attributes.
+  ui <- annotate_module_ui(ui, ir$inputs, ir$outputs)
+
   mcp_app(
     ui = ui,
     tools = generated_tools,
@@ -128,15 +133,19 @@ as_mcp_app.default <- function(x, ...) {
 #' @return htmltools tag or tagList
 #' @noRd
 extract_shiny_ui <- function(app) {
-  # shiny.appobj stores UI in multiple possible ways
   ui <- app$ui
   if (is.function(ui)) {
-    # Some apps use a UI function — call it with a mock request
-    ui <- ui(NULL)
+    # UI can be a function(req) — try with NULL, then with no args
+    ui <- tryCatch(
+      ui(NULL),
+      error = function(e) {
+        tryCatch(ui(), error = function(e2) NULL)
+      }
+    )
   }
   if (is.null(ui)) {
     rlang::abort(
-      "Could not extract UI from the shinyApp object.",
+      cli::format_inline("Could not extract UI from the {.cls shiny.appobj}."),
       class = "shinymcp_error_validation"
     )
   }
