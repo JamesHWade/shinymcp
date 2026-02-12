@@ -453,14 +453,191 @@ unchanged. `bindMcp()` and `as_mcp_app()` are purely additive.
    - For plot-heavy apps, this could be slow
    - Recommendation: Lazy session creation, session pooling for HTTP transport
 
+## Convergence with shinychat `chat_tool_module()`
+
+There is a proposal for `posit-dev/shinychat` to add `chat_tool_module()` — a
+function that wraps a standard Shiny module (ui + server) as an `ellmer::tool()`,
+so an LLM can summon interactive Shiny modules directly into chat messages.
+
+These two proposals are solving the **same problem from opposite directions**:
+
+| | shinychat | shinymcp |
+|---|-----------|----------|
+| **Host** | Shiny app with chat widget | AI client (Claude, ChatGPT, VS Code) |
+| **Guest** | LLM summons modules into chat | Shiny app renders in iframe |
+| **Runtime** | Live Shiny session (`Shiny.bindAll()`) | JS bridge replaces shiny.js (or headless session in Round 2) |
+| **Tool format** | `ellmer::tool()` | `ellmer::tool()` |
+| **UI delivery** | `ContentToolResult(extra = list(display = ...))` | `ui://` resource + `text/html;profile=mcp-app` |
+
+The shared insight: **Shiny modules are the natural unit of tool-callable interactivity.**
+
+### Modules as the common abstraction
+
+Both proposals center on the same pattern:
+
+```r
+# A standard Shiny module — written once
+hist_ui <- function(id) {
+  ns <- NS(id)
+  tagList(
+    sliderInput(ns("bins"), "Bins:", min = 5, max = 50, value = 25),
+    plotOutput(ns("plot"), height = "250px")
+  )
+}
+
+hist_server <- function(id, dataset) {
+  moduleServer(id, function(input, output, session) {
+    output$plot <- renderPlot({
+      hist(dataset(), breaks = input$bins, col = "#007bc2", border = "white")
+    })
+  })
+}
+```
+
+Two deployment targets, same module:
+
+```r
+# Target 1: Inside a shinychat app (live Shiny session)
+# The module server runs in the current session.
+# The module UI is rendered into a chat message and bound via Shiny.bindAll().
+hist_tool <- chat_tool_module(
+  hist_ui, hist_server,
+  name = "histogram",
+  description = "Show an interactive histogram",
+  dataset = data   # shared reactive passed to server
+)
+
+# Target 2: As a standalone MCP App (headless or bridged)
+# The module becomes a ui:// resource + MCP tool.
+# In Round 2, a headless Shiny session runs the server function.
+hist_app <- mcp_tool_module(
+  hist_ui, hist_server,
+  name = "histogram",
+  description = "Show an interactive histogram",
+  dataset = reactive(faithful$eruptions)
+)
+serve(hist_app)
+```
+
+### What this means for shinymcp's design
+
+#### 1. Add `mcp_tool_module()` as a first-class API
+
+This mirrors `chat_tool_module()` and makes modules a primary on-ramp:
+
+```r
+mcp_tool_module <- function(module_ui, module_server, name, description,
+                            arguments = list(), ...) {
+  # 1. Generate a namespaced ID
+  ns_id <- paste0("shinymcp-", name)
+
+  # 2. Render the module UI into MCP-compatible HTML
+  ui <- module_ui(ns_id)
+
+  # 3. Create the tool handler
+  #    Round 1: stub that requires explicit handler
+  #    Round 2: backed by headless session running module_server
+  tool <- build_module_tool(module_ui, module_server, ns_id,
+                            name = name, description = description,
+                            arguments = arguments, ...)
+
+  mcp_app(ui = ui, tools = list(tool), name = name)
+}
+```
+
+#### 2. Round 2 becomes critical (not optional)
+
+The shinychat proposal works because `moduleServer()` runs in a live Shiny
+session. For shinymcp to match this capability, we need the headless Shiny
+driver from Round 2. Without it, module servers can't execute, and tool
+handlers are just stubs.
+
+This reframes Round 2 from "nice to have" to "essential for module parity
+with shinychat."
+
+#### 3. The convergence path: `shiny_tool()`
+
+Eventually, a shared abstraction could live in a common package (or in shiny
+itself):
+
+```r
+# Hypothetical future shared API
+tool <- shiny_tool(
+  module_ui = hist_ui,
+  module_server = hist_server,
+  name = "histogram",
+  description = "Interactive histogram",
+  dataset = data
+)
+
+# Works in shinychat (live session)
+chat$register_tool(tool)
+
+# Works in shinymcp (headless session + MCP protocol)
+serve(tool)
+```
+
+The `shiny_tool()` function produces an `ellmer::tool()` with attached module
+metadata. Each consumer (shinychat, shinymcp) binds the module to its own
+runtime:
+
+- **shinychat**: Calls `moduleServer()` in the active session, returns rendered
+  HTML via `ContentToolResult`
+- **shinymcp**: Calls `moduleServer()` in a headless session, returns HTML as
+  a `ui://` resource, tool results flow over JSON-RPC
+
+The key enabling decision: both use `ellmer::tool()` as the interchange format.
+Module metadata rides as attributes or a subclass.
+
+#### 4. Implications for `bindMcp()` scope
+
+The shinychat proposal operates at the **module level**, not the individual
+input/output level. This suggests two tiers in shinymcp:
+
+| Tier | Granularity | API | Use case |
+|------|-------------|-----|----------|
+| Element-level | Individual inputs/outputs | `selectInput(...) \|> bindMcp()` | Fine-grained control within a page |
+| Module-level | Entire module (ui + server) | `mcp_tool_module(ui, server, ...)` | Self-contained interactive widgets |
+
+Both tiers are valuable. Element-level `bindMcp()` is for converting existing
+apps. Module-level `mcp_tool_module()` is for building new reusable
+interactive tools — and is the natural bridge to shinychat compatibility.
+
+### Cross-project design questions
+
+1. **Should `ellmer::tool()` grow module awareness?**
+   Both `chat_tool_module()` and `mcp_tool_module()` need to attach module
+   metadata (ui function, server function, extra args) to an ellmer tool.
+   Should ellmer have a `module_tool()` subclass, or should this be handled
+   via attributes/conventions?
+
+2. **Reactive argument passing across runtimes**
+   shinychat passes reactive values directly (`dataset = data` where `data`
+   is `reactive(...)`). shinymcp can do the same in a headless session, but
+   in the JS bridge path (no Shiny runtime), reactives don't exist. Should
+   `mcp_tool_module()` require the headless path, or support a static
+   fallback?
+
+3. **Module instance lifecycle**
+   shinychat tracks instances in `session$userData` for cleanup. shinymcp
+   would need similar lifecycle management for the headless session. Can
+   these share a convention?
+
+4. **Namespace coordination**
+   shinychat uses `NS()` for isolation within a single Shiny session. shinymcp
+   uses `appName` for `ui://` resource isolation. When a module is used in
+   both contexts, the namespacing strategies need to not collide.
+
 ## Suggested Starting Point
 
 Round 1 is self-contained and delivers immediate value:
 - `bindMcp()` on UI elements (simple tag manipulation)
 - `as_mcp_app()` for shinyApp objects (reuses existing parse/analyze pipeline)
+- `mcp_tool_module()` skeleton that generates UI + stub tools from modules
 - New example app demonstrating the pattern
 - No new runtime complexity
 
-Round 2 (headless driver) is the high-impact feature that makes the dream
-API work. It should be designed in parallel with Round 1 but can ship
-separately.
+Round 2 (headless driver) is the high-impact feature that makes both the
+`bindMcp()` dream API and module parity with shinychat work. It should be
+designed in parallel with Round 1 and prioritized as the bridge between the
+shinymcp and shinychat worlds.
