@@ -20,7 +20,6 @@ library(shinymcp)
 ui <- htmltools::tagList(
   htmltools::h2("Multi-Tool Demo"),
 
-
   # Group 1: data exploration
   htmltools::h3("Data Explorer"),
   shiny::selectInput("dataset", "Dataset:", c("mtcars", "iris", "pressure")),
@@ -51,8 +50,11 @@ explore_data <- ellmer::tool(
     grDevices::png(tmp, width = 600, height = 400)
     on.exit(unlink(tmp), add = TRUE)
     if (ncol(d) >= 2) {
-      plot(d[[1]], d[[2]],
-        xlab = names(d)[1], ylab = names(d)[2],
+      plot(
+        d[[1]],
+        d[[2]],
+        xlab = names(d)[1],
+        ylab = names(d)[2],
         main = dataset
       )
     }
@@ -62,7 +64,12 @@ explore_data <- ellmer::tool(
 
     list(
       summary = paste(
-        "Showing", nrow(d), "of", nrow(full), "rows from", dataset
+        "Showing",
+        nrow(d),
+        "of",
+        nrow(full),
+        "rows from",
+        dataset
       ),
       plot = plot_b64
     )

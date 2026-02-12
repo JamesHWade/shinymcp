@@ -51,7 +51,11 @@ server <- function(input, output, session) {
   output$summary <- renderText({
     d <- filtered_data()
     paste(
-      "Showing", nrow(d), "of", nrow(base_data()), "rows from",
+      "Showing",
+      nrow(d),
+      "of",
+      nrow(base_data()),
+      "rows from",
       input$dataset
     )
   })
@@ -59,8 +63,11 @@ server <- function(input, output, session) {
   output$plot <- renderPlot({
     d <- filtered_data()
     if (ncol(d) >= 2) {
-      plot(d[[1]], d[[2]],
-        xlab = names(d)[1], ylab = names(d)[2],
+      plot(
+        d[[1]],
+        d[[2]],
+        xlab = names(d)[1],
+        ylab = names(d)[2],
         main = input$dataset
       )
     }
