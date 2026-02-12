@@ -215,16 +215,24 @@ expand_reactive_deps <- function(initial, reactives) {
   while (length(queue) > 0) {
     current <- queue[[1]]
     queue <- queue[-1]
-    if (current %in% visited) next
+    if (current %in% visited) {
+      next
+    }
     visited <- c(visited, current)
 
     ridx <- match(current, reactive_names)
-    if (!is.na(ridx)) {
-      upstream <- reactives[[ridx]]$reactive_deps %||% character()
-      for (dep in upstream) {
-        if (!(dep %in% visited)) {
-          queue <- c(queue, dep)
-        }
+    if (is.na(ridx)) {
+      cli::cli_warn(
+        "Reactive {.val {current}} referenced as a dependency but not found
+         in the reactive definitions. Its upstream inputs may be missing
+         from the tool group."
+      )
+      next
+    }
+    upstream <- reactives[[ridx]]$reactive_deps %||% character()
+    for (dep in upstream) {
+      if (!(dep %in% visited)) {
+        queue <- c(queue, dep)
       }
     }
   }

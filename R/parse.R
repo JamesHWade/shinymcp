@@ -214,7 +214,9 @@ extract_reactives <- function(server_body) {
   # First pass: collect reactive names
   reactive_names <- character()
   for (stmt in stmts) {
-    if (!is.call(stmt)) next
+    if (!is.call(stmt)) {
+      next
+    }
     fn_name <- call_name(stmt)
     if (fn_name %in% c("<-", "=")) {
       lhs <- stmt[[2]]
@@ -247,11 +249,12 @@ extract_reactives <- function(server_body) {
         }
         # Find calls to other reactives: reactive_name()
         reactive_deps <- character()
+        current_name <- as.character(lhs)
         if (!is.null(reactive_body)) {
           walk_exprs(list(reactive_body), function(e) {
             if (is.call(e) && is.name(e[[1]])) {
               fn <- as.character(e[[1]])
-              if (fn %in% reactive_names) {
+              if (fn %in% reactive_names && fn != current_name) {
                 reactive_deps[length(reactive_deps) + 1L] <<- fn
               }
             }

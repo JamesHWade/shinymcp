@@ -72,3 +72,15 @@ test_that("parse_shiny_app captures reactive_deps for chained reactives", {
   expect_true("base_data" %in% filtered[[1]]$reactive_deps)
   expect_true("n_rows" %in% filtered[[1]]$input_deps)
 })
+
+test_that("parser captures multiple reactive_deps on same reactive", {
+  app_dir <- fixture_multi_reactive_deps_app()
+  withr::defer(unlink(app_dir, recursive = TRUE))
+
+  ir <- parse_shiny_app(app_dir)
+  combined <- Filter(function(r) r$name == "combined", ir$reactives)
+  expect_length(combined, 1)
+  expect_true("val_x" %in% combined[[1]]$reactive_deps)
+  expect_true("val_y" %in% combined[[1]]$reactive_deps)
+  expect_length(combined[[1]]$reactive_deps, 2)
+})

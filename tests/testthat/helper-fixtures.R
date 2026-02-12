@@ -124,6 +124,31 @@ shinyApp(ui, server)
   app_dir
 }
 
+# App with a reactive that depends on multiple other reactives
+fixture_multi_reactive_deps_app <- function(dir = tempdir()) {
+  app_dir <- file.path(dir, "multi-reactive-deps-app")
+  dir.create(app_dir, showWarnings = FALSE, recursive = TRUE)
+  writeLines(
+    '
+library(shiny)
+ui <- fluidPage(
+  numericInput("x", "X:", 1),
+  numericInput("y", "Y:", 1),
+  textOutput("result")
+)
+server <- function(input, output, session) {
+  val_x <- reactive({ input$x * 2 })
+  val_y <- reactive({ input$y + 1 })
+  combined <- reactive({ val_x() + val_y() })
+  output$result <- renderText({ paste("Result:", combined()) })
+}
+shinyApp(ui, server)
+',
+    file.path(app_dir, "app.R")
+  )
+  app_dir
+}
+
 # Split-file app (ui.R + server.R)
 fixture_split_app <- function(dir = tempdir()) {
   app_dir <- file.path(dir, "split-app")
