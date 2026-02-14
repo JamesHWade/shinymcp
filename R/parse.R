@@ -665,6 +665,135 @@ get_shiny_fn_formals <- function(fn_name) {
   formals_map[[fn_name]] %||% function(...) NULL
 }
 
+# ---- Tag-based parsing (for live shiny.tag objects) ----
+
+#' Parse a Shiny app from live UI tags and server body
+#'
+#' Creates a `ShinyAppIR` from evaluated htmltools tags and an unevaluated
+#' server function body. Used by [as_mcp_app()] when operating on a
+#' `shiny.appobj` rather than files on disk.
+#'
+#' @param ui An [htmltools::tag] or [htmltools::tagList] (evaluated UI)
+#' @param server_body The body expression of the server function
+#'   (e.g., `body(server_fn)`). Can be NULL if no server.
+#' @param selective Logical. If `TRUE`, only elements annotated with
+#'   `data-shinymcp-input` / `data-shinymcp-output` are included.
+#'   If `FALSE`, all detected Shiny inputs/outputs are included.
+#' @return A `ShinyAppIR` object
+#' @noRd
+parse_shiny_app_object <- function(ui, server_body = NULL, selective = FALSE) {
+  inputs <- extract_inputs_from_tags(ui, selective = selective)
+  outputs <- extract_outputs_from_tags(ui, selective = selective)
+  reactives <- extract_reactives(server_body)
+  observers <- extract_observers(server_body)
+  input_refs <- extract_input_refs(server_body)
+
+  complexity <- classify_complexity(inputs, outputs, reactives, observers)
+
+  structure(
+    list(
+      path = "<in-memory>",
+      inputs = inputs,
+      outputs = outputs,
+      server_body = server_body,
+      reactives = reactives,
+      observers = observers,
+      input_refs = input_refs,
+      complexity = complexity
+    ),
+    class = "ShinyAppIR"
+  )
+}
+
+
+#' Extract input definitions by walking an htmltools tag tree
+#'
+#' @param ui An htmltools tag or tagList
+#' @param selective If TRUE, only include elements with data-shinymcp-input
+#' @return List of input definitions (id, type, label, fn_name)
+#' @noRd
+extract_inputs_from_tags <- function(ui, selective = FALSE) {
+  inputs <- list()
+  seen_ids <- character()
+
+  walk_tag_tree(ui, function(tag) {
+    if (!inherits(tag, "shiny.tag")) return()
+
+    # Check for explicit MCP annotation
+    mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-input")
+    if (!is.null(mcp_id) && !(mcp_id %in% seen_ids)) {
+      mcp_type <- htmltools::tagGetAttribute(tag, "data-shinymcp-type")
+      seen_ids[length(seen_ids) + 1L] <<- mcp_id
+      inputs[[length(inputs) + 1L]] <<- list(
+        id = mcp_id,
+        type = mcp_type %||% detect_input_type(tag),
+        label = extract_label_from_tag(tag) %||% mcp_id,
+        fn_name = "unknown"
+      )
+      return()
+    }
+
+    if (selective) return()
+
+    # Auto-detect Shiny input containers
+    role <- detect_mcp_role(tag)
+    if (role$role == "input" && !is.null(role$id) && !(role$id %in% seen_ids)) {
+      seen_ids[length(seen_ids) + 1L] <<- role$id
+      inputs[[length(inputs) + 1L]] <<- list(
+        id = role$id,
+        type = role$type %||% "unknown",
+        label = extract_label_from_tag(tag) %||% role$id,
+        fn_name = "unknown"
+      )
+    }
+  })
+
+  inputs
+}
+
+
+#' Extract output definitions by walking an htmltools tag tree
+#'
+#' @param ui An htmltools tag or tagList
+#' @param selective If TRUE, only include elements with data-shinymcp-output
+#' @return List of output definitions (id, type)
+#' @noRd
+extract_outputs_from_tags <- function(ui, selective = FALSE) {
+  outputs <- list()
+  seen_ids <- character()
+
+  walk_tag_tree(ui, function(tag) {
+    if (!inherits(tag, "shiny.tag")) return()
+
+    # Check for explicit MCP annotation
+    mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-output")
+    if (!is.null(mcp_id) && !(mcp_id %in% seen_ids)) {
+      mcp_type <- htmltools::tagGetAttribute(tag, "data-shinymcp-output-type")
+      seen_ids[length(seen_ids) + 1L] <<- mcp_id
+      outputs[[length(outputs) + 1L]] <<- list(
+        id = mcp_id,
+        type = mcp_type %||% "html"
+      )
+      return()
+    }
+
+    if (selective) return()
+
+    # Auto-detect Shiny output elements
+    role <- detect_mcp_role(tag)
+    if (role$role == "output" && !is.null(role$id) && !(role$id %in% seen_ids)) {
+      seen_ids[length(seen_ids) + 1L] <<- role$id
+      outputs[[length(outputs) + 1L]] <<- list(
+        id = role$id,
+        type = role$type %||% "html"
+      )
+    }
+  })
+
+  outputs
+}
+
+
 #' Print method for ShinyAppIR
 #' @param x A ShinyAppIR object
 #' @param ... Ignored
