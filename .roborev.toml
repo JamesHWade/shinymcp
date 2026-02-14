@@ -1,0 +1,28 @@
+agent = "claude-code"
+display_name = "shinymcp"
+
+# Use thorough reviews, standard for refine iterations
+review_reasoning = "thorough"
+refine_reasoning = "standard"
+
+review_guidelines = """
+This is an R package that converts Shiny apps into MCP (Model Context Protocol) Apps.
+Uses R6 for McpApp/ResourceRegistry, htmltools for UI components, and a self-contained ES5 JS bridge.
+
+Quality gates that must pass:
+- air format (R/ and tests/testthat/) - tidyverse-style formatting
+- devtools::check() - R CMD check with no errors/warnings
+
+Conventions:
+- Use cli::cli_abort() for errors, cli::cli_warn() for warnings
+- snake_case naming, tidyverse style throughout
+- Prefer editing existing files over creating new ones
+- Tests use testthat 3e
+- JS bridge must remain ES5-compatible (no const/let/arrow functions/Set)
+- Never commit directly to main; feature branches + PRs only
+"""
+
+# Create beads issues for failed reviews
+[[hooks]]
+event = "review.failed"
+type = "beads"
