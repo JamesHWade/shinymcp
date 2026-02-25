@@ -96,7 +96,8 @@ test_that("mcp_tool_module creates McpApp from module with handler", {
   }
 
   app <- mcp_tool_module(
-    mod_ui, mod_server,
+    mod_ui,
+    mod_server,
     name = "test-module",
     description = "A test module",
     handler = handler
@@ -131,7 +132,8 @@ test_that("mcp_tool_module creates stub when no handler provided", {
   }
 
   app <- mcp_tool_module(
-    mod_ui, mod_server,
+    mod_ui,
+    mod_server,
     name = "stub-module",
     description = "Module with stub handler"
   )
@@ -173,7 +175,8 @@ test_that("mcp_tool_module annotates module UI for JS bridge", {
   }
 
   app <- mcp_tool_module(
-    mod_ui, mod_server,
+    mod_ui,
+    mod_server,
     name = "annotated-mod",
     description = "Test",
     handler = function(dataset = "mtcars") list(plot = "base64...")
@@ -196,7 +199,8 @@ test_that("mcp_tool_module stores module metadata", {
   }
 
   app <- mcp_tool_module(
-    mod_ui, mod_server,
+    mod_ui,
+    mod_server,
     name = "meta-test",
     description = "Test",
     handler = function() list()

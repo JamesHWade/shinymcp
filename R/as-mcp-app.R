@@ -49,9 +49,14 @@ as_mcp_app <- function(x, ...) {
 #'   detected inputs/outputs are exposed.
 #' @param version App version string. Defaults to `"0.1.0"`.
 #' @export
-as_mcp_app.shiny.appobj <- function(x, name = NULL, tools = NULL,
-                                    selective = NULL, version = "0.1.0",
-                                    ...) {
+as_mcp_app.shiny.appobj <- function(
+  x,
+  name = NULL,
+  tools = NULL,
+  selective = NULL,
+  version = "0.1.0",
+  ...
+) {
   rlang::check_installed("shiny", reason = "for converting Shiny apps")
 
   # Extract UI from the shinyApp object
@@ -60,8 +65,12 @@ as_mcp_app.shiny.appobj <- function(x, name = NULL, tools = NULL,
 
   # If explicit tools are provided, use them directly
   if (!is.null(tools)) {
-    return(mcp_app(ui = ui, tools = tools, name = name %||% "shinymcp-app",
-                   version = version))
+    return(mcp_app(
+      ui = ui,
+      tools = tools,
+      name = name %||% "shinymcp-app",
+      version = version
+    ))
   }
 
   # Determine selective mode: auto-detect if any bindMcp() annotations exist
@@ -112,15 +121,40 @@ as_mcp_app.McpApp <- function(x, ...) {
 #' @rdname as_mcp_app
 #' @export
 as_mcp_app.default <- function(x, ...) {
-  # If it's a path string, convert via convert_app
-  if (is.character(x) && length(x) == 1 && dir.exists(x)) {
-    return(convert_app(x, ...))
+  if (is.character(x) && length(x) == 1) {
+    app_file <- if (dir.exists(x)) {
+      file.path(x, "app.R")
+    } else {
+      x
+    }
+
+    if (!file.exists(app_file)) {
+      cli::cli_abort(
+        "App file not found: {.file {app_file}}",
+        class = "shinymcp_error_validation"
+      )
+    }
+
+    env <- new.env(parent = globalenv())
+    # Replace serve() with a no-op so sourcing doesn't block on stdio.
+    env$serve <- function(...) invisible(NULL)
+    source(app_file, local = env)
+
+    for (nm in ls(env)) {
+      obj <- get(nm, envir = env)
+      if (inherits(obj, "McpApp")) {
+        return(obj)
+      }
+    }
+
+    cli::cli_abort(
+      "No {.cls McpApp} object found in {.file {app_file}}.",
+      class = "shinymcp_error_validation"
+    )
   }
+
   cli::cli_abort(
-    c(
-      "{.fn as_mcp_app} does not know how to handle objects of class {.cls {class(x)}}.",
-      i = "Expected a {.cls shiny.appobj}, {.cls McpApp}, or a directory path."
-    ),
+    "{.arg app} must be an {.cls McpApp} object or a path to an app directory.",
     class = "shinymcp_error_validation"
   )
 }
@@ -134,6 +168,18 @@ as_mcp_app.default <- function(x, ...) {
 #' @noRd
 extract_shiny_ui <- function(app) {
   ui <- app$ui
+
+  # Modern shiny.appobj stores UI in the httpHandler closure environment.
+  if (is.null(ui) && is.function(app$httpHandler)) {
+    handler_env <- environment(app$httpHandler)
+    if (
+      !is.null(handler_env) &&
+        exists("ui", envir = handler_env, inherits = FALSE)
+    ) {
+      ui <- get("ui", envir = handler_env, inherits = FALSE)
+    }
+  }
+
   if (is.function(ui)) {
     # UI can be a function(req) — try with NULL, then with no args
     ui <- tryCatch(
@@ -175,9 +221,13 @@ extract_shiny_server <- function(app) {
 has_any_mcp_annotations <- function(ui) {
   found <- FALSE
   walk_tag_tree(ui, function(tag) {
-    if (found) return()
-    if (!is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-input")) ||
-          !is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-output"))) {
+    if (found) {
+      return()
+    }
+    if (
+      !is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-input")) ||
+        !is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-output"))
+    ) {
       found <<- TRUE
     }
   })
@@ -274,7 +324,11 @@ make_stub_handler <- function(input_args, output_targets) {
         ""
       )
     })
-    names(input_formals) <- vapply(input_args, function(inp) inp$id, character(1))
+    names(input_formals) <- vapply(
+      input_args,
+      function(inp) inp$id,
+      character(1)
+    )
     formals(fn) <- input_formals
   }
 

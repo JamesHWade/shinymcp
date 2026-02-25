@@ -68,9 +68,16 @@
 #' }
 #'
 #' @export
-mcp_tool_module <- function(module_ui, module_server, name, description,
-                            handler = NULL, arguments = NULL,
-                            version = "0.1.0", ...) {
+mcp_tool_module <- function(
+  module_ui,
+  module_server,
+  name,
+  description,
+  handler = NULL,
+  arguments = NULL,
+  version = "0.1.0",
+  ...
+) {
   if (!is.function(module_ui)) {
     rlang::abort(
       cli::format_inline("{.arg module_ui} must be a function."),
@@ -161,7 +168,9 @@ annotate_module_ui <- function(ui, inputs, outputs) {
 
   # Walk and annotate
   annotate_tag <- function(tag) {
-    if (!inherits(tag, "shiny.tag")) return(tag)
+    if (!inherits(tag, "shiny.tag")) {
+      return(tag)
+    }
 
     tag_id <- htmltools::tagGetAttribute(tag, "id")
     classes <- htmltools::tagGetAttribute(tag, "class") %||% ""

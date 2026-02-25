@@ -91,9 +91,21 @@ find_form_element_id <- function(tag) {
 detect_input_type <- function(tag) {
   tq <- htmltools::tagQuery(tag)
 
-  if (tq$find("select")$length() > 0) return("select")
-  if (tq$find("textarea")$length() > 0) return("text")
-  if (tq$find("button")$length() > 0) return("button")
+  if (tq$find("select")$length() > 0) {
+    return("select")
+  }
+  if (tq$find("textarea")$length() > 0) {
+    return("text")
+  }
+  if (tq$find("button")$length() > 0) {
+    return("button")
+  }
+
+  # sliderInput() renders as <input class="js-range-slider"> without
+  # a type attribute in current Shiny markup.
+  if (tq$find("input.js-range-slider")$length() > 0) {
+    return("slider")
+  }
 
   inputs <- tq$find("input")
   if (inputs$length() > 0) {

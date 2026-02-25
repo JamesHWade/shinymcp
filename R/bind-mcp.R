@@ -36,8 +36,13 @@ bindMcp <- function(tag, ...) {
 
 #' @rdname bindMcp
 #' @export
-bindMcp.shiny.tag <- function(tag, id = NULL, type = NULL,
-                              description = NULL, ...) {
+bindMcp.shiny.tag <- function(
+  tag,
+  id = NULL,
+  type = NULL,
+  description = NULL,
+  ...
+) {
   # Idempotency: check if already annotated anywhere in the tree
   if (has_mcp_annotation(tag)) {
     return(tag)
@@ -79,16 +84,26 @@ bindMcp.shiny.tag <- function(tag, id = NULL, type = NULL,
 
 #' @rdname bindMcp
 #' @export
-bindMcp.shiny.tag.list <- function(tag, id = NULL, type = NULL,
-                                   description = NULL, ...) {
+bindMcp.shiny.tag.list <- function(
+  tag,
+  id = NULL,
+  type = NULL,
+  description = NULL,
+  ...
+) {
   # For tagLists, try to find a single input/output tag inside and annotate it
   for (i in seq_along(tag)) {
     child <- tag[[i]]
     if (inherits(child, "shiny.tag")) {
       role <- detect_mcp_role(child)
       if (role$role != "unknown") {
-        tag[[i]] <- bindMcp(child, id = id, type = type,
-                            description = description, ...)
+        tag[[i]] <- bindMcp(
+          child,
+          id = id,
+          type = type,
+          description = description,
+          ...
+        )
         return(tag)
       }
     }
@@ -148,7 +163,9 @@ has_mcp_annotation <- function(tag) {
   # Check any child with data-shinymcp-output
   found <- FALSE
   walk_tag_tree(tag, function(child) {
-    if (found) return()
+    if (found) {
+      return()
+    }
     if (!is.null(htmltools::tagGetAttribute(child, "data-shinymcp-output"))) {
       found <<- TRUE
     }

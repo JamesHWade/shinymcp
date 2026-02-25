@@ -684,7 +684,9 @@ extract_inputs_from_tags <- function(ui, selective = FALSE) {
   seen_ids <- character()
 
   walk_tag_tree(ui, function(tag) {
-    if (!inherits(tag, "shiny.tag")) return()
+    if (!inherits(tag, "shiny.tag")) {
+      return()
+    }
 
     # Check for explicit MCP annotation
     mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-input")
@@ -700,7 +702,9 @@ extract_inputs_from_tags <- function(ui, selective = FALSE) {
       return()
     }
 
-    if (selective) return()
+    if (selective) {
+      return()
+    }
 
     # Auto-detect Shiny input containers
     role <- detect_mcp_role(tag)
@@ -730,7 +734,9 @@ extract_outputs_from_tags <- function(ui, selective = FALSE) {
   seen_ids <- character()
 
   walk_tag_tree(ui, function(tag) {
-    if (!inherits(tag, "shiny.tag")) return()
+    if (!inherits(tag, "shiny.tag")) {
+      return()
+    }
 
     # Check for explicit MCP annotation
     mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-output")
@@ -744,11 +750,15 @@ extract_outputs_from_tags <- function(ui, selective = FALSE) {
       return()
     }
 
-    if (selective) return()
+    if (selective) {
+      return()
+    }
 
     # Auto-detect Shiny output elements
     role <- detect_mcp_role(tag)
-    if (role$role == "output" && !is.null(role$id) && !(role$id %in% seen_ids)) {
+    if (
+      role$role == "output" && !is.null(role$id) && !(role$id %in% seen_ids)
+    ) {
       seen_ids[length(seen_ids) + 1L] <<- role$id
       outputs[[length(outputs) + 1L]] <<- list(
         id = role$id,

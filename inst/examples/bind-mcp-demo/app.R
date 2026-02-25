@@ -43,9 +43,13 @@ server <- function(input, output, session) {
     d <- data()
     numeric_cols <- names(d)[vapply(d, is.numeric, logical(1))]
     if (length(numeric_cols) >= 2) {
-      plot(d[[numeric_cols[1]]], d[[numeric_cols[2]]],
-        xlab = numeric_cols[1], ylab = numeric_cols[2],
-        main = input$dataset, pch = 19,
+      plot(
+        d[[numeric_cols[1]]],
+        d[[numeric_cols[2]]],
+        xlab = numeric_cols[1],
+        ylab = numeric_cols[2],
+        main = input$dataset,
+        pch = 19,
         col = adjustcolor("steelblue", 0.6)
       )
     }
@@ -78,9 +82,13 @@ app <- shinyApp(ui, server) |>
           on.exit(unlink(tmp))
           par(mar = c(4, 4, 2, 1))
           if (length(numeric_cols) >= 2) {
-            plot(data[[numeric_cols[1]]], data[[numeric_cols[2]]],
-              xlab = numeric_cols[1], ylab = numeric_cols[2],
-              main = dataset, pch = 19,
+            plot(
+              data[[numeric_cols[1]]],
+              data[[numeric_cols[2]]],
+              xlab = numeric_cols[1],
+              ylab = numeric_cols[2],
+              main = dataset,
+              pch = 19,
               col = adjustcolor("steelblue", 0.6)
             )
           }
@@ -91,7 +99,9 @@ app <- shinyApp(ui, server) |>
         name = "explore_dataset",
         description = "Explore a dataset with summary statistics and scatter plot",
         arguments = list(
-          dataset = ellmer::type_string("Dataset name: mtcars, iris, or pressure")
+          dataset = ellmer::type_string(
+            "Dataset name: mtcars, iris, or pressure"
+          )
         )
       )
     )
