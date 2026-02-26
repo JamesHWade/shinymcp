@@ -34,6 +34,9 @@ reference:
     contents:
       - mcp_app
       - McpApp
+      - as_mcp_app
+      - bindMcp
+      - mcp_tool_module
       - serve
       - preview_app
 
