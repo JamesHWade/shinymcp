@@ -1,4 +1,4 @@
-# as_mcp_app() — convert various objects to McpApp
+# as_mcp_app() - convert various objects to McpApp
 #
 # S3 generic that converts Shiny app objects, modules, or other
 # representations into McpApp instances for serving over MCP.
@@ -181,7 +181,7 @@ extract_shiny_ui <- function(app) {
   }
 
   if (is.function(ui)) {
-    # UI can be a function(req) — try with NULL, then with no args
+    # UI can be a function(req) - try with NULL, then with no args
     ui <- tryCatch(
       ui(NULL),
       error = function(e) {
@@ -305,7 +305,7 @@ make_stub_handler <- function(input_args, output_targets) {
     args <- list(...)
     result <- setNames(
       lapply(output_ids, function(id) {
-        paste0("[Output '", id, "' — provide a handler via `tools` argument]")
+        paste0("[Output '", id, "' - provide a handler via `tools` argument]")
       }),
       output_ids
     )
