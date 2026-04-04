@@ -42,7 +42,7 @@
 preview_app <- function(app, port = NULL, launch = TRUE) {
   rlang::check_installed("httpuv", reason = "to preview MCP Apps in a browser")
 
-  app <- as_mcp_app(app)
+  app <- coerce_preview_mcp_app(app)
 
   port <- port %||% httpuv::randomPort()
   host <- "127.0.0.1"
@@ -105,44 +105,8 @@ preview_app <- function(app, port = NULL, launch = TRUE) {
 #' @param x An McpApp object or character path.
 #' @return An McpApp object.
 #' @noRd
-as_mcp_app <- function(x) {
-  if (inherits(x, "McpApp")) {
-    return(x)
-  }
-
-  if (is.character(x) && length(x) == 1) {
-    # Resolve to an app.R file path
-    app_file <- if (file.exists(x) && file.info(x)$isdir) {
-      file.path(x, "app.R")
-    } else {
-      x
-    }
-
-    if (!file.exists(app_file)) {
-      cli::cli_abort("App file not found: {.file {app_file}}")
-    }
-
-    env <- new.env(parent = globalenv())
-    # Replace serve() with a no-op so sourcing doesn't block on stdio
-    env$serve <- function(...) invisible(NULL)
-    source(app_file, local = env)
-
-    # Find the McpApp object in the sourced environment
-    for (nm in ls(env)) {
-      obj <- get(nm, envir = env)
-      if (inherits(obj, "McpApp")) {
-        return(obj)
-      }
-    }
-
-    cli::cli_abort(
-      "No {.cls McpApp} object found in {.file {app_file}}."
-    )
-  }
-
-  cli::cli_abort(
-    "{.arg app} must be an {.cls McpApp} object or a path to an app directory."
-  )
+coerce_preview_mcp_app <- function(x) {
+  as_mcp_app(x)
 }
 
 

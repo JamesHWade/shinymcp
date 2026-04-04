@@ -14,7 +14,7 @@ mcp_plot(id, width = "100\%", height = "400px")
 \item{height}{CSS height (default "400px")}
 }
 \value{
-An \link[htmltools:builder]{htmltools::tag} object
+An \link[htmltools:tagList]{htmltools::tagList} with a scoped style and the plot container
 }
 \description{
 Generates a placeholder div for plot output with MCP data attributes.
