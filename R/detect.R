@@ -53,7 +53,10 @@ detect_mcp_role <- function(tag) {
 
   # --- Input pattern ---
 
-  if (grepl("action-button", classes, fixed = TRUE) && tag_name %in% c("a", "button")) {
+  if (
+    grepl("action-button", classes, fixed = TRUE) &&
+      tag_name %in% c("a", "button")
+  ) {
     return(list(role = "input", id = tag_id, type = "button"))
   }
 

@@ -198,7 +198,11 @@ annotate_module_ui <- function(ui, inputs, outputs) {
     detected <- detect_mcp_role(tag)
 
     # Annotate outputs (they have the id directly on the tag)
-    if (!is.null(detected$id) && detected$role == "output" && detected$id %in% output_ids) {
+    if (
+      !is.null(detected$id) &&
+        detected$role == "output" &&
+        detected$id %in% output_ids
+    ) {
       idx <- match(detected$id, output_ids)
       if (!is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-output"))) {
         # Already annotated
@@ -211,7 +215,11 @@ annotate_module_ui <- function(ui, inputs, outputs) {
       }
     }
 
-    if (!is.null(detected$id) && detected$role == "input" && detected$id %in% input_ids) {
+    if (
+      !is.null(detected$id) &&
+        detected$role == "input" &&
+        detected$id %in% input_ids
+    ) {
       if (!has_mcp_annotation(tag)) {
         tag <- mcp_input(tag, id = detected$id)
       }

@@ -151,7 +151,10 @@ as_mcp_app.default <- function(x, ...) {
       }
     )
 
-    candidates <- c(list(sourced$value), mget(ls(env), envir = env, inherits = FALSE))
+    candidates <- c(
+      list(sourced$value),
+      mget(ls(env), envir = env, inherits = FALSE)
+    )
 
     for (obj in candidates) {
       if (inherits(obj, "McpApp")) {
