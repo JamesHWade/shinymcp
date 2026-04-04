@@ -27,6 +27,8 @@ as_mcp_app(x, ...)
 \itemize{
 \item \code{shiny.appobj} (from \code{\link[shiny:shinyApp]{shiny::shinyApp()}})
 \item \code{McpApp} (returned as-is)
+\item A character path to a directory containing \code{app.R}, or a direct path
+to an app file
 }}
 
 \item{...}{Additional arguments passed to methods.}

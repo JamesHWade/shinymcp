@@ -19,8 +19,9 @@ mcp_tool_module(
 \item{module_ui}{A Shiny module UI function that accepts an \code{id} argument
 (e.g., \code{function(id) { ns <- NS(id); tagList(...) }}).}
 
-\item{module_server}{A Shiny module server function (currently stored
-as metadata for Round 2 headless driver support).}
+\item{module_server}{A Shiny module server function. Currently stored as
+metadata for future headless Shiny session support, which will allow the
+module server to execute reactively when tools are called.}
 
 \item{name}{Tool/app name. Used in \verb{ui://} resource URIs.}
 
@@ -37,7 +38,7 @@ from the rendered module UI.}
 \item{version}{App version string.}
 
 \item{...}{Additional arguments stored as module metadata (e.g., shared
-reactive values to pass to the module server in Round 2).}
+reactive values to pass to the module server when headless support lands).}
 }
 \value{
 An \link{McpApp} object.
@@ -45,7 +46,9 @@ An \link{McpApp} object.
 \description{
 Wraps a standard Shiny module (UI function + server function) as an
 \link{McpApp}. The module UI is rendered with MCP-compatible attributes, and
-a tool is created to drive the module's inputs and outputs.
+a tool definition is created that maps to the module's inputs and outputs.
+If a \code{handler} is provided, the tool is fully functional; otherwise, a stub
+handler is generated as a placeholder.
 }
 \details{
 This mirrors \code{shinychat::chat_tool_module()} for the MCP runtime — the

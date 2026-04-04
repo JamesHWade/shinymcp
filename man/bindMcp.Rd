@@ -9,9 +9,9 @@
 \usage{
 bindMcp(tag, ...)
 
-\method{bindMcp}{shiny.tag}(tag, id = NULL, type = NULL, description = NULL, ...)
+\method{bindMcp}{shiny.tag}(tag, id = NULL, type = NULL, ...)
 
-\method{bindMcp}{shiny.tag.list}(tag, id = NULL, type = NULL, description = NULL, ...)
+\method{bindMcp}{shiny.tag.list}(tag, id = NULL, type = NULL, ...)
 
 \method{bindMcp}{default}(tag, ...)
 }
@@ -26,9 +26,6 @@ auto-detected from the tag structure.}
 
 \item{type}{Override the output type (\code{"text"}, \code{"html"}, \code{"plot"}, or
 \code{"table"}). Only used for outputs. If \code{NULL}, auto-detected.}
-
-\item{description}{Optional human-readable description of this element's
-role. Stored as metadata for tool generation.}
 }
 \value{
 The modified \link[htmltools:builder]{htmltools::tag} with MCP attributes stamped.

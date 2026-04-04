@@ -7,15 +7,18 @@
 #'
 #' Wraps a standard Shiny module (UI function + server function) as an
 #' [McpApp]. The module UI is rendered with MCP-compatible attributes, and
-#' a tool is created to drive the module's inputs and outputs.
+#' a tool definition is created that maps to the module's inputs and outputs.
+#' If a `handler` is provided, the tool is fully functional; otherwise, a stub
+#' handler is generated as a placeholder.
 #'
 #' This mirrors `shinychat::chat_tool_module()` for the MCP runtime — the
 #' same module can be used in both contexts.
 #'
 #' @param module_ui A Shiny module UI function that accepts an `id` argument
 #'   (e.g., `function(id) { ns <- NS(id); tagList(...) }`).
-#' @param module_server A Shiny module server function (currently stored
-#'   as metadata for Round 2 headless driver support).
+#' @param module_server A Shiny module server function. Currently stored as
+#'   metadata for future headless Shiny session support, which will allow the
+#'   module server to execute reactively when tools are called.
 #' @param name Tool/app name. Used in `ui://` resource URIs.
 #' @param description Human-readable description of what the tool does.
 #' @param handler Optional tool handler function. If provided, this function
@@ -26,7 +29,7 @@
 #'   from the rendered module UI.
 #' @param version App version string.
 #' @param ... Additional arguments stored as module metadata (e.g., shared
-#'   reactive values to pass to the module server in Round 2).
+#'   reactive values to pass to the module server when headless support lands).
 #'
 #' @return An [McpApp] object.
 #'
@@ -96,11 +99,32 @@ mcp_tool_module <- function(
       class = "shinymcp_error_validation"
     )
   }
+  if (!is.character(description) || length(description) != 1) {
+    rlang::abort(
+      cli::format_inline(
+        "{.arg description} must be a single character string."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
 
   ns_id <- paste0("shinymcp-", name)
 
-  # Render the module UI with namespace
-  ui <- module_ui(ns_id)
+  ui <- tryCatch(
+    module_ui(ns_id),
+    error = function(e) {
+      rlang::abort(
+        c(
+          cli::format_inline(
+            "Error rendering {.arg module_ui} with namespace ID {.val {ns_id}}."
+          ),
+          x = e$message
+        ),
+        class = "shinymcp_error_validation",
+        parent = e
+      )
+    }
+  )
 
   # Auto-detect inputs and outputs from the rendered UI
   detected_inputs <- extract_inputs_from_tags(ui, selective = FALSE)
@@ -109,7 +133,6 @@ mcp_tool_module <- function(
   # Stamp MCP annotations on all detected elements
   ui <- annotate_module_ui(ui, detected_inputs, detected_outputs)
 
-  # Build the tool
   if (!is.null(handler)) {
     # User-provided handler — use ellmer if arguments are provided
     if (!is.null(arguments)) {
@@ -138,7 +161,7 @@ mcp_tool_module <- function(
     )
   }
 
-  # Store module metadata for Round 2 headless driver
+  # Store module metadata for future headless session support
   extra_args <- list(...)
   attr(tool, "module_metadata") <- list(
     module_ui = module_ui,
@@ -200,7 +223,22 @@ annotate_module_ui <- function(ui, inputs, outputs) {
             first <- found$selectedTags()[[1]]
             existing <- htmltools::tagGetAttribute(first, "data-shinymcp-input")
             if (is.null(existing)) {
-              found$addAttrs(`data-shinymcp-input` = form_id)
+              # Target only the first matching element by ID to avoid
+              # stamping siblings (e.g., date range pickers with multiple inputs)
+              el_id <- htmltools::tagGetAttribute(first, "id")
+              if (!is.null(el_id)) {
+                tq$find(paste0(sel, "#", el_id))$addAttrs(
+                  `data-shinymcp-input` = form_id
+                )
+              } else {
+                # No id on element; stamp only the first match manually
+                first <- htmltools::tagAppendAttributes(
+                  first,
+                  `data-shinymcp-input` = form_id
+                )
+                tags <- found$selectedTags()
+                tags[[1]] <- first
+              }
             }
             break
           }
@@ -221,6 +259,10 @@ annotate_module_ui <- function(ui, inputs, outputs) {
   } else if (inherits(ui, "shiny.tag.list") || is.list(ui)) {
     htmltools::tagList(lapply(ui, annotate_tag))
   } else {
+    cli::cli_warn(c(
+      "Cannot annotate UI of class {.cls {class(ui)}} with MCP attributes.",
+      i = "Expected an {.cls htmltools} tag or tagList. Outputs may not be discoverable by the JS bridge."
+    ))
     ui
   }
 }
@@ -235,7 +277,9 @@ build_schema_from_formals <- function(fn) {
   props <- list()
   for (nm in names(frmls)) {
     default <- frmls[[nm]]
-    prop_type <- if (is.numeric(default)) {
+    prop_type <- if (rlang::is_missing(default)) {
+      "string"
+    } else if (is.numeric(default)) {
       "number"
     } else if (is.logical(default)) {
       "boolean"

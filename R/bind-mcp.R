@@ -25,8 +25,6 @@
 #'   auto-detected from the tag structure.
 #' @param type Override the output type (`"text"`, `"html"`, `"plot"`, or
 #'   `"table"`). Only used for outputs. If `NULL`, auto-detected.
-#' @param description Optional human-readable description of this element's
-#'   role. Stored as metadata for tool generation.
 #' @param ... Reserved for future use.
 #' @return The modified [htmltools::tag] with MCP attributes stamped.
 #' @export
@@ -40,7 +38,6 @@ bindMcp.shiny.tag <- function(
   tag,
   id = NULL,
   type = NULL,
-  description = NULL,
   ...
 ) {
   # Idempotency: check if already annotated anywhere in the tree
@@ -88,7 +85,6 @@ bindMcp.shiny.tag.list <- function(
   tag,
   id = NULL,
   type = NULL,
-  description = NULL,
   ...
 ) {
   # For tagLists, try to find a single input/output tag inside and annotate it
@@ -101,7 +97,6 @@ bindMcp.shiny.tag.list <- function(
           child,
           id = id,
           type = type,
-          description = description,
           ...
         )
         return(tag)

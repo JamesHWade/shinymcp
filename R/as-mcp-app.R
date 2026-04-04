@@ -1,6 +1,6 @@
 # as_mcp_app() - convert various objects to McpApp
 #
-# S3 generic that converts Shiny app objects, modules, or other
+# S3 generic that converts Shiny app objects, file paths, or other
 # representations into McpApp instances for serving over MCP.
 
 #' Convert an object to an MCP App
@@ -12,6 +12,8 @@
 #' @param x An object to convert. Currently supports:
 #'   - `shiny.appobj` (from [shiny::shinyApp()])
 #'   - `McpApp` (returned as-is)
+#'   - A character path to a directory containing `app.R`, or a direct path
+#'     to an app file
 #' @param ... Additional arguments passed to methods.
 #' @return An [McpApp] object.
 #'
@@ -59,11 +61,9 @@ as_mcp_app.shiny.appobj <- function(
 ) {
   rlang::check_installed("shiny", reason = "for converting Shiny apps")
 
-  # Extract UI from the shinyApp object
   ui <- extract_shiny_ui(x)
   server_fn <- extract_shiny_server(x)
 
-  # If explicit tools are provided, use them directly
   if (!is.null(tools)) {
     return(mcp_app(
       ui = ui,
@@ -89,7 +89,6 @@ as_mcp_app.shiny.appobj <- function(
     ))
   }
 
-  # Analyze reactive graph and generate tool definitions
   analysis <- analyze_reactive_graph(ir)
   generated_tools <- generate_tools_from_groups(analysis$tool_groups, ir)
 
@@ -138,7 +137,19 @@ as_mcp_app.default <- function(x, ...) {
     env <- new.env(parent = globalenv())
     # Replace serve() with a no-op so sourcing doesn't block on stdio.
     env$serve <- function(...) invisible(NULL)
-    source(app_file, local = env)
+    tryCatch(
+      source(app_file, local = env),
+      error = function(e) {
+        cli::cli_abort(
+          c(
+            "Failed to source {.file {app_file}} for MCP conversion.",
+            x = e$message
+          ),
+          class = "shinymcp_error_validation",
+          parent = e
+        )
+      }
+    )
 
     for (nm in ls(env)) {
       obj <- get(nm, envir = env)
@@ -154,7 +165,7 @@ as_mcp_app.default <- function(x, ...) {
   }
 
   cli::cli_abort(
-    "{.arg app} must be an {.cls McpApp} object or a path to an app directory.",
+    "{.arg x} must be an {.cls McpApp} object or a path to an app directory.",
     class = "shinymcp_error_validation"
   )
 }
@@ -181,11 +192,26 @@ extract_shiny_ui <- function(app) {
   }
 
   if (is.function(ui)) {
-    # UI can be a function(req) - try with NULL, then with no args
+    # UI can be a function(req) — try with NULL, then with no args
     ui <- tryCatch(
       ui(NULL),
       error = function(e) {
-        tryCatch(ui(), error = function(e2) NULL)
+        tryCatch(
+          ui(),
+          error = function(e2) {
+            rlang::abort(
+              c(
+                cli::format_inline(
+                  "Could not extract UI from the {.cls shiny.appobj}."
+                ),
+                i = paste0("Calling ui(NULL) failed: ", e$message),
+                i = paste0("Calling ui() also failed: ", e2$message)
+              ),
+              class = "shinymcp_error_validation",
+              parent = e2
+            )
+          }
+        )
       }
     )
   }
@@ -203,12 +229,20 @@ extract_shiny_ui <- function(app) {
 #' @return A function, or NULL
 #' @noRd
 extract_shiny_server <- function(app) {
-  # Try serverFuncSource first (preferred), then fall back to server field
   if (is.function(app$serverFuncSource)) {
     tryCatch(
       app$serverFuncSource(),
-      error = function(e) NULL
+      error = function(e) {
+        cli::cli_warn(c(
+          "Failed to extract server function via {.fn serverFuncSource}: {e$message}",
+          i = "Reactive analysis will be limited. Tool handlers may need to be provided explicitly."
+        ))
+        # Fall back to the server field if available
+        if (is.function(app$server)) app$server else NULL
+      }
     )
+  } else if (is.function(app$server)) {
+    app$server
   } else {
     NULL
   }
@@ -236,9 +270,10 @@ has_any_mcp_annotations <- function(ui) {
 
 #' Generate ellmer tool definitions from tool groups
 #'
-#' Creates tool objects from the analysis output. In Round 1, tool handler
-#' functions are stubs that describe their expected behavior. In Round 2,
-#' these will be backed by a headless Shiny session.
+#' Creates tool objects from the analysis output. Currently, tool handler
+#' functions are stubs that describe their expected behavior. When headless
+#' Shiny session support is added, these handlers will be backed by a live
+#' session that executes the reactive graph.
 #'
 #' @param tool_groups List of tool groups from [analyze_reactive_graph()]
 #' @param ir The ShinyAppIR for metadata
