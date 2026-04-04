@@ -87,30 +87,48 @@ bindMcp.shiny.tag.list <- function(
   type = NULL,
   ...
 ) {
-  # For tagLists, try to find a single input/output tag inside and annotate it
+  matching_children <- integer()
+
   for (i in seq_along(tag)) {
     child <- tag[[i]]
     if (inherits(child, "shiny.tag")) {
       role <- detect_mcp_role(child)
       if (role$role != "unknown") {
-        tag[[i]] <- bindMcp(
-          child,
-          id = id,
-          type = type,
-          ...
-        )
-        return(tag)
+        matching_children <- c(matching_children, i)
       }
     }
   }
 
-  cli::cli_abort(
-    c(
-      "Cannot determine MCP role for any element in this tagList.",
-      i = "Wrap a specific input or output element with {.fn bindMcp} instead."
-    ),
-    class = "shinymcp_error_validation"
-  )
+  if (length(matching_children) == 0) {
+    cli::cli_abort(
+      c(
+        "Cannot determine MCP role for any element in this tagList.",
+        i = "Wrap a specific input or output element with {.fn bindMcp} instead."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
+
+  if (length(matching_children) > 1 && (!is.null(id) || !is.null(type))) {
+    cli::cli_abort(
+      c(
+        "Cannot apply a single {.arg id} or {.arg type} override to multiple elements in a tagList.",
+        i = "Call {.fn bindMcp} on each element separately when you need explicit overrides."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
+
+  for (i in matching_children) {
+    tag[[i]] <- bindMcp(
+      tag[[i]],
+      id = id,
+      type = type,
+      ...
+    )
+  }
+
+  tag
 }
 
 #' @rdname bindMcp

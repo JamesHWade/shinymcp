@@ -101,6 +101,15 @@ test_that("detect_mcp_role identifies actionButton", {
   expect_equal(result$type, "button")
 })
 
+test_that("detect_mcp_role identifies fileInput", {
+  skip_if_not_installed("shiny")
+  tag <- shiny::fileInput("upload", "Upload:")
+  result <- detect_mcp_role(tag)
+  expect_equal(result$role, "input")
+  expect_equal(result$id, "upload")
+  expect_equal(result$type, "file")
+})
+
 test_that("detect_mcp_role identifies radio buttons", {
   skip_if_not_installed("shiny")
   tag <- shiny::radioButtons("choice", "Choose:", c("A", "B"))
@@ -222,6 +231,33 @@ test_that("bindMcp is idempotent on mcp_select", {
   result <- bindMcp(tag)
   # mcp_select already has data-shinymcp-input, so bindMcp should be a no-op
   expect_identical(as.character(result), as.character(tag))
+})
+
+test_that("bindMcp annotates all matching children in a tagList", {
+  skip_if_not_installed("shiny")
+  tag <- htmltools::tagList(
+    shiny::selectInput("x", "X:", c("a", "b")),
+    shiny::textInput("name", "Name:")
+  )
+
+  result <- bindMcp(tag)
+  rendered <- as.character(result)
+
+  expect_match(rendered, 'data-shinymcp-input="x"')
+  expect_match(rendered, 'data-shinymcp-input="name"')
+})
+
+test_that("bindMcp errors on explicit overrides for multiple tagList matches", {
+  skip_if_not_installed("shiny")
+  tag <- htmltools::tagList(
+    shiny::selectInput("x", "X:", c("a", "b")),
+    shiny::textInput("name", "Name:")
+  )
+
+  expect_error(
+    bindMcp(tag, id = "custom"),
+    class = "shinymcp_error_validation"
+  )
 })
 
 

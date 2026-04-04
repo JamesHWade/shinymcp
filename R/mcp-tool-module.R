@@ -233,11 +233,22 @@ annotate_module_ui <- function(ui, inputs, outputs) {
           detected$id %in% output_dom_ids
       ) {
         idx <- match(detected$id, output_dom_ids)
-        node <- mcp_output(
-          node,
-          id = output_ids[[idx]],
-          type = output_types[[idx]]
-        )
+        if (
+          !identical(
+            htmltools::tagGetAttribute(node, "data-shinymcp-output"),
+            output_ids[[idx]]
+          ) ||
+            !identical(
+              htmltools::tagGetAttribute(node, "data-shinymcp-output-type"),
+              output_types[[idx]]
+            )
+        ) {
+          node <- mcp_output(
+            node,
+            id = output_ids[[idx]],
+            type = output_types[[idx]]
+          )
+        }
       }
 
       if (
@@ -246,7 +257,9 @@ annotate_module_ui <- function(ui, inputs, outputs) {
           detected$id %in% input_dom_ids
       ) {
         idx <- match(detected$id, input_dom_ids)
-        node <- mcp_input(node, id = input_ids[[idx]])
+        if (!has_mcp_annotation(node)) {
+          node <- mcp_input(node, id = input_ids[[idx]])
+        }
       }
 
       if (!is.null(node$children)) {

@@ -98,7 +98,7 @@ find_form_element_id <- function(tag) {
 #'
 #' @param tag An [htmltools::tag] with class "shiny-input-container"
 #' @return Character string: "select", "text", "numeric", "checkbox",
-#'   "radio", "slider", "date", "button", or "unknown"
+#'   "radio", "slider", "date", "file", "button", or "unknown"
 #' @noRd
 detect_input_type <- function(tag) {
   tq <- htmltools::tagQuery(tag)
@@ -146,6 +146,7 @@ detect_input_type <- function(tag) {
       checkbox = "checkbox",
       radio = "radio",
       date = "date",
+      file = "file",
       text = "text",
       password = "text",
       "text"

@@ -70,7 +70,9 @@ as_mcp_app.shiny.appobj <- function(
 
   if (!is.null(tools)) {
     explicit_inputs <- extract_inputs_from_tags(ui, selective = selective)
-    explicit_outputs <- extract_outputs_from_tags(ui, selective = selective)
+    # Explicit tools define the interaction contract, but the UI still needs all
+    # detected outputs annotated so returned fields can render in the browser.
+    explicit_outputs <- extract_outputs_from_tags(ui, selective = FALSE)
     ui <- annotate_module_ui(ui, explicit_inputs, explicit_outputs)
 
     return(mcp_app(

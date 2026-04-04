@@ -65,6 +65,39 @@ test_that("as_mcp_app uses explicit tools when provided", {
   expect_match(mcp$html_resource(), 'data-shinymcp-output="result"')
 })
 
+test_that("as_mcp_app with explicit tools still annotates outputs in selective mode", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::selectInput("x", "X:", c("a", "b")) |> bindMcp(),
+    shiny::numericInput("n", "N:", 10),
+    shiny::textOutput("result")
+  )
+  server <- function(input, output, session) {
+    output$result <- shiny::renderText(input$x)
+  }
+  explicit_tool <- list(
+    name = "my_tool",
+    description = "A custom tool",
+    fun = function(x = "a") list(result = x),
+    inputSchema = list(
+      type = "object",
+      properties = list(x = list(type = "string"))
+    )
+  )
+
+  app <- shiny::shinyApp(ui, server)
+  mcp <- as_mcp_app(
+    app,
+    name = "explicit-selective",
+    tools = list(explicit_tool)
+  )
+  html <- mcp$html_resource()
+
+  expect_match(html, 'data-shinymcp-input="x"')
+  expect_no_match(html, 'data-shinymcp-input="n"')
+  expect_match(html, 'data-shinymcp-output="result"')
+})
+
 test_that("as_mcp_app.McpApp is identity", {
   ui <- htmltools::tags$div("hello")
   app <- McpApp$new(ui = ui, tools = list(), name = "identity")
