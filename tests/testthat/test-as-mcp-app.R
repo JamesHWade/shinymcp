@@ -74,6 +74,33 @@ test_that("as_mcp_app.default errors on bad input", {
   expect_error(as_mcp_app(42), class = "shinymcp_error_validation")
 })
 
+test_that("as_mcp_app converts a path containing a standard shiny app", {
+  skip_if_not_installed("shiny")
+
+  app_dir <- tempfile("shinymcp-path-app-")
+  dir.create(app_dir)
+  on.exit(unlink(app_dir, recursive = TRUE), add = TRUE)
+
+  writeLines(
+    c(
+      "library(shiny)",
+      "ui <- fluidPage(",
+      "  selectInput(\"x\", \"X:\", c(\"a\", \"b\")),",
+      "  textOutput(\"result\")",
+      ")",
+      "server <- function(input, output, session) {",
+      "  output$result <- renderText(input$x)",
+      "}",
+      "shinyApp(ui, server)"
+    ),
+    file.path(app_dir, "app.R")
+  )
+
+  mcp <- as_mcp_app(app_dir, name = "path-app", selective = FALSE)
+  expect_s3_class(mcp, "McpApp")
+  expect_equal(mcp$name, "path-app")
+})
+
 
 # ---- mcp_tool_module ----
 
@@ -186,6 +213,60 @@ test_that("mcp_tool_module annotates module UI for JS bridge", {
 
   html <- app$html_resource()
   expect_match(html, "data-shinymcp-output")
+})
+
+test_that("mcp_tool_module annotates date inputs without inner ids", {
+  skip_if_not_installed("shiny")
+  mod_ui <- function(id) {
+    ns <- shiny::NS(id)
+    htmltools::tagList(
+      shiny::dateInput(ns("when"), "When:"),
+      shiny::textOutput(ns("result"))
+    )
+  }
+  mod_server <- function(id) {
+    shiny::moduleServer(id, function(input, output, session) {
+      output$result <- shiny::renderText(input$when)
+    })
+  }
+
+  app <- mcp_tool_module(
+    mod_ui,
+    mod_server,
+    name = "date-mod",
+    description = "Test date annotation",
+    handler = function(when = "2024-01-01") list(result = when)
+  )
+
+  html <- app$html_resource()
+  expect_match(html, 'data-shinymcp-input="shinymcp-date-mod-when"')
+})
+
+test_that("mcp_tool_module annotates direct action buttons", {
+  skip_if_not_installed("shiny")
+  mod_ui <- function(id) {
+    ns <- shiny::NS(id)
+    htmltools::tagList(
+      shiny::actionButton(ns("go"), "Go"),
+      shiny::textOutput(ns("result"))
+    )
+  }
+  mod_server <- function(id) {
+    shiny::moduleServer(id, function(input, output, session) {
+      output$result <- shiny::renderText(input$go)
+    })
+  }
+
+  app <- mcp_tool_module(
+    mod_ui,
+    mod_server,
+    name = "action-mod",
+    description = "Test action button annotation",
+    handler = function(go = 1) list(result = as.character(go))
+  )
+
+  html <- app$html_resource()
+  expect_match(html, 'data-shinymcp-input="shinymcp-action-mod-go"')
 })
 
 test_that("mcp_tool_module stores module metadata", {

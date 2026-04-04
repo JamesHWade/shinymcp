@@ -195,55 +195,25 @@ annotate_module_ui <- function(ui, inputs, outputs) {
       return(tag)
     }
 
-    tag_id <- htmltools::tagGetAttribute(tag, "id")
-    classes <- htmltools::tagGetAttribute(tag, "class") %||% ""
+    detected <- detect_mcp_role(tag)
 
     # Annotate outputs (they have the id directly on the tag)
-    if (!is.null(tag_id) && tag_id %in% output_ids) {
-      idx <- match(tag_id, output_ids)
+    if (!is.null(detected$id) && detected$role == "output" && detected$id %in% output_ids) {
+      idx <- match(detected$id, output_ids)
       if (!is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-output"))) {
         # Already annotated
       } else {
-        tag <- htmltools::tagAppendAttributes(
+        tag <- mcp_output(
           tag,
-          `data-shinymcp-output` = tag_id,
-          `data-shinymcp-output-type` = output_types[idx]
+          id = detected$id,
+          type = output_types[[idx]]
         )
       }
     }
 
-    # Annotate input containers (find form element inside)
-    if (grepl("shiny-input-container", classes, fixed = TRUE)) {
-      form_id <- find_form_element_id(tag)
-      if (!is.null(form_id) && form_id %in% input_ids) {
-        tq <- htmltools::tagQuery(tag)
-        for (sel in c("select", "input", "textarea", "button")) {
-          found <- tq$find(sel)
-          if (found$length() > 0) {
-            first <- found$selectedTags()[[1]]
-            existing <- htmltools::tagGetAttribute(first, "data-shinymcp-input")
-            if (is.null(existing)) {
-              # Target only the first matching element by ID to avoid
-              # stamping siblings (e.g., date range pickers with multiple inputs)
-              el_id <- htmltools::tagGetAttribute(first, "id")
-              if (!is.null(el_id)) {
-                tq$find(paste0(sel, "#", el_id))$addAttrs(
-                  `data-shinymcp-input` = form_id
-                )
-              } else {
-                # No id on element; stamp only the first match manually
-                first <- htmltools::tagAppendAttributes(
-                  first,
-                  `data-shinymcp-input` = form_id
-                )
-                tags <- found$selectedTags()
-                tags[[1]] <- first
-              }
-            }
-            break
-          }
-        }
-        tag <- tq$allTags()
+    if (!is.null(detected$id) && detected$role == "input" && detected$id %in% input_ids) {
+      if (!has_mcp_annotation(tag)) {
+        tag <- mcp_input(tag, id = detected$id)
       }
     }
 

@@ -29,6 +29,15 @@ test_that("detect_mcp_role identifies verbatimTextOutput", {
   expect_equal(result$type, "text")
 })
 
+test_that("detect_mcp_role identifies tableOutput", {
+  skip_if_not_installed("shiny")
+  tag <- shiny::tableOutput("tbl")
+  result <- detect_mcp_role(tag)
+  expect_equal(result$role, "output")
+  expect_equal(result$id, "tbl")
+  expect_equal(result$type, "table")
+})
+
 test_that("detect_mcp_role identifies Shiny select input", {
   skip_if_not_installed("shiny")
   tag <- shiny::selectInput("x", "Choose:", c("a", "b"))
@@ -65,6 +74,15 @@ test_that("detect_mcp_role identifies checkbox input", {
   expect_equal(result$type, "checkbox")
 })
 
+test_that("detect_mcp_role identifies date input", {
+  skip_if_not_installed("shiny")
+  tag <- shiny::dateInput("when", "When:")
+  result <- detect_mcp_role(tag)
+  expect_equal(result$role, "input")
+  expect_equal(result$id, "when")
+  expect_equal(result$type, "date")
+})
+
 test_that("detect_mcp_role identifies slider input", {
   skip_if_not_installed("shiny")
   tag <- shiny::sliderInput("val", "Value:", min = 0, max = 100, value = 50)
@@ -72,6 +90,15 @@ test_that("detect_mcp_role identifies slider input", {
   expect_equal(result$role, "input")
   expect_equal(result$id, "val")
   expect_equal(result$type, "slider")
+})
+
+test_that("detect_mcp_role identifies actionButton", {
+  skip_if_not_installed("shiny")
+  tag <- shiny::actionButton("go", "Go")
+  result <- detect_mcp_role(tag)
+  expect_equal(result$role, "input")
+  expect_equal(result$id, "go")
+  expect_equal(result$type, "button")
 })
 
 test_that("detect_mcp_role identifies radio buttons", {
@@ -157,6 +184,23 @@ test_that("bindMcp stamps data-shinymcp-output on verbatimTextOutput", {
   rendered <- as.character(result)
   expect_match(rendered, 'data-shinymcp-output="code"')
   expect_match(rendered, 'data-shinymcp-output-type="text"')
+})
+
+test_that("bindMcp stamps data-shinymcp-output on tableOutput", {
+  skip_if_not_installed("shiny")
+  tag <- shiny::tableOutput("tbl")
+  result <- bindMcp(tag)
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-output="tbl"')
+  expect_match(rendered, 'data-shinymcp-output-type="table"')
+})
+
+test_that("bindMcp stamps data-shinymcp-input on actionButton", {
+  skip_if_not_installed("shiny")
+  tag <- shiny::actionButton("go", "Go")
+  result <- bindMcp(tag)
+  rendered <- as.character(result)
+  expect_match(rendered, 'data-shinymcp-input="go"')
 })
 
 

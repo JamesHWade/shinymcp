@@ -20,6 +20,7 @@ detect_mcp_role <- function(tag) {
 
   classes <- htmltools::tagGetAttribute(tag, "class") %||% ""
   tag_id <- htmltools::tagGetAttribute(tag, "id")
+  tag_name <- tolower(tag$name %||% "")
 
   # --- Output patterns (more specific, check first) ---
 
@@ -29,6 +30,10 @@ detect_mcp_role <- function(tag) {
 
   if (grepl("shiny-text-output", classes, fixed = TRUE)) {
     return(list(role = "output", id = tag_id, type = "text"))
+  }
+
+  if (grepl("shiny-table-output", classes, fixed = TRUE)) {
+    return(list(role = "output", id = tag_id, type = "table"))
   }
 
   if (grepl("shiny-html-output", classes, fixed = TRUE)) {
@@ -47,6 +52,10 @@ detect_mcp_role <- function(tag) {
   }
 
   # --- Input pattern ---
+
+  if (grepl("action-button", classes, fixed = TRUE) && tag_name %in% c("a", "button")) {
+    return(list(role = "input", id = tag_id, type = "button"))
+  }
 
   if (grepl("shiny-input-container", classes, fixed = TRUE)) {
     input_id <- find_form_element_id(tag) %||% tag_id
@@ -90,6 +99,22 @@ find_form_element_id <- function(tag) {
 #' @noRd
 detect_input_type <- function(tag) {
   tq <- htmltools::tagQuery(tag)
+  classes <- htmltools::tagGetAttribute(tag, "class") %||% ""
+
+  if (
+    grepl("shiny-date-input", classes, fixed = TRUE) ||
+      grepl("shiny-date-range-input", classes, fixed = TRUE)
+  ) {
+    return("date")
+  }
+
+  if (grepl("shiny-input-radiogroup", classes, fixed = TRUE)) {
+    return("radio")
+  }
+
+  if (grepl("shiny-input-checkboxgroup", classes, fixed = TRUE)) {
+    return("checkbox")
+  }
 
   if (tq$find("select")$length() > 0) {
     return("select")

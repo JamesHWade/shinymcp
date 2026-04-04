@@ -137,7 +137,7 @@ as_mcp_app.default <- function(x, ...) {
     env <- new.env(parent = globalenv())
     # Replace serve() with a no-op so sourcing doesn't block on stdio.
     env$serve <- function(...) invisible(NULL)
-    tryCatch(
+    sourced <- tryCatch(
       source(app_file, local = env),
       error = function(e) {
         cli::cli_abort(
@@ -151,15 +151,22 @@ as_mcp_app.default <- function(x, ...) {
       }
     )
 
-    for (nm in ls(env)) {
-      obj <- get(nm, envir = env)
+    candidates <- c(list(sourced$value), mget(ls(env), envir = env, inherits = FALSE))
+
+    for (obj in candidates) {
       if (inherits(obj, "McpApp")) {
         return(obj)
       }
     }
 
+    for (obj in candidates) {
+      if (inherits(obj, "shiny.appobj")) {
+        return(as_mcp_app(obj, ...))
+      }
+    }
+
     cli::cli_abort(
-      "No {.cls McpApp} object found in {.file {app_file}}.",
+      "No {.cls McpApp} or {.cls shiny.appobj} object found in {.file {app_file}}.",
       class = "shinymcp_error_validation"
     )
   }
