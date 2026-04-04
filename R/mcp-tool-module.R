@@ -129,6 +129,8 @@ mcp_tool_module <- function(
   # Auto-detect inputs and outputs from the rendered UI
   detected_inputs <- extract_inputs_from_tags(ui, selective = FALSE)
   detected_outputs <- extract_outputs_from_tags(ui, selective = FALSE)
+  detected_inputs <- normalize_module_bindings(detected_inputs, ns_id)
+  detected_outputs <- normalize_module_bindings(detected_outputs, ns_id)
 
   # Stamp MCP annotations on all detected elements
   ui <- annotate_module_ui(ui, detected_inputs, detected_outputs)
@@ -174,6 +176,32 @@ mcp_tool_module <- function(
 }
 
 
+#' Normalize namespaced module bindings to public-facing ids
+#'
+#' @param bindings List of input or output definitions
+#' @param ns_id Module namespace prefix used in the DOM
+#' @return The bindings list with DOM ids preserved separately
+#' @noRd
+normalize_module_bindings <- function(bindings, ns_id) {
+  prefix <- paste0(ns_id, "-")
+
+  lapply(bindings, function(binding) {
+    binding$dom_id <- binding$dom_id %||% binding$id
+
+    if (
+      !is.null(binding$id) &&
+        !is.null(binding$dom_id) &&
+        identical(binding$id, binding$dom_id) &&
+        startsWith(binding$id, prefix)
+    ) {
+      binding$id <- substr(binding$id, nchar(prefix) + 1L, nchar(binding$id))
+    }
+
+    binding
+  })
+}
+
+
 #' Annotate module UI tags with MCP attributes
 #'
 #' Stamps `data-shinymcp-input` and `data-shinymcp-output` on detected
@@ -186,56 +214,68 @@ mcp_tool_module <- function(
 #' @noRd
 annotate_module_ui <- function(ui, inputs, outputs) {
   input_ids <- vapply(inputs, function(x) x$id, character(1))
+  input_dom_ids <- vapply(inputs, function(x) x$dom_id %||% x$id, character(1))
   output_ids <- vapply(outputs, function(x) x$id, character(1))
+  output_dom_ids <- vapply(
+    outputs,
+    function(x) x$dom_id %||% x$id,
+    character(1)
+  )
   output_types <- vapply(outputs, function(x) x$type %||% "html", character(1))
 
-  # Walk and annotate
-  annotate_tag <- function(tag) {
-    if (!inherits(tag, "shiny.tag")) {
-      return(tag)
-    }
+  annotate_node <- function(node) {
+    if (inherits(node, "shiny.tag")) {
+      detected <- detect_mcp_role(node)
 
-    detected <- detect_mcp_role(tag)
-
-    # Annotate outputs (they have the id directly on the tag)
-    if (
-      !is.null(detected$id) &&
-        detected$role == "output" &&
-        detected$id %in% output_ids
-    ) {
-      idx <- match(detected$id, output_ids)
-      if (!is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-output"))) {
-        # Already annotated
-      } else {
-        tag <- mcp_output(
-          tag,
-          id = detected$id,
+      if (
+        !is.null(detected$id) &&
+          detected$role == "output" &&
+          detected$id %in% output_dom_ids
+      ) {
+        idx <- match(detected$id, output_dom_ids)
+        node <- mcp_output(
+          node,
+          id = output_ids[[idx]],
           type = output_types[[idx]]
         )
       }
-    }
 
-    if (
-      !is.null(detected$id) &&
-        detected$role == "input" &&
-        detected$id %in% input_ids
-    ) {
-      if (!has_mcp_annotation(tag)) {
-        tag <- mcp_input(tag, id = detected$id)
+      if (
+        !is.null(detected$id) &&
+          detected$role == "input" &&
+          detected$id %in% input_dom_ids
+      ) {
+        idx <- match(detected$id, input_dom_ids)
+        node <- mcp_input(node, id = input_ids[[idx]])
       }
+
+      if (!is.null(node$children)) {
+        for (i in seq_along(node$children)) {
+          node$children[i] <- list(annotate_node(node$children[[i]]))
+        }
+      }
+
+      return(node)
     }
 
-    # Recurse into children
-    if (!is.null(tag$children)) {
-      tag$children <- lapply(tag$children, annotate_tag)
+    if (inherits(node, "html_dependency")) {
+      return(node)
     }
-    tag
+
+    if (is.list(node)) {
+      for (i in seq_along(node)) {
+        node[i] <- list(annotate_node(node[[i]]))
+      }
+      return(node)
+    }
+
+    node
   }
 
-  if (inherits(ui, "shiny.tag")) {
-    annotate_tag(ui)
-  } else if (inherits(ui, "shiny.tag.list") || is.list(ui)) {
-    htmltools::tagList(lapply(ui, annotate_tag))
+  if (
+    inherits(ui, "shiny.tag") || inherits(ui, "shiny.tag.list") || is.list(ui)
+  ) {
+    annotate_node(ui)
   } else {
     cli::cli_warn(c(
       "Cannot annotate UI of class {.cls {class(ui)}} with MCP attributes.",

@@ -673,6 +673,23 @@ parse_shiny_app_object <- function(ui, server_body = NULL, selective = FALSE) {
 }
 
 
+#' Infer the DOM id for a tag that participates in MCP binding
+#'
+#' @param tag An htmltools tag
+#' @param role Either "input" or "output"
+#' @return Character string DOM id, or NULL
+#' @noRd
+infer_mcp_dom_id <- function(tag, role = c("input", "output")) {
+  role <- match.arg(role)
+
+  if (role == "output") {
+    return(htmltools::tagGetAttribute(tag, "id"))
+  }
+
+  htmltools::tagGetAttribute(tag, "id") %||% find_form_element_id(tag)
+}
+
+
 #' Extract input definitions by walking an htmltools tag tree
 #'
 #' @param ui An htmltools tag or tagList
@@ -695,6 +712,7 @@ extract_inputs_from_tags <- function(ui, selective = FALSE) {
       seen_ids[length(seen_ids) + 1L] <<- mcp_id
       inputs[[length(inputs) + 1L]] <<- list(
         id = mcp_id,
+        dom_id = infer_mcp_dom_id(tag, "input"),
         type = mcp_type %||% detect_input_type(tag),
         label = extract_label_from_tag(tag) %||% mcp_id,
         fn_name = "unknown"
@@ -712,6 +730,7 @@ extract_inputs_from_tags <- function(ui, selective = FALSE) {
       seen_ids[length(seen_ids) + 1L] <<- role$id
       inputs[[length(inputs) + 1L]] <<- list(
         id = role$id,
+        dom_id = role$id,
         type = role$type %||% "unknown",
         label = extract_label_from_tag(tag) %||% role$id,
         fn_name = "unknown"
@@ -745,6 +764,7 @@ extract_outputs_from_tags <- function(ui, selective = FALSE) {
       seen_ids[length(seen_ids) + 1L] <<- mcp_id
       outputs[[length(outputs) + 1L]] <<- list(
         id = mcp_id,
+        dom_id = infer_mcp_dom_id(tag, "output"),
         type = mcp_type %||% "html"
       )
       return()
@@ -762,6 +782,7 @@ extract_outputs_from_tags <- function(ui, selective = FALSE) {
       seen_ids[length(seen_ids) + 1L] <<- role$id
       outputs[[length(outputs) + 1L]] <<- list(
         id = role$id,
+        dom_id = role$id,
         type = role$type %||% "html"
       )
     }

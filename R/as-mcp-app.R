@@ -64,18 +64,21 @@ as_mcp_app.shiny.appobj <- function(
   ui <- extract_shiny_ui(x)
   server_fn <- extract_shiny_server(x)
 
+  if (is.null(selective)) {
+    selective <- has_any_mcp_annotations(ui)
+  }
+
   if (!is.null(tools)) {
+    explicit_inputs <- extract_inputs_from_tags(ui, selective = selective)
+    explicit_outputs <- extract_outputs_from_tags(ui, selective = selective)
+    ui <- annotate_module_ui(ui, explicit_inputs, explicit_outputs)
+
     return(mcp_app(
       ui = ui,
       tools = tools,
       name = name %||% "shinymcp-app",
       version = version
     ))
-  }
-
-  # Determine selective mode: auto-detect if any bindMcp() annotations exist
-  if (is.null(selective)) {
-    selective <- has_any_mcp_annotations(ui)
   }
 
   # Parse UI tags + server body into IR
@@ -138,7 +141,7 @@ as_mcp_app.default <- function(x, ...) {
     # Replace serve() with a no-op so sourcing doesn't block on stdio.
     env$serve <- function(...) invisible(NULL)
     sourced <- tryCatch(
-      source(app_file, local = env),
+      source(app_file, local = env, chdir = TRUE),
       error = function(e) {
         cli::cli_abort(
           c(
@@ -347,7 +350,6 @@ make_stub_handler <- function(input_args, output_targets) {
   output_ids <- vapply(output_targets, function(o) o$id, character(1))
 
   fn <- function(...) {
-    args <- list(...)
     result <- setNames(
       lapply(output_ids, function(id) {
         paste0("[Output '", id, "' - provide a handler via `tools` argument]")

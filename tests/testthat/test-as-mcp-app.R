@@ -61,6 +61,8 @@ test_that("as_mcp_app uses explicit tools when provided", {
   tool_defs <- mcp$tool_definitions()
   expect_equal(length(tool_defs), 1)
   expect_equal(tool_defs[[1]]$name, "my_tool")
+  expect_match(mcp$html_resource(), 'data-shinymcp-input="x"')
+  expect_match(mcp$html_resource(), 'data-shinymcp-output="result"')
 })
 
 test_that("as_mcp_app.McpApp is identity", {
@@ -99,6 +101,41 @@ test_that("as_mcp_app converts a path containing a standard shiny app", {
   mcp <- as_mcp_app(app_dir, name = "path-app", selective = FALSE)
   expect_s3_class(mcp, "McpApp")
   expect_equal(mcp$name, "path-app")
+})
+
+test_that("as_mcp_app sources path-based apps relative to app directory", {
+  skip_if_not_installed("shiny")
+
+  app_dir <- tempfile("shinymcp-relative-app-")
+  dir.create(app_dir)
+  on.exit(unlink(app_dir, recursive = TRUE), add = TRUE)
+
+  writeLines(
+    c(
+      "get_choices <- function() c(\"a\", \"b\")"
+    ),
+    file.path(app_dir, "helpers.R")
+  )
+
+  writeLines(
+    c(
+      "library(shiny)",
+      "source(\"helpers.R\")",
+      "ui <- fluidPage(",
+      "  selectInput(\"x\", \"X:\", get_choices()),",
+      "  textOutput(\"result\")",
+      ")",
+      "server <- function(input, output, session) {",
+      "  output$result <- renderText(input$x)",
+      "}",
+      "shinyApp(ui, server)"
+    ),
+    file.path(app_dir, "app.R")
+  )
+
+  mcp <- as_mcp_app(app_dir, name = "relative-path-app", selective = FALSE)
+  expect_s3_class(mcp, "McpApp")
+  expect_equal(mcp$name, "relative-path-app")
 })
 
 
@@ -169,6 +206,10 @@ test_that("mcp_tool_module creates stub when no handler provided", {
   # Tool should exist but handler is a stub
   tool_defs <- app$tool_definitions()
   expect_equal(length(tool_defs), 1)
+  expect_named(tool_defs[[1]]$inputSchema$properties, "x")
+
+  result <- app$call_tool("stub-module", list(x = "a"))
+  expect_true("out" %in% names(result))
 })
 
 test_that("mcp_tool_module validates inputs", {
@@ -212,7 +253,8 @@ test_that("mcp_tool_module annotates module UI for JS bridge", {
   # Check the HTML resource has MCP annotations
 
   html <- app$html_resource()
-  expect_match(html, "data-shinymcp-output")
+  expect_match(html, 'data-shinymcp-input="dataset"')
+  expect_match(html, 'data-shinymcp-output="plot"')
 })
 
 test_that("mcp_tool_module annotates date inputs without inner ids", {
@@ -239,7 +281,7 @@ test_that("mcp_tool_module annotates date inputs without inner ids", {
   )
 
   html <- app$html_resource()
-  expect_match(html, 'data-shinymcp-input="shinymcp-date-mod-when"')
+  expect_match(html, 'data-shinymcp-input="when"')
 })
 
 test_that("mcp_tool_module annotates direct action buttons", {
@@ -266,7 +308,7 @@ test_that("mcp_tool_module annotates direct action buttons", {
   )
 
   html <- app$html_resource()
-  expect_match(html, 'data-shinymcp-input="shinymcp-action-mod-go"')
+  expect_match(html, 'data-shinymcp-input="go"')
 })
 
 test_that("mcp_tool_module stores module metadata", {
