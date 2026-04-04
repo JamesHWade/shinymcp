@@ -25,5 +25,5 @@ mcp_plot(id, width = "100%", height = "400px")
 ## Value
 
 An
-[htmltools::tag](https://rstudio.github.io/htmltools/reference/builder.html)
-object
+[htmltools::tagList](https://rstudio.github.io/htmltools/reference/tagList.html)
+with a scoped style and the plot container

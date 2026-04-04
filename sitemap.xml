@@ -12,6 +12,8 @@
 <url><loc>https://jameshwade.github.io/shinymcp/index.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/McpApp.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/analyze_reactive_graph.html</loc></url>
+<url><loc>https://jameshwade.github.io/shinymcp/reference/as_mcp_app.html</loc></url>
+<url><loc>https://jameshwade.github.io/shinymcp/reference/bindMcp.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/bridge_config_tag.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/bridge_script_tag.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/convert_app.html</loc></url>
@@ -31,6 +33,7 @@
 <url><loc>https://jameshwade.github.io/shinymcp/reference/mcp_table.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/mcp_text.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/mcp_text_input.html</loc></url>
+<url><loc>https://jameshwade.github.io/shinymcp/reference/mcp_tool_module.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/parse_shiny_app.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/preview_app.html</loc></url>
 <url><loc>https://jameshwade.github.io/shinymcp/reference/print.ReactiveAnalysis.html</loc></url>

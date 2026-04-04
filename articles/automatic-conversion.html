@@ -163,11 +163,11 @@ their IDs and types</li>
 <strong>Server body</strong>: The body of the <code>server</code>
 function</li>
 <li>
-<strong>Reactives</strong>: All <code>reactive()</code> expressions
+<strong>Reactives</strong>: All <code><a href="https://rdrr.io/pkg/shiny/man/reactive.html" class="external-link">reactive()</a></code> expressions
 with their input dependencies</li>
 <li>
-<strong>Observers</strong>: All <code>observe()</code> and
-<code>observeEvent()</code> calls</li>
+<strong>Observers</strong>: All <code><a href="https://rdrr.io/pkg/shiny/man/observe.html" class="external-link">observe()</a></code> and
+<code><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent()</a></code> calls</li>
 <li>
 <strong>Input refs</strong>: Every <code>input$name</code> and
 <code>input[["name"]]</code> reference</li>
@@ -224,8 +224,8 @@ outputs as return values</li>
 <strong>Flags unresolvable patterns</strong> — dynamic UI, file
 uploads, download handlers, and observers with side effects</li>
 </ol>
-<p>For example, a Shiny app where a <code>reactive()</code> feeds both
-<code>renderPlot()</code> and <code>renderText()</code> produces a
+<p>For example, a Shiny app where a <code><a href="https://rdrr.io/pkg/shiny/man/reactive.html" class="external-link">reactive()</a></code> feeds both
+<code><a href="https://rdrr.io/pkg/shiny/man/renderPlot.html" class="external-link">renderPlot()</a></code> and <code><a href="https://rdrr.io/pkg/shiny/man/renderPrint.html" class="external-link">renderText()</a></code> produces a
 single tool group containing all related inputs and both outputs.</p>
 </div>
 <div class="section level3">
@@ -265,58 +265,58 @@ needs manual review</li>
 </tr></thead>
 <tbody>
 <tr class="odd">
-<td><code>selectInput()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput()</a></code></td>
 <td><code><a href="../reference/mcp_select.html">mcp_select()</a></code></td>
 </tr>
 <tr class="even">
-<td><code>textInput()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/textInput.html" class="external-link">textInput()</a></code></td>
 <td><code><a href="../reference/mcp_text_input.html">mcp_text_input()</a></code></td>
 </tr>
 <tr class="odd">
-<td><code>numericInput()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/numericInput.html" class="external-link">numericInput()</a></code></td>
 <td><code><a href="../reference/mcp_numeric_input.html">mcp_numeric_input()</a></code></td>
 </tr>
 <tr class="even">
-<td><code>checkboxInput()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/checkboxInput.html" class="external-link">checkboxInput()</a></code></td>
 <td><code><a href="../reference/mcp_checkbox.html">mcp_checkbox()</a></code></td>
 </tr>
 <tr class="odd">
-<td><code>sliderInput()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/sliderInput.html" class="external-link">sliderInput()</a></code></td>
 <td><code><a href="../reference/mcp_slider.html">mcp_slider()</a></code></td>
 </tr>
 <tr class="even">
-<td><code>radioButtons()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/radioButtons.html" class="external-link">radioButtons()</a></code></td>
 <td>
 <code><a href="../reference/mcp_radio.html">mcp_radio()</a></code> (or <code><a href="../reference/mcp_select.html">mcp_select()</a></code>)</td>
 </tr>
 <tr class="odd">
-<td><code>actionButton()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/actionButton.html" class="external-link">actionButton()</a></code></td>
 <td><code><a href="../reference/mcp_action_button.html">mcp_action_button()</a></code></td>
 </tr>
 <tr class="even">
-<td><code>plotOutput()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/plotOutput.html" class="external-link">plotOutput()</a></code></td>
 <td>
 <code><a href="../reference/mcp_plot.html">mcp_plot()</a></code> with base64 PNG rendering</td>
 </tr>
 <tr class="odd">
 <td>
-<code>textOutput()</code> / <code>verbatimTextOutput()</code>
+<code><a href="https://rdrr.io/pkg/shiny/man/textOutput.html" class="external-link">textOutput()</a></code> / <code><a href="https://rdrr.io/pkg/shiny/man/textOutput.html" class="external-link">verbatimTextOutput()</a></code>
 </td>
 <td><code><a href="../reference/mcp_text.html">mcp_text()</a></code></td>
 </tr>
 <tr class="even">
-<td><code>tableOutput()</code></td>
+<td><code><a href="https://rdrr.io/pkg/shiny/man/renderTable.html" class="external-link">tableOutput()</a></code></td>
 <td><code><a href="../reference/mcp_table.html">mcp_table()</a></code></td>
 </tr>
 <tr class="odd">
 <td>
-<code>htmlOutput()</code> / <code>uiOutput()</code>
+<code><a href="https://rdrr.io/pkg/shiny/man/htmlOutput.html" class="external-link">htmlOutput()</a></code> / <code><a href="https://rdrr.io/pkg/shiny/man/htmlOutput.html" class="external-link">uiOutput()</a></code>
 </td>
 <td><code><a href="../reference/mcp_html.html">mcp_html()</a></code></td>
 </tr>
 <tr class="even">
 <td>
-<code>reactive()</code> chains</td>
+<code><a href="https://rdrr.io/pkg/shiny/man/reactive.html" class="external-link">reactive()</a></code> chains</td>
 <td>Flattened into tool function body</td>
 </tr>
 <tr class="odd">
@@ -384,7 +384,7 @@ computation:</p>
 <div class="section level3">
 <h3 id="dynamic-ui">Dynamic UI<a class="anchor" aria-label="anchor" href="#dynamic-ui"></a>
 </h3>
-<p><code>uiOutput()</code> / <code>renderUI()</code> is flagged as a
+<p><code><a href="https://rdrr.io/pkg/shiny/man/htmlOutput.html" class="external-link">uiOutput()</a></code> / <code><a href="https://rdrr.io/pkg/shiny/man/renderUI.html" class="external-link">renderUI()</a></code> is flagged as a
 warning. Replace with <code><a href="../reference/mcp_html.html">mcp_html()</a></code> and return HTML strings
 from the tool:</p>
 <div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
@@ -401,7 +401,7 @@ from the tool:</p>
 <div class="section level3">
 <h3 id="observers-and-side-effects">Observers and side effects<a class="anchor" aria-label="anchor" href="#observers-and-side-effects"></a>
 </h3>
-<p><code>observe()</code> and <code>observeEvent()</code> calls are
+<p><code><a href="https://rdrr.io/pkg/shiny/man/observe.html" class="external-link">observe()</a></code> and <code><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent()</a></code> calls are
 flagged since they often perform side effects (database writes, file
 operations) that don’t map cleanly to stateless tool calls. Review each
 observer and decide:</p>
@@ -414,7 +414,7 @@ observer and decide:</p>
 <div class="section level3">
 <h3 id="file-uploads">File uploads<a class="anchor" aria-label="anchor" href="#file-uploads"></a>
 </h3>
-<p><code>fileInput()</code> is not supported. The generator warns about
+<p><code><a href="https://rdrr.io/pkg/shiny/man/fileInput.html" class="external-link">fileInput()</a></code> is not supported. The generator warns about
 this. Use <code><a href="../reference/mcp_text_input.html">mcp_text_input()</a></code> for file paths instead, or have
 the tool read from a known directory.</p>
 </div>

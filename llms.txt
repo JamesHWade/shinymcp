@@ -254,6 +254,12 @@ Build and serve MCP Apps from UI components and tools.
   : Create an MCP App
 - [`McpApp`](https://jameshwade.github.io/shinymcp/reference/McpApp.md)
   : MCP App
+- [`as_mcp_app()`](https://jameshwade.github.io/shinymcp/reference/as_mcp_app.md)
+  : Convert an object to an MCP App
+- [`bindMcp()`](https://jameshwade.github.io/shinymcp/reference/bindMcp.md)
+  : Mark a Shiny UI element for MCP exposure
+- [`mcp_tool_module()`](https://jameshwade.github.io/shinymcp/reference/mcp_tool_module.md)
+  : Create an MCP App from a Shiny module
 - [`serve()`](https://jameshwade.github.io/shinymcp/reference/serve.md)
   : Serve an MCP App
 - [`preview_app()`](https://jameshwade.github.io/shinymcp/reference/preview_app.md)

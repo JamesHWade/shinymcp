@@ -81,9 +81,13 @@ The parser handles both `app.R` (single-file) and `ui.R`/`server.R`
   arguments
 - **Outputs**: All `*Output()` calls with their IDs and types
 - **Server body**: The body of the `server` function
-- **Reactives**: All `reactive()` expressions with their input
-  dependencies
-- **Observers**: All `observe()` and `observeEvent()` calls
+- **Reactives**: All
+  [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html)
+  expressions with their input dependencies
+- **Observers**: All
+  [`observe()`](https://rdrr.io/pkg/shiny/man/observe.html) and
+  [`observeEvent()`](https://rdrr.io/pkg/shiny/man/observeEvent.html)
+  calls
 - **Input refs**: Every `input$name` and `input[["name"]]` reference
 
 The parser classifies apps by complexity:
@@ -122,9 +126,12 @@ The analyzer:
 4.  **Flags unresolvable patterns** — dynamic UI, file uploads, download
     handlers, and observers with side effects
 
-For example, a Shiny app where a `reactive()` feeds both `renderPlot()`
-and `renderText()` produces a single tool group containing all related
-inputs and both outputs.
+For example, a Shiny app where a
+[`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html) feeds both
+[`renderPlot()`](https://rdrr.io/pkg/shiny/man/renderPlot.html) and
+[`renderText()`](https://rdrr.io/pkg/shiny/man/renderPrint.html)
+produces a single tool group containing all related inputs and both
+outputs.
 
 ### Stage 3: Generate
 
@@ -154,22 +161,22 @@ It generates:
 
 The pipeline handles these Shiny patterns out of the box:
 
-| Shiny pattern                           | MCP App equivalent                                                                                                                                                 |
-|-----------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `selectInput()`                         | [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)                                                                                    |
-| `textInput()`                           | [`mcp_text_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_text_input.md)                                                                            |
-| `numericInput()`                        | [`mcp_numeric_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_numeric_input.md)                                                                      |
-| `checkboxInput()`                       | [`mcp_checkbox()`](https://jameshwade.github.io/shinymcp/reference/mcp_checkbox.md)                                                                                |
-| `sliderInput()`                         | [`mcp_slider()`](https://jameshwade.github.io/shinymcp/reference/mcp_slider.md)                                                                                    |
-| `radioButtons()`                        | [`mcp_radio()`](https://jameshwade.github.io/shinymcp/reference/mcp_radio.md) (or [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)) |
-| `actionButton()`                        | [`mcp_action_button()`](https://jameshwade.github.io/shinymcp/reference/mcp_action_button.md)                                                                      |
-| `plotOutput()`                          | [`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md) with base64 PNG rendering                                                              |
-| `textOutput()` / `verbatimTextOutput()` | [`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_text.md)                                                                                        |
-| `tableOutput()`                         | [`mcp_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_table.md)                                                                                      |
-| `htmlOutput()` / `uiOutput()`           | [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md)                                                                                        |
-| `reactive()` chains                     | Flattened into tool function body                                                                                                                                  |
-| `app.R` (single file)                   | Fully supported                                                                                                                                                    |
-| `ui.R` / `server.R` (split files)       | Fully supported                                                                                                                                                    |
+| Shiny pattern                                                                                                                             | MCP App equivalent                                                                                                                                                 |
+|-------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| [`selectInput()`](https://rdrr.io/pkg/shiny/man/selectInput.html)                                                                         | [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)                                                                                    |
+| [`textInput()`](https://rdrr.io/pkg/shiny/man/textInput.html)                                                                             | [`mcp_text_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_text_input.md)                                                                            |
+| [`numericInput()`](https://rdrr.io/pkg/shiny/man/numericInput.html)                                                                       | [`mcp_numeric_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_numeric_input.md)                                                                      |
+| [`checkboxInput()`](https://rdrr.io/pkg/shiny/man/checkboxInput.html)                                                                     | [`mcp_checkbox()`](https://jameshwade.github.io/shinymcp/reference/mcp_checkbox.md)                                                                                |
+| [`sliderInput()`](https://rdrr.io/pkg/shiny/man/sliderInput.html)                                                                         | [`mcp_slider()`](https://jameshwade.github.io/shinymcp/reference/mcp_slider.md)                                                                                    |
+| [`radioButtons()`](https://rdrr.io/pkg/shiny/man/radioButtons.html)                                                                       | [`mcp_radio()`](https://jameshwade.github.io/shinymcp/reference/mcp_radio.md) (or [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)) |
+| [`actionButton()`](https://rdrr.io/pkg/shiny/man/actionButton.html)                                                                       | [`mcp_action_button()`](https://jameshwade.github.io/shinymcp/reference/mcp_action_button.md)                                                                      |
+| [`plotOutput()`](https://rdrr.io/pkg/shiny/man/plotOutput.html)                                                                           | [`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md) with base64 PNG rendering                                                              |
+| [`textOutput()`](https://rdrr.io/pkg/shiny/man/textOutput.html) / [`verbatimTextOutput()`](https://rdrr.io/pkg/shiny/man/textOutput.html) | [`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_text.md)                                                                                        |
+| [`tableOutput()`](https://rdrr.io/pkg/shiny/man/renderTable.html)                                                                         | [`mcp_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_table.md)                                                                                      |
+| [`htmlOutput()`](https://rdrr.io/pkg/shiny/man/htmlOutput.html) / [`uiOutput()`](https://rdrr.io/pkg/shiny/man/htmlOutput.html)           | [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md)                                                                                        |
+| [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html) chains                                                                        | Flattened into tool function body                                                                                                                                  |
+| `app.R` (single file)                                                                                                                     | Fully supported                                                                                                                                                    |
+| `ui.R` / `server.R` (split files)                                                                                                         | Fully supported                                                                                                                                                    |
 
 ## What needs manual review
 
@@ -222,7 +229,9 @@ update_scatter_and_stats <- ellmer::tool(
 
 ### Dynamic UI
 
-`uiOutput()` / `renderUI()` is flagged as a warning. Replace with
+[`uiOutput()`](https://rdrr.io/pkg/shiny/man/htmlOutput.html) /
+[`renderUI()`](https://rdrr.io/pkg/shiny/man/renderUI.html) is flagged
+as a warning. Replace with
 [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md)
 and return HTML strings from the tool:
 
@@ -240,9 +249,11 @@ fun = function(show_detail = FALSE) {
 
 ### Observers and side effects
 
-`observe()` and `observeEvent()` calls are flagged since they often
-perform side effects (database writes, file operations) that don’t map
-cleanly to stateless tool calls. Review each observer and decide:
+[`observe()`](https://rdrr.io/pkg/shiny/man/observe.html) and
+[`observeEvent()`](https://rdrr.io/pkg/shiny/man/observeEvent.html)
+calls are flagged since they often perform side effects (database
+writes, file operations) that don’t map cleanly to stateless tool calls.
+Review each observer and decide:
 
 - Can it be folded into a tool’s return value?
 - Does it need to write to the file system? (Use temp files)
@@ -250,7 +261,8 @@ cleanly to stateless tool calls. Review each observer and decide:
 
 ### File uploads
 
-`fileInput()` is not supported. The generator warns about this. Use
+[`fileInput()`](https://rdrr.io/pkg/shiny/man/fileInput.html) is not
+supported. The generator warns about this. Use
 [`mcp_text_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_text_input.md)
 for file paths instead, or have the tool read from a known directory.
 
