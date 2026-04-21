@@ -1,50 +1,5 @@
 # Shared host helpers for preview, Shiny embedding, and chat adapters.
 
-#' Coerce input to an McpApp
-#'
-#' If `x` is already an McpApp, return it. If it's a path, source the app.R
-#' file and look for an McpApp in the resulting environment.
-#'
-#' @param x An McpApp object or character path.
-#' @return An McpApp object.
-#' @noRd
-as_mcp_app <- function(x) {
-  if (inherits(x, "McpApp")) {
-    return(x)
-  }
-
-  if (is.character(x) && length(x) == 1) {
-    app_file <- if (file.exists(x) && file.info(x)$isdir) {
-      file.path(x, "app.R")
-    } else {
-      x
-    }
-
-    if (!file.exists(app_file)) {
-      cli::cli_abort("App file not found: {.file {app_file}}")
-    }
-
-    env <- new.env(parent = globalenv())
-    env$serve <- function(...) invisible(NULL)
-    source(app_file, local = env)
-
-    for (nm in ls(env)) {
-      obj <- get(nm, envir = env)
-      if (inherits(obj, "McpApp")) {
-        return(obj)
-      }
-    }
-
-    cli::cli_abort(
-      "No {.cls McpApp} object found in {.file {app_file}}."
-    )
-  }
-
-  cli::cli_abort(
-    "{.arg app} must be an {.cls McpApp} object or a path to an app directory."
-  )
-}
-
 #' Create host state for a live McpApp instance
 #'
 #' @param app An McpApp object.

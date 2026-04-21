@@ -238,7 +238,11 @@ generate_card_scaffolds <- function(
 }
 
 #' @noRd
-build_card_ui <- function(group, max_inputs_per_card = 5, compact_layout = TRUE) {
+build_card_ui <- function(
+  group,
+  max_inputs_per_card = 5,
+  compact_layout = TRUE
+) {
   visible_inputs <- group$input_args
   input_note <- NULL
 
@@ -260,11 +264,17 @@ build_card_ui <- function(group, max_inputs_per_card = 5, compact_layout = TRUE)
 
   htmltools::tagList(
     htmltools::tags$style(htmltools::HTML(paste(
-      ".shinymcp-converted-card { display: flex; flex-direction: column; gap:", gap, "; }",
+      ".shinymcp-converted-card { display: flex; flex-direction: column; gap:",
+      gap,
+      "; }",
       ".shinymcp-converted-card-header h2 { margin: 0; font-size: 1rem; }",
       ".shinymcp-converted-card-note { margin: 0; color: #6a7280; font-size: 0.85rem; }",
-      ".shinymcp-converted-card-outputs { display: flex; flex-direction: column; gap:", gap, "; }",
-      ".shinymcp-converted-card .shinymcp-output[data-shinymcp-output-type='plot'] { min-height:", plot_height, "; }"
+      ".shinymcp-converted-card-outputs { display: flex; flex-direction: column; gap:",
+      gap,
+      "; }",
+      ".shinymcp-converted-card .shinymcp-output[data-shinymcp-output-type='plot'] { min-height:",
+      plot_height,
+      "; }"
     ))),
     htmltools::tags$div(
       class = "shinymcp-converted-card",
@@ -315,7 +325,11 @@ build_card_input_component <- function(inp) {
       label,
       min = extract_literal_arg(inp$args, "min", 0),
       max = extract_literal_arg(inp$args, "max", 100),
-      value = extract_literal_arg(inp$args, "value", extract_literal_arg(inp$args, "min", 0))
+      value = extract_literal_arg(
+        inp$args,
+        "value",
+        extract_literal_arg(inp$args, "min", 0)
+      )
     ),
     radio = mcp_radio(id, label, extract_choices_value(inp$args)),
     action = ,
@@ -427,7 +441,10 @@ extract_literal_arg <- function(args, name, default = NULL) {
     return(value)
   }
   if (is.language(value)) {
-    evaluated <- tryCatch(eval(value, envir = baseenv()), error = function(...) NULL)
+    evaluated <- tryCatch(
+      eval(value, envir = baseenv()),
+      error = function(...) NULL
+    )
     if (!is.null(evaluated)) {
       return(evaluated)
     }

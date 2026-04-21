@@ -12,8 +12,14 @@ test_that("format_tool_result handles typed result fragments", {
 test_that("format_tool_result handles bare typed results", {
   result <- format_tool_result(mcp_result_text("ready"))
 
-  expect_equal(result$structuredContent[[SHINYMCP_SINGLE_RESULT_KEY]]$type, "text")
-  expect_equal(result$structuredContent[[SHINYMCP_SINGLE_RESULT_KEY]]$value, "ready")
+  expect_equal(
+    result$structuredContent[[SHINYMCP_SINGLE_RESULT_KEY]]$type,
+    "text"
+  )
+  expect_equal(
+    result$structuredContent[[SHINYMCP_SINGLE_RESULT_KEY]]$value,
+    "ready"
+  )
   expect_false("kind" %in% names(result$structuredContent))
   expect_match(result$content[[1]]$text, "ready")
 })

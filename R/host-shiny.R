@@ -283,12 +283,15 @@ mcp_host_server <- function(
       debug = debug
     )
 
-    session$onFlushed(function() {
-      session$sendCustomMessage(
-        "shinymcp-host-init",
-        list(id = session$ns("host"), config = registered$config)
-      )
-    }, once = TRUE)
+    session$onFlushed(
+      function() {
+        session$sendCustomMessage(
+          "shinymcp-host-init",
+          list(id = session$ns("host"), config = registered$config)
+        )
+      },
+      once = TRUE
+    )
 
     list(
       instance_id = shiny::reactive(registered$state$instance_id),

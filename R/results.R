@@ -144,10 +144,13 @@ as_shinychat_request_tool <- function(tool) {
     return(NULL)
   }
 
-  arguments <- schema_properties_to_arguments(tool$inputSchema %||% list(
-    type = "object",
-    properties = list()
-  ))
+  arguments <- schema_properties_to_arguments(
+    tool$inputSchema %||%
+      list(
+        type = "object",
+        properties = list()
+      )
+  )
   fun <- tool$fun
   if (!is.function(fun)) {
     fun <- function() NULL
@@ -169,7 +172,11 @@ as_shinychat_request_tool <- function(tool) {
 }
 
 #' @noRd
-resolve_shinychat_request_source <- function(app, request_tool_name = NULL, app_tool = NULL) {
+resolve_shinychat_request_source <- function(
+  app,
+  request_tool_name = NULL,
+  app_tool = NULL
+) {
   if (!is.null(app_tool)) {
     return(list(
       name = request_tool_name %||% tool_name(app_tool),
@@ -396,7 +403,10 @@ render_image_html <- function(x) {
       base64enc::base64encode(x)
     )
     return(render_html_fragment(
-      htmltools::tags$img(src = data_uri, style = "max-width: 100%; height: auto;")
+      htmltools::tags$img(
+        src = data_uri,
+        style = "max-width: 100%; height: auto;"
+      )
     ))
   }
 
@@ -511,8 +521,15 @@ mcp_result_text_fallback <- function(x) {
       switch(
         x$kind,
         text = as.character(x$value),
-        html = paste(trimws(gsub("<[^>]+>", " ", render_html_fragment(x$value)))),
-        table = paste(capture.output(utils::head(as.data.frame(x$value))), collapse = "\n"),
+        html = paste(trimws(gsub(
+          "<[^>]+>",
+          " ",
+          render_html_fragment(x$value)
+        ))),
+        table = paste(
+          capture.output(utils::head(as.data.frame(x$value))),
+          collapse = "\n"
+        ),
         plot = "[plot]",
         image = "[image]",
         pdf = "[pdf]",
@@ -685,10 +702,13 @@ as_shinychat_tool <- function(
     arguments <- if (is_ellmer_tool(app_tool)) {
       app_tool@arguments
     } else {
-      schema_properties_to_arguments(app_tool$inputSchema %||% list(
-        type = "object",
-        properties = list()
-      ))
+      schema_properties_to_arguments(
+        app_tool$inputSchema %||%
+          list(
+            type = "object",
+            properties = list()
+          )
+      )
     }
 
     annotations <- if (is_ellmer_tool(app_tool)) {

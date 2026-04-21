@@ -367,7 +367,11 @@ generate_app_entry <- function(ir) {
 #' @param ir ShinyAppIR object
 #' @return Character string of markdown
 #' @noRd
-generate_conversion_notes <- function(analysis, ir, mode = c("scaffold", "cards")) {
+generate_conversion_notes <- function(
+  analysis,
+  ir,
+  mode = c("scaffold", "cards")
+) {
   mode <- match.arg(mode)
   lines <- c(
     "# Conversion Notes",

@@ -24,7 +24,10 @@ test_that("convert_app cards mode writes card scaffold directories", {
   card_dirs <- list.dirs(out_dir, recursive = FALSE, full.names = FALSE)
   expect_true(length(card_dirs) >= 2)
 
-  notes <- paste(readLines(file.path(out_dir, "CONVERSION_NOTES.md")), collapse = "\n")
+  notes <- paste(
+    readLines(file.path(out_dir, "CONVERSION_NOTES.md")),
+    collapse = "\n"
+  )
   expect_match(notes, "scaffold-oriented")
   expect_match(notes, "Card mode")
 })

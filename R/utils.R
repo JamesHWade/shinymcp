@@ -111,7 +111,10 @@ SHINYMCP_SINGLE_RESULT_KEY <- "__shinymcp_result__"
 format_tool_result <- function(result) {
   if (is_mcp_result(result)) {
     return(list(
-      content = list(list(type = "text", text = mcp_result_text_fallback(result))),
+      content = list(list(
+        type = "text",
+        text = mcp_result_text_fallback(result)
+      )),
       structuredContent = setNames(
         list(mcp_result_wire_payload(result)),
         SHINYMCP_SINGLE_RESULT_KEY
