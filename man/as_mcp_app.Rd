@@ -7,9 +7,9 @@
 \alias{as_mcp_app.default}
 \title{Convert an object to an MCP App}
 \usage{
-as_mcp_app(x)
+as_mcp_app(x, ...)
 
-as_mcp_app.shiny.appobj(
+\method{as_mcp_app}{shiny.appobj}(
   x,
   name = NULL,
   tools = NULL,
@@ -18,9 +18,9 @@ as_mcp_app.shiny.appobj(
   ...
 )
 
-as_mcp_app.McpApp(x, ...)
+\method{as_mcp_app}{McpApp}(x, ...)
 
-as_mcp_app.default(x, ...)
+\method{as_mcp_app}{default}(x, ...)
 }
 \arguments{
 \item{x}{An object to convert. Currently supports:
@@ -30,6 +30,8 @@ as_mcp_app.default(x, ...)
 \item A character path to a directory containing \code{app.R}, or a direct path
 to an app file
 }}
+
+\item{...}{Additional arguments passed to methods.}
 
 \item{name}{App name (used in resource URIs). Defaults to \code{"shinymcp-app"}.}
 
@@ -42,8 +44,6 @@ are present), only annotated elements are exposed. If \code{FALSE}, all
 detected inputs/outputs are exposed.}
 
 \item{version}{App version string. Defaults to \code{"0.1.0"}.}
-
-\item{...}{Additional arguments passed to methods.}
 }
 \value{
 An \link{McpApp} object.
