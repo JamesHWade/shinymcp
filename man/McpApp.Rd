@@ -78,9 +78,17 @@ Returns a character string of the complete HTML page including
 UI components, bridge script, and config. HTML dependencies from
 bslib or other htmltools-based packages are inlined automatically.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$html_resource()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$html_resource(bridge_config = NULL)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{bridge_config}}{Optional named list of bridge config overrides used by
+\verb{$html_resource()}.}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-McpApp-mcp_tools"></a>}}
@@ -147,8 +155,7 @@ Print method
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
-\item{\code{...}}{Ignored.
-Inline HTML dependencies as \if{html}{\out{<style>}} and \if{html}{\out{<script>}} tags}
+\item{\code{...}}{Ignored.}
 }
 \if{html}{\out{</div>}}
 }

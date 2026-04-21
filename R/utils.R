@@ -98,6 +98,7 @@ compact_list <- function(x) {
 #' MCP protocol version supported by shinymcp
 #' @noRd
 SHINYMCP_PROTOCOL_VERSION <- "2025-06-18"
+SHINYMCP_SINGLE_RESULT_KEY <- "__shinymcp_result__"
 
 #' Format an R tool result into the MCP tool-result shape
 #'
@@ -108,23 +109,29 @@ SHINYMCP_PROTOCOL_VERSION <- "2025-06-18"
 #' @return A list with `content` and optionally `structuredContent`.
 #' @noRd
 format_tool_result <- function(result) {
-  if (is.list(result) && !is.null(names(result))) {
-    text_parts <- vapply(
-      result,
-      function(x) {
-        if (is.character(x) && nchar(x) < 10000) x else ""
-      },
-      character(1)
-    )
-    text_summary <- paste(text_parts[nzchar(text_parts)], collapse = "\n\n")
-
-    list(
-      content = list(list(type = "text", text = text_summary)),
-      structuredContent = result
-    )
-  } else {
-    list(
-      content = list(list(type = "text", text = as.character(result)))
-    )
+  if (is_mcp_result(result)) {
+    return(list(
+      content = list(list(type = "text", text = mcp_result_text_fallback(result))),
+      structuredContent = setNames(
+        list(mcp_result_wire_payload(result)),
+        SHINYMCP_SINGLE_RESULT_KEY
+      )
+    ))
   }
+
+  if (is.list(result) && !is.null(names(result))) {
+    text_summary <- mcp_result_text_fallback(result)
+    payload <- list(
+      content = list(list(type = "text", text = text_summary))
+    )
+    structured <- mcp_result_structured_content(result)
+    if (!is.null(structured)) {
+      payload$structuredContent <- structured
+    }
+    return(payload)
+  }
+
+  list(
+    content = list(list(type = "text", text = as.character(result)))
+  )
 }

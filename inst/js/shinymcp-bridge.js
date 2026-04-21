@@ -29,6 +29,7 @@
   var pendingRequests = {};
   var hostContext = null;
   var callToolTimer = null;
+  var initialInputSnapshot = {};
 
   // ---------------------------------------------------------------------------
   // Utility: read the value of a form element
@@ -332,6 +333,14 @@
     return result;
   }
 
+  function currentTriggerMode() {
+    return config.trigger || "debounce";
+  }
+
+  function currentDebounceMs() {
+    return typeof config.debounceMs === "number" ? config.debounceMs : 250;
+  }
+
   function callServerTools(inputs, changedInputNames) {
     if (!config.tools || config.tools.length === 0) return;
 
@@ -408,11 +417,21 @@
       pendingChangedInputs.push(changedArgName);
     }
     if (callToolTimer) clearTimeout(callToolTimer);
-    callToolTimer = setTimeout(function () {
-      var toSend = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
+
+    if (currentTriggerMode() === "change") {
+      var changeInputs = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
       pendingChangedInputs = [];
-      callServerTools(inputs, toSend);
-    }, 250);
+      callServerTools(inputs, changeInputs);
+      return;
+    }
+
+    if (currentTriggerMode() === "debounce") {
+      callToolTimer = setTimeout(function () {
+        var toSend = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
+        pendingChangedInputs = [];
+        callServerTools(inputs, toSend);
+      }, currentDebounceMs());
+    }
   }
 
   function attachListenerToElement(el) {
@@ -510,6 +529,26 @@
         handleToolInput(data.params);
         break;
 
+      case "ui/notifications/trigger-tool-call":
+        if (callToolTimer) clearTimeout(callToolTimer);
+        var changedInputs = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
+        pendingChangedInputs = [];
+        callServerTools(collectAllInputs(), changedInputs);
+        break;
+
+      case "ui/notifications/reset":
+        handleToolInput({ arguments: initialInputSnapshot });
+        sendNotification("ui/update-model-context", {
+          structuredContent: collectAllInputs(),
+        });
+        if (
+          currentTriggerMode() === "change" ||
+          currentTriggerMode() === "debounce"
+        ) {
+          callServerTools(collectAllInputs(), null);
+        }
+        break;
+
       case "ui/notifications/tool-input-partial":
         // Streaming partial input - could update UI progressively
         break;
@@ -551,8 +590,24 @@
 
     // Try to parse as structured content and update outputs
     if (params.structuredContent && typeof params.structuredContent === "object") {
+      var singleResult = params.structuredContent.__shinymcp_result__;
+      if (singleResult && typeof singleResult === "object") {
+        var singleOutputs = document.querySelectorAll("[data-shinymcp-output]");
+        if (singleOutputs.length === 1) {
+          updateOutput(
+            singleOutputs[0].getAttribute("data-shinymcp-output"),
+            singleResult.value,
+            singleResult.type
+          );
+          return;
+        }
+      }
+
       var keys = Object.keys(params.structuredContent);
       for (var j = 0; j < keys.length; j++) {
+        if (keys[j] === "__shinymcp_result__") {
+          continue;
+        }
         updateOutput(keys[j], params.structuredContent[keys[j]]);
       }
     } else if (textContent) {
@@ -664,6 +719,15 @@
     if (initPromise) {
       initPromise.then(function (result) {
         hostContext = result.hostContext || null;
+
+        if (
+          hostContext &&
+          hostContext.initialArguments &&
+          typeof hostContext.initialArguments === "object"
+        ) {
+          handleToolInput({ arguments: hostContext.initialArguments });
+        }
+        initialInputSnapshot = collectAllInputs();
 
         // Send initialized notification
         sendNotification("ui/notifications/initialized", {});
