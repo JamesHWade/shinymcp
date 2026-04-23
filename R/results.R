@@ -131,6 +131,15 @@ tool_formals <- function(tool) {
 }
 
 #' @noRd
+ellmer_tool_arguments <- function(tool) {
+  arguments <- tool@arguments
+  if (inherits(arguments, "ellmer::TypeObject")) {
+    return(arguments@properties)
+  }
+  arguments
+}
+
+#' @noRd
 as_shinychat_request_tool <- function(tool) {
   if (is.null(tool)) {
     return(NULL)
@@ -700,7 +709,7 @@ as_shinychat_tool <- function(
     }
 
     arguments <- if (is_ellmer_tool(app_tool)) {
-      app_tool@arguments
+      ellmer_tool_arguments(app_tool)
     } else {
       schema_properties_to_arguments(
         app_tool$inputSchema %||%

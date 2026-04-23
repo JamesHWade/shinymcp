@@ -23,10 +23,20 @@ navbar:
     articles:
       text: Articles
       menu:
+        - text: Compelling Use Cases
+          href: articles/compelling-use-cases.html
         - text: Converting Shiny Apps
           href: articles/converting-shiny-apps.html
         - text: Automatic Conversion
           href: articles/automatic-conversion.html
+        - text: Choose Migration Path
+          href: articles/choose-the-right-migration-path.html
+        - text: Use with shinychat
+          href: articles/use-shinymcp-with-shinychat.html
+        - text: Compatibility Matrix
+          href: articles/compatibility-matrix.html
+        - text: Debugging shinymcp
+          href: articles/debugging-shinymcp.html
 
 reference:
   - title: Create MCP Apps

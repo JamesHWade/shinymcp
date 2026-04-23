@@ -227,7 +227,16 @@ system.file("examples", "bslib-inputs", "app.R", package = "shinymcp")
 # Full dashboard: Palmer Penguins with native shiny inputs, ggplot2, and
 # summary statistics
 system.file("examples", "penguins", "app.R", package = "shinymcp")
+
+# Use-case gallery: revenue planning, experiment design, incident triage,
+# plus a shinychat app that registers each MCP App as a rich tool card
+system.file("examples", "use-cases", "app.R", package = "shinymcp")
+system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp")
 ```
+
+For realistic demo scripts and shinychat integration, see
+`vignette("compelling-use-cases")` and
+`vignette("use-shinymcp-with-shinychat")`.
 
 ## How it works
 
