@@ -44,17 +44,16 @@ preview_app <- function(app, port = NULL, launch = TRUE) {
 
   app <- coerce_preview_mcp_app(app)
 
-  port <- port %||% httpuv::randomPort()
   host <- "127.0.0.1"
 
   # Pre-render the host HTML with the app name baked in
   host_html <- preview_host_html(app$name)
   app_html <- app$html_resource()
 
-  server <- httpuv::startServer(
-    host,
-    port,
-    list(
+  server_info <- preview_start_server(
+    host = host,
+    port = port,
+    app = list(
       call = function(req) {
         tryCatch(
           preview_route(req, app, host_html, app_html),
@@ -69,6 +68,8 @@ preview_app <- function(app, port = NULL, launch = TRUE) {
       }
     )
   )
+  server <- server_info$server
+  port <- server_info$port
 
   stop_server <- function() {
     httpuv::stopServer(server)
@@ -94,19 +95,43 @@ preview_app <- function(app, port = NULL, launch = TRUE) {
   invisible(result)
 }
 
-
-# ---- Internal helpers -------------------------------------------------------
-
-#' Coerce input to an McpApp
+#' Start a preview server on an explicit or discovered local port
 #'
-#' If `x` is already an McpApp, return it. If it's a path, source the app.R
-#' file and look for an McpApp in the resulting environment.
-#'
-#' @param x An McpApp object or character path.
-#' @return An McpApp object.
+#' @param host Host interface.
+#' @param port Optional explicit port.
+#' @param app httpuv app object.
+#' @return A list with `server` and `port`.
 #' @noRd
 coerce_preview_mcp_app <- function(x) {
   as_mcp_app(x)
+}
+
+#' @noRd
+preview_start_server <- function(host, port = NULL, app) {
+  candidates <- if (!is.null(port)) {
+    port
+  } else {
+    unique(c(
+      tryCatch(httpuv::randomPort(), error = function(...) integer()),
+      sample(3000:9000, 25)
+    ))
+  }
+
+  last_error <- NULL
+  for (candidate in candidates) {
+    server <- tryCatch(
+      httpuv::startServer(host, candidate, app),
+      error = function(e) {
+        last_error <<- e
+        NULL
+      }
+    )
+    if (!is.null(server)) {
+      return(list(server = server, port = candidate))
+    }
+  }
+
+  stop(last_error %||% simpleError("Could not bind a preview server port."))
 }
 
 
@@ -123,7 +148,18 @@ preview_host_html <- function(app_name) {
     mustWork = TRUE
   )
   template <- paste(readLines(template_path, warn = FALSE), collapse = "\n")
-  gsub("{{APP_NAME}}", htmltools::htmlEscape(app_name), template, fixed = TRUE)
+  host_js <- paste(
+    readLines(system_file("js", "shinymcp-host.js"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  rendered <- gsub(
+    "{{APP_NAME}}",
+    htmltools::htmlEscape(app_name),
+    template,
+    fixed = TRUE
+  )
+  gsub("{{HOST_JS}}", host_js, rendered, fixed = TRUE)
 }
 
 

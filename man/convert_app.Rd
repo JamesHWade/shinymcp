@@ -4,17 +4,33 @@
 \alias{convert_app}
 \title{Convert a Shiny app to an MCP App}
 \usage{
-convert_app(path, output_dir = NULL)
+convert_app(
+  path,
+  output_dir = NULL,
+  mode = c("scaffold", "cards"),
+  selective = TRUE,
+  max_inputs_per_card = 5,
+  compact_layout = TRUE
+)
 }
 \arguments{
 \item{path}{Path to a Shiny app directory}
 
 \item{output_dir}{Output directory for the generated MCP App.
 Defaults to \verb{\{path\}_mcp/}.}
+
+\item{mode}{Conversion mode. \code{"scaffold"} generates one scaffold app.
+\code{"cards"} generates compact per-group scaffold cards.}
+
+\item{selective}{Whether card mode should split by connected tool groups.}
+
+\item{max_inputs_per_card}{Preferred chat-card input budget.}
+
+\item{compact_layout}{Whether generated cards should prefer compact layouts.}
 }
 \value{
-An \link{McpApp} object (invisibly). Generated files are also
-written to \code{output_dir}.
+An \link{McpApp} object or list of \link{McpApp} objects (invisibly). Generated
+scaffold files are also written to \code{output_dir}.
 }
 \description{
 Parses a Shiny app, analyzes its reactive graph, and generates

@@ -35,10 +35,27 @@ reference:
       - mcp_app
       - McpApp
       - as_mcp_app
+      - as_mcp_apps
       - bindMcp
       - mcp_tool_module
       - serve
       - preview_app
+
+  - title: Shinychat and Hosting
+    desc: Embed MCP Apps in Shiny and shinychat, and return typed rich results.
+    contents:
+      - as_shinychat_tool
+      - mcp_content_result
+      - mcp_embed
+      - mcp_host_server
+      - mcp_host_ui
+      - mcp_result_html
+      - mcp_result_image
+      - mcp_result_pdf
+      - mcp_result_plot
+      - mcp_result_table
+      - mcp_result_text
+      - mcp_result_widget
 
   - title: Input Components
     desc: >

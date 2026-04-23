@@ -134,6 +134,9 @@ iframe {
 <div class="log-panel" id="logPanel"></div>
 
 <script>
+{{HOST_JS}}
+</script>
+<script>
 (function () {
   "use strict";
 
@@ -142,13 +145,16 @@ iframe {
   var statusText = document.getElementById("statusText");
   var logPanel = document.getElementById("logPanel");
   var logToggle = document.getElementById("logToggle");
-  var toolCallEndpoint = "/tool";
-  var initialized = false;
 
-  // --- Logging ---
   logToggle.addEventListener("click", function () {
     logPanel.classList.toggle("visible");
   });
+
+  function escapeHtml(s) {
+    var div = document.createElement("div");
+    div.textContent = s;
+    return div.innerHTML;
+  }
 
   function log(direction, method, detail) {
     var entry = document.createElement("div");
@@ -163,141 +169,56 @@ iframe {
     logPanel.scrollTop = logPanel.scrollHeight;
   }
 
-  function escapeHtml(s) {
-    var div = document.createElement("div");
-    div.textContent = s;
-    return div.innerHTML;
-  }
-
-  // --- Status ---
   function setStatus(state, text) {
     statusDot.className = "dot " + state;
     statusText.textContent = text;
   }
 
-  // --- postMessage handling ---
-  window.addEventListener("message", function (event) {
-    var data = event.data;
-    if (!data || data.jsonrpc !== "2.0") return;
-
-    // It's a request (has id + method)
-    if (data.id !== undefined && data.method) {
-      log("in", data.method, data.id !== undefined ? "id=" + data.id : "");
-      handleRequest(data);
-      return;
-    }
-
-    // It's a notification (method, no id)
-    if (data.method) {
-      log("in", data.method, "notification");
-      handleNotification(data);
-      return;
+  window.shinymcpHost.createHost({
+    container: document.body,
+    iframe: iframe,
+    config: { instanceId: "preview", height: "auto", trigger: "debounce" },
+    appSrc: "/app.html",
+    initialize: function () {
+      return {
+        protocolVersion: "2025-06-18",
+        hostInfo: {
+          name: "shinymcp-preview",
+          version: "0.1.0"
+        },
+        hostCapabilities: {}
+      };
+    },
+    setStatus: function (state, text) {
+      setStatus(state, text);
+    },
+    callTool: function (request) {
+      log("in", "tools/call", request.name);
+      return fetch("/tool", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: request.name,
+          arguments: request.arguments || {}
+        })
+      }).then(function (res) {
+        return res.json();
+      }).then(function (result) {
+        log("out", "ui/notifications/tool-result", request.name);
+        return result;
+      });
+    },
+    onNotification: function (method, params) {
+      log("in", method, "notification");
+      if (
+        method === "ui/notifications/size-changed" &&
+        params &&
+        typeof params.height === "number"
+      ) {
+        iframe.style.height = Math.min(params.height + 2, 2000) + "px";
+      }
     }
   });
-
-  function postToIframe(msg) {
-    iframe.contentWindow.postMessage(msg, "*");
-  }
-
-  function respond(id, result) {
-    var msg = { jsonrpc: "2.0", id: id, result: result };
-    log("out", "response", "id=" + id);
-    postToIframe(msg);
-  }
-
-  function notify(method, params) {
-    var msg = { jsonrpc: "2.0", method: method };
-    if (params !== undefined) msg.params = params;
-    log("out", method, "notification");
-    postToIframe(msg);
-  }
-
-  // --- Handle requests from iframe ---
-  function handleRequest(data) {
-    switch (data.method) {
-      case "ui/initialize":
-        handleInitialize(data);
-        break;
-
-      case "tools/call":
-        handleToolsCall(data);
-        break;
-
-      default:
-        // Unknown request: respond with empty result
-        respond(data.id, {});
-    }
-  }
-
-  function handleInitialize(data) {
-    // Keep in sync with SHINYMCP_PROTOCOL_VERSION in R/utils.R
-    respond(data.id, {
-      protocolVersion: "2025-06-18",
-      hostInfo: {
-        name: "shinymcp-preview",
-        version: "0.1.0"
-      },
-      hostCapabilities: {}
-    });
-
-    setStatus("connected", "connected");
-    initialized = true;
-  }
-
-  function handleToolsCall(data) {
-    var params = data.params || {};
-    var requestId = data.id;
-
-    setStatus("connected", "running tool\u2026");
-
-    fetch(toolCallEndpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: params.name,
-        arguments: params.arguments || {}
-      })
-    })
-    .then(function (res) { return res.json(); })
-    .then(function (result) {
-      // Forward the tool result as a response
-      respond(requestId, result);
-
-      // Also send as a tool-result notification (some bridges expect this)
-      notify("ui/notifications/tool-result", result);
-
-      setStatus("connected", "connected");
-    })
-    .catch(function (err) {
-      respond(requestId, {
-        content: [{ type: "text", text: "Preview error: " + err.message }],
-        isError: true
-      });
-      setStatus("error", "tool error");
-    });
-  }
-
-  // --- Handle notifications from iframe ---
-  function handleNotification(data) {
-    switch (data.method) {
-      case "ui/notifications/initialized":
-        // Handshake complete
-        break;
-
-      case "ui/notifications/size-changed":
-        if (data.params) {
-          var h = data.params.height;
-          if (h && typeof h === "number") {
-            iframe.style.height = Math.min(h + 2, 2000) + "px";
-          }
-        }
-        break;
-
-      case "ui/update-model-context":
-        // Could display input state in debug panel
-        break;
-    }
-  }
 })();
 </script>
 </body>

@@ -6,6 +6,8 @@
 #' The app generates HTML with an embedded JS bridge and provides tools
 #' annotated with resource URIs for MCP consumption.
 #'
+#' @param bridge_config Optional named list of bridge config overrides used by
+#'   `$html_resource()`.
 #' @export
 McpApp <- R6::R6Class(
   "McpApp",
@@ -64,16 +66,20 @@ McpApp <- R6::R6Class(
     #' Returns a character string of the complete HTML page including
     #' UI components, bridge script, and config. HTML dependencies from
     #' bslib or other htmltools-based packages are inlined automatically.
-    html_resource = function() {
+    html_resource = function(bridge_config = NULL) {
       tool_names <- private$get_tool_names()
       tool_args <- private$get_tool_arg_names()
 
-      config_json <- to_json(list(
+      config <- list(
         appName = self$name,
         version = self$version,
         tools = I(tool_names),
         toolArgs = tool_args
-      ))
+      )
+      if (!is.null(bridge_config)) {
+        config <- utils::modifyList(config, bridge_config, keep.null = TRUE)
+      }
+      config_json <- to_json(config)
 
       bridge_js <- private$read_bridge_js()
 
@@ -234,9 +240,7 @@ McpApp <- R6::R6Class(
     .ui = NULL,
     .tools = list(),
 
-    #' Inline HTML dependencies as <style> and <script> tags
-    #' @param deps List of htmlDependency objects
-    #' @return Character string of inlined CSS and JS tags
+    # Inline HTML dependencies as <style> and <script> tags.
     inline_dependencies = function(deps) {
       parts <- character(0)
       for (dep in deps) {
@@ -296,7 +300,7 @@ McpApp <- R6::R6Class(
       paste(parts, collapse = "\n")
     },
 
-    #' Read the bridge JS file
+    # Read the bridge JS file.
     read_bridge_js = function() {
       js_path <- system.file(
         "js",
@@ -314,7 +318,7 @@ McpApp <- R6::R6Class(
       }
     },
 
-    #' Extract tool names from the tools list
+    # Extract tool names from the tools list.
     get_tool_names = function() {
       vapply(
         private$.tools,
@@ -324,8 +328,8 @@ McpApp <- R6::R6Class(
       )
     },
 
-    #' Extract argument names from each tool
-    #' Returns a named list: tool_name -> character vector of arg names
+    # Extract argument names from each tool.
+    # Returns a named list: tool_name -> character vector of arg names.
     get_tool_arg_names = function() {
       result <- list()
       for (tool in private$.tools) {
@@ -346,7 +350,7 @@ McpApp <- R6::R6Class(
       result
     },
 
-    #' Default CSS for shinymcp components
+    # Default CSS for shinymcp components.
     default_css = function() {
       paste(
         "*, *::before, *::after { box-sizing: border-box; }",

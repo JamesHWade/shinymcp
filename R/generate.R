@@ -367,12 +367,18 @@ generate_app_entry <- function(ir) {
 #' @param ir ShinyAppIR object
 #' @return Character string of markdown
 #' @noRd
-generate_conversion_notes <- function(analysis, ir) {
+generate_conversion_notes <- function(
+  analysis,
+  ir,
+  mode = c("scaffold", "cards")
+) {
+  mode <- match.arg(mode)
   lines <- c(
     "# Conversion Notes",
     "",
     sprintf("Source: `%s`", ir$path),
     sprintf("Complexity: **%s**", ir$complexity),
+    sprintf("Mode: **%s**", mode),
     "",
     "## Summary",
     "",
@@ -394,6 +400,11 @@ generate_conversion_notes <- function(analysis, ir) {
 
   lines <- c(
     lines,
+    "## Scaffold Status",
+    "",
+    "This output is **scaffold-oriented**, not a headless execution runtime.",
+    "Generated tool bodies remain placeholders until you supply explicit logic.",
+    "",
     "## Manual Review Required",
     "",
     "The following areas may need manual adjustment:",
@@ -419,6 +430,17 @@ generate_conversion_notes <- function(analysis, ir) {
       "- Breaking into multiple simpler MCP Apps",
       "- Using sub-agents for multi-step workflows",
       "- Reviewing all tool group boundaries for correctness",
+      ""
+    )
+  }
+
+  if (identical(mode, "cards")) {
+    lines <- c(
+      lines,
+      "## Card Mode Notes",
+      "",
+      "Card mode prefers multiple compact chat-sized surfaces over a single dashboard.",
+      "Review each generated card directory and tighten labels, defaults, and output copy for chat use.",
       ""
     )
   }

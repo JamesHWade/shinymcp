@@ -15,6 +15,7 @@
 #'   - A character path to a directory containing `app.R`, or a direct path
 #'     to an app file
 #' @param ... Additional arguments passed to methods.
+#' @usage as_mcp_app(x, ...)
 #' @return An [McpApp] object.
 #'
 #' @examples
@@ -50,6 +51,7 @@ as_mcp_app <- function(x, ...) {
 #'   are present), only annotated elements are exposed. If `FALSE`, all
 #'   detected inputs/outputs are exposed.
 #' @param version App version string. Defaults to `"0.1.0"`.
+#' @method as_mcp_app shiny.appobj
 #' @export
 as_mcp_app.shiny.appobj <- function(
   x,
@@ -117,12 +119,14 @@ as_mcp_app.shiny.appobj <- function(
 }
 
 #' @rdname as_mcp_app
+#' @method as_mcp_app McpApp
 #' @export
 as_mcp_app.McpApp <- function(x, ...) {
   x
 }
 
 #' @rdname as_mcp_app
+#' @method as_mcp_app default
 #' @export
 as_mcp_app.default <- function(x, ...) {
   if (is.character(x) && length(x) == 1) {

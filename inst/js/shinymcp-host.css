@@ -1,0 +1,77 @@
+.shinymcp-host {
+  border: 1px solid #d8dde6;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.shinymcp-host-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.625rem 0.875rem;
+  background: #f6f8fb;
+  border-bottom: 1px solid #e3e8ef;
+  font-size: 0.875rem;
+}
+
+.shinymcp-host-status {
+  color: #355070;
+  min-height: 1.25rem;
+}
+
+.shinymcp-host-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.shinymcp-host-button {
+  border: 0;
+  border-radius: 999px;
+  background: #0f62fe;
+  color: #fff;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.shinymcp-host-button:hover {
+  background: #0b4ecc;
+}
+
+.shinymcp-host-button-secondary {
+  background: #dde6f4;
+  color: #28415f;
+}
+
+.shinymcp-host-button-secondary:hover {
+  background: #cfdcee;
+}
+
+.shinymcp-host-error {
+  display: none;
+  padding: 0.625rem 0.875rem;
+  color: #8b1e3f;
+  background: #fff4f6;
+  border-bottom: 1px solid #f4c7d2;
+  font-size: 0.84rem;
+  white-space: pre-wrap;
+}
+
+.shinymcp-host-error[data-visible="true"] {
+  display: block;
+}
+
+.shinymcp-host-frame {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  border: 0;
+  background: #fff;
+}
+
+.shinymcp-host[data-shinymcp-height]:not([data-shinymcp-height="auto"]) .shinymcp-host-frame {
+  height: var(--shinymcp-fixed-height);
+}
