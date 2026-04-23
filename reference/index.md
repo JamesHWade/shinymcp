@@ -10,6 +10,8 @@ Build and serve MCP Apps from UI components and tools.
   : MCP App
 - [`as_mcp_app()`](https://jameshwade.github.io/shinymcp/reference/as_mcp_app.md)
   : Convert an object to an MCP App
+- [`as_mcp_apps()`](https://jameshwade.github.io/shinymcp/reference/as_mcp_apps.md)
+  : Split a parsed Shiny app into chat-sized MCP App scaffolds
 - [`bindMcp()`](https://jameshwade.github.io/shinymcp/reference/bindMcp.md)
   : Mark a Shiny UI element for MCP exposure
 - [`mcp_tool_module()`](https://jameshwade.github.io/shinymcp/reference/mcp_tool_module.md)
@@ -18,6 +20,35 @@ Build and serve MCP Apps from UI components and tools.
   : Serve an MCP App
 - [`preview_app()`](https://jameshwade.github.io/shinymcp/reference/preview_app.md)
   : Preview an MCP App in a web browser
+
+## Shinychat and Hosting
+
+Embed MCP Apps in Shiny and shinychat, and return typed rich results.
+
+- [`as_shinychat_tool()`](https://jameshwade.github.io/shinymcp/reference/as_shinychat_tool.md)
+  : Wrap an McpApp as an ellmer tool for shinychat
+- [`mcp_content_result()`](https://jameshwade.github.io/shinymcp/reference/mcp_content_result.md)
+  : Build a shinychat-friendly tool result with a live embedded card
+- [`mcp_embed()`](https://jameshwade.github.io/shinymcp/reference/mcp_embed.md)
+  : Embed an MCP app inside a live Shiny session
+- [`mcp_host_server()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_server.md)
+  : Host shell server for an embedded MCP app
+- [`mcp_host_ui()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_ui.md)
+  : Host shell UI for an embedded MCP app
+- [`mcp_result_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_result_html.md)
+  : Build a typed HTML result
+- [`mcp_result_image()`](https://jameshwade.github.io/shinymcp/reference/mcp_result_image.md)
+  : Build a typed image result
+- [`mcp_result_pdf()`](https://jameshwade.github.io/shinymcp/reference/mcp_result_pdf.md)
+  : Build a typed PDF result
+- [`mcp_result_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_result_plot.md)
+  : Build a typed plot result
+- [`mcp_result_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_result_table.md)
+  : Build a typed table result
+- [`mcp_result_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_result_text.md)
+  : Build a typed text result
+- [`mcp_result_widget()`](https://jameshwade.github.io/shinymcp/reference/mcp_result_widget.md)
+  : Build a typed widget result
 
 ## Input Components
 

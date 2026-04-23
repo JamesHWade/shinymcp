@@ -96,7 +96,14 @@ inlined automatically.
 
 #### Usage
 
-    McpApp$html_resource()
+    McpApp$html_resource(bridge_config = NULL)
+
+#### Arguments
+
+- `bridge_config`:
+
+  Optional named list of bridge config overrides used by
+  `$html_resource()`.
 
 ------------------------------------------------------------------------
 
@@ -164,28 +171,22 @@ Print method
 
 #### Arguments
 
-`...`:
+- `...`:
 
-Ignored. Inline HTML dependencies as
+  Ignored.
 
-and
+------------------------------------------------------------------------
 
-tags\</p\>\</dd\> \</dl\>\<p\>\</div\>\</p\> \</div\>
-\</div\>\<p\>\<hr\> \<a id="method-McpApp-clone"\>\</a\>\</p\>\<div
-class='section' id='method-clone-'\> \<h3\>Method
-\<code\>clone()\</code\>\</h3\> \<p\>The objects of this class are
-cloneable with this method.\</p\>\<div class='section' id='usage'\>
-\<h4\>Usage\</h4\> \<p\>\<div
-class="r"\>\</p\>\<pre\>\<code\>McpApp\$clone(deep =
-FALSE)\</code\>\</pre\>\<p\>\</div\>\</p\> \</div\> \<div
-class='section' id='arguments'\> \<h4\>Arguments\</h4\> \<p\>\<div
-class="arguments"\>\</p\>\<dl\> \<dt\>\<code\>deep\</code\>\</dt\>
-\<dd\>\<p\>Whether to make a deep clone.\</p\>\</dd\>
-\</dl\>\<p\>\</div\>\</p\> \</div\> \</div\> \</div\> \</main\> \<aside
-class="col-md-3"\> \<nav id="toc" aria-label="Table of contents"\>
-\<h2\>On this page\</h2\> \</nav\> \</aside\> \</div\> \<footer\> \<div
-class="pkgdown-footer-left"\> \<p\>Developed by James Wade.\</p\>
-\</div\> \<div class="pkgdown-footer-right"\> \<p\>Site built with \<a
-href="https://pkgdown.r-lib.org/"\>pkgdown\</a\> 2.2.0.\</p\> \</div\>
-\</footer\> \</div\> \</body\> \</html\> \</style\>\</p\>
-\</li\>\</ul\>\</div\> \</div\> \</div\> \</div\>\</main\>
+### Method `clone()`
+
+The objects of this class are cloneable with this method.
+
+#### Usage
+
+    McpApp$clone(deep = FALSE)
+
+#### Arguments
+
+- `deep`:
+
+  Whether to make a deep clone.

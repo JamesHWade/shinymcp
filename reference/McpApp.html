@@ -124,9 +124,18 @@ Returns a character string of the complete HTML page including
 UI components, bridge script, and config. HTML dependencies from
 bslib or other htmltools-based packages are inlined automatically.</p><div class="section">
 <h4 id="usage-1">Usage<a class="anchor" aria-label="anchor" href="#usage-1"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">html_resource</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">html_resource</span><span class="op">(</span>bridge_config <span class="op">=</span> <span class="cn">NULL</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
+<div class="section">
+<h4 id="arguments-1">Arguments<a class="anchor" aria-label="anchor" href="#arguments-1"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>bridge_config</code></dt>
+<dd><p>Optional named list of bridge config overrides used by
+<code>$html_resource()</code>.</p></dd>
+
+
+</dl><p></p></div>
+</div>
 
 </div><p></p><hr><a id="method-McpApp-mcp_tools"></a><div class="section">
 <h3 id="method-mcp-tools-">Method <code>mcp_tools()</code><a class="anchor" aria-label="anchor" href="#method-mcp-tools-"></a></h3>
@@ -156,7 +165,7 @@ UI resource, which tells MCP Apps-capable hosts to render the UI.</p><div class=
 </div>
 
 <div class="section">
-<h4 id="arguments-1">Arguments<a class="anchor" aria-label="anchor" href="#arguments-1"></a></h4>
+<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>name</code></dt>
 <dd><p>Name of the tool to call</p></dd>
 
@@ -184,64 +193,51 @@ UI resource, which tells MCP Apps-capable hosts to render the UI.</p><div class=
 </div>
 
 <div class="section">
-<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>...</code></dt>
-<dd><p>Ignored.
-Inline HTML dependencies as <style> and <script> tags</p></dd>
+<dd><p>Ignored.</p></dd>
 
 
-</dl><p></div></p>
+</dl><p></p></div>
 </div>
 
-</div><p><hr>
-<a id="method-McpApp-clone"></a></p><div class='section' id='method-clone-'>
-<h3>Method <code>clone()</code></h3>
-<p>The objects of this class are cloneable with this method.</p><div class='section' id='usage'>
-<h4>Usage</h4>
-<p><div class="r"></p><pre><code>McpApp$clone(deep = FALSE)</code></pre><p></div></p>
+</div><p></p><hr><a id="method-McpApp-clone"></a><div class="section">
+<h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
+<p>The objects of this class are cloneable with this method.</p><div class="section">
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
-<div class='section' id='arguments'>
-<h4>Arguments</h4>
-<p><div class="arguments"></p><dl>
-<dt><code>deep</code></dt>
+<div class="section">
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 
 
-</dl><p></div></p>
+</dl><p></p></div>
 </div>
 
 </div>
 
     </div>
 
-  </main>
-  <aside class="col-md-3">
-    <nav id="toc" aria-label="Table of contents">
-      <h2>On this page</h2>
-    </nav>
-  </aside>
-</div>
+  </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
+    </nav></aside></div>
 
 
-    <footer>
-    <div class="pkgdown-footer-left">
+    <footer><div class="pkgdown-footer-left">
   <p>Developed by James Wade.</p>
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
 </div>
 
-    </footer>
-   </div>
+    </footer></div>
 
 
 
 
 
-  </body>
-</html>
-
-</style></p></dd></dl></div></div></div></div></main></div></div></body></html>
+  </body></html>
 
