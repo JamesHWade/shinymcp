@@ -135,6 +135,7 @@
     var config = options.config || {};
     var disposed = false;
     var fullscreenFallback = false;
+    var fullscreenListenersBound = false;
 
     function fullscreenElement() {
       return (
@@ -164,6 +165,22 @@
       return null;
     }
 
+    function bindFullscreenListeners() {
+      if (fullscreenListenersBound) return;
+      document.addEventListener("fullscreenchange", onFullscreenChange);
+      document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+      document.addEventListener("keydown", onKeydown);
+      fullscreenListenersBound = true;
+    }
+
+    function unbindFullscreenListeners() {
+      if (!fullscreenListenersBound) return;
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+      document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
+      document.removeEventListener("keydown", onKeydown);
+      fullscreenListenersBound = false;
+    }
+
     function isFullscreen() {
       return fullscreenElement() === container || fullscreenFallback;
     }
@@ -181,6 +198,7 @@
     }
 
     function enterFallbackFullscreen() {
+      bindFullscreenListeners();
       fullscreenFallback = true;
       container.setAttribute("data-shinymcp-fullscreen", "true");
       updateFullscreenButton();
@@ -190,9 +208,11 @@
       fullscreenFallback = false;
       container.removeAttribute("data-shinymcp-fullscreen");
       updateFullscreenButton();
+      unbindFullscreenListeners();
     }
 
     function enterFullscreen() {
+      bindFullscreenListeners();
       var requested = requestFullscreen(container);
       if (requested && typeof requested["catch"] === "function") {
         requested["catch"](function () {
@@ -222,6 +242,7 @@
       if (fullscreenElement() !== container) {
         fullscreenFallback = false;
         container.removeAttribute("data-shinymcp-fullscreen");
+        unbindFullscreenListeners();
       }
       updateFullscreenButton();
     }
@@ -413,11 +434,10 @@
         if (disposed) return;
         disposed = true;
         window.removeEventListener("message", onMessage);
-        document.removeEventListener("fullscreenchange", onFullscreenChange);
-        document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
-        document.removeEventListener("keydown", onKeydown);
         if (isFullscreen()) {
           exitFullscreen();
+        } else {
+          unbindFullscreenListeners();
         }
         delete hosts[config.instanceId];
         if (typeof options.onDispose === "function") {
@@ -440,9 +460,6 @@
     }
 
     window.addEventListener("message", onMessage);
-    document.addEventListener("fullscreenchange", onFullscreenChange);
-    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
-    document.addEventListener("keydown", onKeydown);
     updateFullscreenButton();
     hosts[config.instanceId] = host;
     return host;

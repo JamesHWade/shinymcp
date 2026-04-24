@@ -133,7 +133,14 @@ tool_formals <- function(tool) {
 #' @noRd
 ellmer_tool_arguments <- function(tool) {
   arguments <- tool@arguments
-  if (inherits(arguments, "ellmer::TypeObject")) {
+  is_type_object <- any(
+    class(arguments) %in% c("TypeObject", "ellmer::TypeObject")
+  ) ||
+    inherits(arguments, "TypeObject") ||
+    inherits(arguments, "ellmer::TypeObject") ||
+    (isS4(arguments) && methods::is(arguments, "TypeObject"))
+
+  if (is_type_object) {
     return(arguments@properties)
   }
   arguments
