@@ -20,6 +20,11 @@ knitr::opts_chunk$set(
 1. Wrap a small `McpApp` as an ellmer tool with `as_shinychat_tool()`.
 2. Embed a live `McpApp` directly in Shiny with `mcp_host_ui()` / `mcp_host_server()` or `mcp_embed()`.
 
+In both paths, the card is a portable MCP App iframe. When it runs inside
+Shiny, the active Shiny session owns the live host state and executes tool
+calls in R. The iframe stays lightweight HTML plus the shinymcp bridge rather
+than starting a nested Shiny runtime for every chat card.
+
 ## Tool-card path with `chat_mod_server()`
 
 ```{r}
@@ -85,8 +90,7 @@ server <- function(input, output, session) {
     card <- mcp_content_result(
       app = card_app,
       value = list(status = "ready"),
-      title = "Greeting Card",
-      text = "Adjust the card inputs to refine the result."
+      title = "Greeting Card"
     )
 
     chat_append("chat", card)
@@ -128,3 +132,5 @@ server <- function(input, output, session) {
 - Prefer small single-purpose cards.
 - Prefer sequential tool execution in shinychat until you have a strong reason to expose many parallel cards.
 - Treat the chat card as the human surface and the `value_fn` output as the model-facing value.
+- Use Shiny modules directly when you need a Shiny-only app with full reactive UI semantics.
+- Use `McpApp` cards when you want the same experience to work in shinychat and MCP hosts.

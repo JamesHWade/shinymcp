@@ -1,15 +1,6 @@
 library(shinymcp)
-library(shiny)
-library(bslib)
 library(htmltools)
 library(ellmer)
-
-use_case_theme <- function() {
-  bs_theme(
-    preset = "shiny",
-    primary = "#1a8a9e"
-  )
-}
 
 as_number <- function(x, default = 0) {
   if (is.null(x) || identical(x, "")) {
@@ -41,72 +32,259 @@ intent_input <- function() {
   )
 }
 
+use_case_styles <- function() {
+  tags$style(HTML(
+    "
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #fff;
+      color: #172033;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+    .shinymcp-use-case {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      max-width: 760px;
+      margin: 0 auto;
+    }
+    .shinymcp-use-case-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 8px;
+    }
+    .shinymcp-use-case-eyebrow {
+      color: #64748b;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    .shinymcp-use-case-title {
+      margin: 1px 0 0;
+      font-size: 1rem;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .shinymcp-use-case-subtitle {
+      margin: 2px 0 0;
+      color: #64748b;
+      font-size: 0.78rem;
+    }
+    .shinymcp-controls {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+      gap: 8px 10px;
+    }
+    .shinymcp-input-group {
+      min-width: 0;
+      display: grid;
+      gap: 2px;
+    }
+    .shinymcp-input-group label {
+      color: #334155;
+      font-size: 0.72rem;
+      font-weight: 650;
+    }
+    .shinymcp-input-group select,
+    .shinymcp-input-group input:not([type='checkbox']) {
+      width: 100%;
+      min-height: 30px;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 3px 7px;
+      color: #0f172a;
+      background: #fff;
+      font-size: 0.78rem;
+    }
+    .shinymcp-input-group input[type='range'] {
+      padding: 0;
+    }
+    .shinymcp-input-group input[type='checkbox'] {
+      margin-right: 5px;
+    }
+    .shinymcp-output-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+      gap: 9px;
+      align-items: start;
+    }
+    .shinymcp-output-pane {
+      min-width: 0;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+    }
+    .shinymcp-output-pane-wide {
+      grid-column: 1 / -1;
+    }
+    .shinymcp-output-label {
+      margin-bottom: 4px;
+      color: #64748b;
+      font-size: 0.68rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+    .shinymcp-use-case pre.shinymcp-output {
+      white-space: normal !important;
+      overflow: visible !important;
+      color: #172033;
+      font-family: inherit !important;
+      font-size: 0.82rem !important;
+      line-height: 1.4;
+    }
+    .shinymcp-use-case [data-shinymcp-output-type='plot'] {
+      height: auto !important;
+      overflow: visible !important;
+    }
+    .shinymcp-use-case [data-shinymcp-output-type='plot'] img {
+      display: block;
+      width: 100%;
+      max-height: 220px;
+      object-fit: contain;
+    }
+    .shinymcp-use-case table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.74rem;
+    }
+    .shinymcp-use-case th,
+    .shinymcp-use-case td {
+      border-bottom: 1px solid #e2e8f0;
+      padding: 4px 5px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .shinymcp-use-case th {
+      color: #334155;
+      font-weight: 700;
+      background: #f8fafc;
+    }
+    .shinymcp-output-details {
+      min-width: 0;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+    }
+    .shinymcp-output-details > summary {
+      cursor: pointer;
+      color: #334155;
+      font-size: 0.76rem;
+      font-weight: 700;
+    }
+    .shinymcp-status-strip {
+      min-height: 44px;
+    }
+    @media (max-width: 560px) {
+      .shinymcp-use-case {
+        padding: 10px;
+      }
+      .shinymcp-output-grid {
+        grid-template-columns: 1fr;
+      }
+      .shinymcp-output-pane-wide {
+        grid-column: auto;
+      }
+    }
+  "
+  ))
+}
+
+use_case_page <- function(title, subtitle, controls, ...) {
+  tags$main(
+    class = "shinymcp-use-case",
+    use_case_styles(),
+    tags$header(
+      class = "shinymcp-use-case-header",
+      tags$div(
+        tags$div(class = "shinymcp-use-case-eyebrow", "shinymcp card"),
+        tags$h1(class = "shinymcp-use-case-title", title),
+        tags$p(class = "shinymcp-use-case-subtitle", subtitle)
+      )
+    ),
+    tags$section(class = "shinymcp-controls", controls),
+    ...,
+    intent_input()
+  )
+}
+
+output_pane <- function(label, output, wide = FALSE) {
+  tags$section(
+    class = paste(
+      "shinymcp-output-pane",
+      if (isTRUE(wide)) "shinymcp-output-pane-wide" else ""
+    ),
+    tags$div(class = "shinymcp-output-label", label),
+    output
+  )
+}
+
+output_details <- function(label, output, open = FALSE) {
+  tags$details(
+    class = "shinymcp-output-details",
+    open = if (isTRUE(open)) NA else NULL,
+    tags$summary(label),
+    output
+  )
+}
+
 shinymcp_revenue_forecaster <- function() {
-  ui <- page_sidebar(
-    theme = use_case_theme(),
+  ui <- use_case_page(
     title = "Revenue Scenario Board",
-    sidebar = sidebar(
-      width = 300,
-      selectInput(
+    subtitle = "Tune the funnel, then inspect the ARR ramp.",
+    controls = tagList(
+      mcp_select(
         "segment",
         "Segment",
         choices = c("SMB", "Mid-market", "Enterprise")
       ),
-      numericInput(
+      mcp_numeric_input(
         "visitors",
-        "Monthly qualified visitors",
+        "Qualified visitors",
         value = 18000,
         min = 1000,
         step = 500
       ),
-      sliderInput(
+      mcp_slider(
         "trial_rate",
-        "Visitor to trial rate",
+        "Trial rate",
         min = 1,
         max = 25,
-        value = 8,
-        post = "%"
+        value = 8
       ),
-      sliderInput(
+      mcp_slider(
         "win_rate",
-        "Trial to customer rate",
+        "Win rate",
         min = 1,
         max = 40,
-        value = 18,
-        post = "%"
+        value = 18
       ),
-      numericInput(
+      mcp_numeric_input(
         "contract_value",
-        "Average contract value",
+        "ACV",
         value = 4200,
         min = 250,
         step = 250
       ),
-      sliderInput(
+      mcp_slider(
         "monthly_churn",
-        "Monthly churn",
+        "Churn",
         min = 0,
         max = 12,
-        value = 3,
-        post = "%"
+        value = 3
       )
     ),
-    layout_columns(
-      col_widths = c(5, 7),
-      card(
-        card_header("Decision summary"),
-        mcp_text("summary")
-      ),
-      card(
-        card_header("ARR ramp"),
-        mcp_plot("arr_plot", height = "280px")
-      )
-    ),
-    card(
-      card_header("Monthly forecast"),
-      mcp_table("forecast")
-    ),
-    intent_input()
+    output_pane("Decision summary", mcp_text("summary"), wide = TRUE),
+    tags$section(
+      class = "shinymcp-output-grid",
+      output_pane("ARR ramp", mcp_plot("arr_plot", height = "220px")),
+      output_details("Monthly forecast", mcp_table("forecast"))
+    )
   )
 
   tool <- ellmer::tool(
@@ -220,56 +398,43 @@ shinymcp_revenue_forecaster <- function() {
 }
 
 shinymcp_experiment_planner <- function() {
-  ui <- page_sidebar(
-    theme = use_case_theme(),
+  ui <- use_case_page(
     title = "Experiment Planner",
-    sidebar = sidebar(
-      width = 300,
-      sliderInput(
+    subtitle = "Estimate sample size and runtime for an A/B test.",
+    controls = tagList(
+      mcp_slider(
         "baseline_rate",
         "Baseline conversion",
         min = 1,
         max = 80,
-        value = 12,
-        post = "%"
+        value = 12
       ),
-      sliderInput(
+      mcp_slider(
         "minimum_effect",
-        "Minimum relative lift",
+        "Minimum lift",
         min = 1,
         max = 60,
-        value = 15,
-        post = "%"
+        value = 15
       ),
-      selectInput(
+      mcp_select(
         "target_power",
         "Target power",
         choices = c("80%" = 0.8, "90%" = 0.9, "95%" = 0.95)
       ),
-      numericInput(
+      mcp_numeric_input(
         "traffic_per_day",
-        "Eligible users per day",
+        "Users/day",
         value = 6000,
         min = 100,
         step = 100
       )
     ),
-    layout_columns(
-      col_widths = c(5, 7),
-      card(
-        card_header("Recommended design"),
-        mcp_text("summary")
-      ),
-      card(
-        card_header("Power curve"),
-        mcp_plot("power_plot", height = "280px")
-      )
-    ),
-    card(
-      card_header("Design inputs"),
-      mcp_table("design")
-    ),
-    intent_input()
+    output_pane("Recommended design", mcp_text("summary"), wide = TRUE),
+    tags$section(
+      class = "shinymcp-output-grid",
+      output_pane("Power curve", mcp_plot("power_plot", height = "220px")),
+      output_details("Design inputs", mcp_table("design"))
+    )
   )
 
   tool <- ellmer::tool(
@@ -408,53 +573,46 @@ shinymcp_experiment_planner <- function() {
 }
 
 shinymcp_incident_triage <- function() {
-  ui <- page_sidebar(
-    theme = use_case_theme(),
+  ui <- use_case_page(
     title = "Incident Triage Console",
-    sidebar = sidebar(
-      width = 300,
-      selectInput(
+    subtitle = "Classify impact and build the next-step runbook.",
+    controls = tagList(
+      mcp_select(
         "service",
         "Service",
         choices = c("Payments", "Login", "API", "Data export")
       ),
-      selectInput(
+      mcp_select(
         "severity",
-        "Current impact",
+        "Impact",
         choices = c("Minor", "Degraded", "Outage")
       ),
-      numericInput(
+      mcp_numeric_input(
         "affected_users",
         "Affected users",
         value = 250,
         min = 0,
         step = 25
       ),
-      numericInput(
+      mcp_numeric_input(
         "minutes_open",
-        "Minutes since first alert",
+        "Minutes open",
         value = 18,
         min = 0,
         step = 5
       ),
-      checkboxInput("regulated_data", "Regulated data involved")
+      mcp_checkbox("regulated_data", "Regulated data involved")
     ),
-    card(
-      card_header("Status"),
-      mcp_html("status")
+    output_pane(
+      "Status",
+      tags$div(class = "shinymcp-status-strip", mcp_html("status")),
+      wide = TRUE
     ),
-    layout_columns(
-      col_widths = c(5, 7),
-      card(
-        card_header("Briefing"),
-        mcp_text("briefing")
-      ),
-      card(
-        card_header("Runbook"),
-        mcp_table("runbook")
-      )
-    ),
-    intent_input()
+    tags$section(
+      class = "shinymcp-output-grid",
+      output_pane("Briefing", mcp_text("briefing")),
+      output_details("Runbook", mcp_table("runbook"))
+    )
   )
 
   tool <- ellmer::tool(

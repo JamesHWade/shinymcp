@@ -29,6 +29,10 @@ Apps:
 | Experiment planner | Statistical planning, a power curve, and a concise recommendation |
 | Incident triage console | Operational decision support, status HTML, and a runbook table |
 
+The apps are intentionally card-sized: controls fit in a compact grid, the
+primary answer is immediately visible, and secondary tables stay available
+without taking over the chat transcript.
+
 ## Run a use case as an MCP App
 
 The gallery entrypoint serves one use case at a time. Set
@@ -108,6 +112,11 @@ When `OPENAI_API_KEY` is available, that app uses `chat_mod_ui()` and
 `chat_mod_server()` with one ellmer client per Shiny session. Without a
 configured model provider, it falls back to local demo mode: type `revenue`,
 `experiment`, or `incident` and the app appends a live shinymcp card directly.
+
+The Shiny session is still the runtime for those cards: it registers the
+`McpApp`, receives bridge events from the iframe, and executes tool calls in R.
+The iframe itself remains a portable MCP App surface instead of a nested Shiny
+app, which keeps each chat card small and reusable outside Shiny.
 
 ## Why these examples matter
 

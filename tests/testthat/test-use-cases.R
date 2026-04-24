@@ -20,7 +20,6 @@ use_cases_file <- function() {
 
 test_that("use-case examples build and return formatted MCP results", {
   skip_if_not_installed("ellmer")
-  skip_if_not_installed("bslib")
   skip_if_not_installed("base64enc")
 
   env <- new.env(parent = globalenv())
@@ -56,7 +55,6 @@ test_that("use-case examples build and return formatted MCP results", {
 
 test_that("use-case examples can be wrapped as shinychat tools", {
   skip_if_not_installed("ellmer")
-  skip_if_not_installed("bslib")
   skip_if_not_installed("shinychat")
 
   env <- new.env(parent = globalenv())
