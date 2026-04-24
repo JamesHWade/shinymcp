@@ -6,8 +6,13 @@ as_number <- function(x, default = 0) {
   if (is.null(x) || identical(x, "")) {
     return(default)
   }
-  value <- suppressWarnings(as.numeric(x))
-  if (is.na(value)) default else value
+  value <- as.numeric(x)
+  if (is.na(value)) {
+    cli::cli_warn("Could not coerce {.val {x}} to number; using default {default}.")
+    default
+  } else {
+    value
+  }
 }
 
 as_flag <- function(x) {
@@ -752,13 +757,10 @@ shinymcp_use_cases <- function() {
 shinymcp_use_case <- function(name = "revenue") {
   apps <- shinymcp_use_cases()
   if (!name %in% names(apps)) {
-    stop(
-      "Unknown use case '",
-      name,
-      "'. Expected one of: ",
-      paste(names(apps), collapse = ", "),
-      call. = FALSE
-    )
+    cli::cli_abort(c(
+      "Unknown use case {.val {name}}.",
+      i = "Expected one of: {.val {names(apps)}}."
+    ))
   }
   apps[[name]]
 }

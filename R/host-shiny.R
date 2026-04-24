@@ -189,7 +189,7 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
           error = function(e) {
             list(
               content = list(
-                list(type = "text", text = paste("Error:", e$message))
+                list(type = "text", text = paste("Error:", conditionMessage(e)))
               ),
               isError = TRUE
             )
@@ -265,9 +265,11 @@ mcp_host_ui <- function(id) {
 #' @param height Preferred initial height for the host shell.
 #' @param initial_arguments Optional named list of initial tool arguments.
 #' @param debug Whether to enable debug affordances in the host shell.
-#' @return A small control API with `instance_id`, `execute()`, `reset()`,
-#'   `dispose()`, and read-only reactives for `model_context`, `last_result`,
-#'   `last_raw_result`, `last_tool_call`, and `last_size`.
+#' @return A list with reactive `instance_id` (call as `host$instance_id()`),
+#'   imperative functions `execute()`, `reset()`, `dispose()`, and read-only
+#'   reactives `model_context`, `last_result`, `last_raw_result`,
+#'   `last_tool_call`, and `last_size`. All reactives must be called as
+#'   functions.
 #' @export
 mcp_host_server <- function(
   id,

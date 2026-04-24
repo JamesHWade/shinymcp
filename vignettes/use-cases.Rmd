@@ -73,6 +73,7 @@ specific sample size and runtime. The plot gives the human reviewer a quick
 sense of how much margin the design has.
 
 ```{r}
+source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
 app <- shinymcp_use_case("experiment")
 app$call_tool("plan_experiment", list(
   baseline_rate = 12,
@@ -89,6 +90,7 @@ collect facts conversationally, call the tool, and return a priority, briefing,
 and runbook without losing the structured values it needs for follow-up.
 
 ```{r}
+source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
 app <- shinymcp_use_case("incident")
 app$call_tool("triage_incident", list(
   service = "Payments",

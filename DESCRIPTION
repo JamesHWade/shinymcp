@@ -16,6 +16,7 @@ Imports:
     cli,
     htmltools,
     jsonlite,
+    methods,
     R6,
     rlang
 Suggests:

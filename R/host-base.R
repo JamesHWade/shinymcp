@@ -45,13 +45,25 @@ new_mcp_host_state <- function(
 #' @param state A host state environment.
 #' @param name Callback field name.
 #' @param value Callback payload.
-#' @return Invisibly, `value`.
 #' @noRd
 mcp_host_callback <- function(state, name, value) {
   callback <- state[[name]]
-  if (is.function(callback)) {
-    callback(value, state)
+  if (!is.function(callback)) {
+    if (!is.null(callback)) {
+      cli::cli_warn(
+        "Callback {.field {name}} is not a function (got {.cls {class(callback)}}); ignoring."
+      )
+    }
+    return(invisible(value))
   }
+  tryCatch(
+    callback(value, state),
+    error = function(e) {
+      cli::cli_warn(
+        "Callback {.field {name}} threw: {conditionMessage(e)}"
+      )
+    }
+  )
   invisible(value)
 }
 

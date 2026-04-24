@@ -15,7 +15,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-`shinymcp` now supports two runtime-first shinychat paths:
+`shinymcp` supports two runtime-first shinychat paths:
 
 1. Wrap a small `McpApp` as an ellmer tool with `as_shinychat_tool()`.
 2. Embed a live `McpApp` directly in Shiny with `mcp_host_ui()` / `mcp_host_server()` or `mcp_embed()`.
