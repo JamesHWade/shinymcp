@@ -5,6 +5,18 @@
   overflow: hidden;
 }
 
+.shinymcp-host[data-shinymcp-fullscreen="true"],
+.shinymcp-host:fullscreen,
+.shinymcp-host:-webkit-full-screen {
+  position: fixed;
+  inset: 1rem;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
+}
+
 .shinymcp-host-toolbar {
   display: flex;
   align-items: center;
@@ -70,6 +82,14 @@
   min-height: 180px;
   border: 0;
   background: #fff;
+}
+
+.shinymcp-host[data-shinymcp-fullscreen="true"] .shinymcp-host-frame,
+.shinymcp-host:fullscreen .shinymcp-host-frame,
+.shinymcp-host:-webkit-full-screen .shinymcp-host-frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto !important;
 }
 
 .shinymcp-host[data-shinymcp-height]:not([data-shinymcp-height="auto"]) .shinymcp-host-frame {

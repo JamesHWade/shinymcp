@@ -25,6 +25,10 @@ Shiny, the active Shiny session owns the live host state and executes tool
 calls in R. The iframe stays lightweight HTML plus the shinymcp bridge rather
 than starting a nested Shiny runtime for every chat card.
 
+`shinymcp` also sets shinychat's `display$full_screen` flag for tool cards when
+available, and the embedded host shell includes its own full-screen control for
+direct Shiny embeds and older shinychat development builds.
+
 ## Tool-card path with `chat_mod_server()`
 
 ```{r}
@@ -77,6 +81,7 @@ The wrapped tool returns:
 
 - A machine-facing value, which defaults to the raw tool result transformed by `value_fn`.
 - A human-facing shinychat tool card, which defaults to a live embedded `McpApp`.
+- Full-screen affordances for larger card inspection, using shinychat's native tool-card mode when available.
 
 ## Content-streaming path with `chat_ui()` + `chat_append()`
 

@@ -11,6 +11,7 @@ mcp_content_result(
   icon = NULL,
   open = TRUE,
   show_request = FALSE,
+  full_screen = TRUE,
   html = NULL,
   markdown = NULL,
   text = NULL,
@@ -29,6 +30,9 @@ mcp_content_result(
 \item{open}{Whether the card starts expanded.}
 
 \item{show_request}{Whether shinychat should show the request payload.}
+
+\item{full_screen}{Whether shinychat should offer its full-screen tool-card
+mode when supported.}
 
 \item{html}{Optional HTML display body.}
 

@@ -52,6 +52,14 @@ mcp_host_markup <- function(id, config = NULL, height = "auto") {
         class = "shinymcp-host-button shinymcp-host-button-secondary",
         `data-shinymcp-action` = "reset",
         "Reset"
+      ),
+      htmltools::tags$button(
+        type = "button",
+        class = "shinymcp-host-button shinymcp-host-button-secondary",
+        `data-shinymcp-action` = "fullscreen",
+        `aria-pressed` = "false",
+        title = "Full screen",
+        "Full screen"
       )
     )
   )

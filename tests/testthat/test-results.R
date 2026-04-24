@@ -65,6 +65,7 @@ test_that("mcp_content_result is renderable by shinychat", {
   expect_true(inherits(result, "ellmer::ContentToolResult"))
   expect_equal(result@extra$display$title, "Card Title")
   expect_false(result@extra$display$show_request)
+  expect_true(result@extra$display$full_screen)
   expect_s3_class(result@extra$display$html, "shiny.tag")
   expect_true(inherits(result@request, "ellmer::ContentToolRequest"))
 
@@ -92,6 +93,7 @@ test_that("as_shinychat_tool wraps a single app tool", {
   expect_true(inherits(result, "ellmer::ContentToolResult"))
   expect_equal(result@extra$display$title, "Greeting Card")
   expect_equal(result@extra$display$text, "Hello Ada")
+  expect_true(result@extra$display$full_screen)
   expect_equal(result@value$message, "Hello Ada")
   expect_true(inherits(result@request, "ellmer::ContentToolRequest"))
 

@@ -6,6 +6,8 @@ test_that("mcp_host_ui renders a host shell", {
   expect_match(rendered, 'data-shinymcp-host-frame')
   expect_match(rendered, "Apply")
   expect_match(rendered, "Reset")
+  expect_match(rendered, "Full screen")
+  expect_match(rendered, 'data-shinymcp-action="fullscreen"')
 })
 
 test_that("mcp_embed requires an id outside a live session", {

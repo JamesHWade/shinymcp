@@ -251,7 +251,8 @@ build_shinychat_wrapper_fun <- function(
   title,
   icon,
   open,
-  show_request
+  show_request,
+  full_screen
 ) {
   wrapped <- function() {}
   formals(wrapped) <- tool_formals(app_tool)
@@ -266,7 +267,8 @@ build_shinychat_wrapper_fun <- function(
       TITLE_FN = title,
       ICON_FN = icon,
       OPEN_FLAG = open,
-      SHOW_REQUEST_FLAG = show_request
+      SHOW_REQUEST_FLAG = show_request,
+      FULL_SCREEN_FLAG = full_screen
     ),
     parent = environment()
   )
@@ -311,6 +313,7 @@ build_shinychat_wrapper_fun <- function(
       icon = result_icon,
       open = OPEN_FLAG,
       show_request = SHOW_REQUEST_FLAG,
+      full_screen = FULL_SCREEN_FLAG,
       text = result_text,
       intent = args[["_intent"]] %||% NULL,
       initial_arguments = args,
@@ -577,6 +580,8 @@ mcp_result_structured_content <- function(result) {
 #' @param icon Optional card icon.
 #' @param open Whether the card starts expanded.
 #' @param show_request Whether shinychat should show the request payload.
+#' @param full_screen Whether shinychat should offer its full-screen tool-card
+#'   mode when supported.
 #' @param html Optional HTML display body.
 #' @param markdown Optional markdown fallback.
 #' @param text Optional plain-text fallback.
@@ -589,6 +594,7 @@ mcp_content_result <- function(
   icon = NULL,
   open = TRUE,
   show_request = FALSE,
+  full_screen = TRUE,
   html = NULL,
   markdown = NULL,
   text = NULL,
@@ -601,6 +607,7 @@ mcp_content_result <- function(
     icon = icon,
     open = open,
     show_request = show_request,
+    full_screen = full_screen,
     html = html,
     markdown = markdown,
     text = text,
@@ -617,6 +624,7 @@ mcp_content_result_internal <- function(
   icon = NULL,
   open = TRUE,
   show_request = FALSE,
+  full_screen = TRUE,
   html = NULL,
   markdown = NULL,
   text = NULL,
@@ -632,6 +640,7 @@ mcp_content_result_internal <- function(
     icon = icon,
     open = open,
     show_request = show_request,
+    full_screen = full_screen,
     intent = intent
   ))
 
@@ -686,6 +695,8 @@ mcp_content_result_internal <- function(
 #' @param icon Optional card icon or icon function.
 #' @param open Whether the card starts expanded.
 #' @param show_request Whether shinychat should show the request payload.
+#' @param full_screen Whether shinychat should offer its full-screen tool-card
+#'   mode when supported.
 #' @export
 as_shinychat_tool <- function(
   app,
@@ -694,7 +705,8 @@ as_shinychat_tool <- function(
   title = NULL,
   icon = NULL,
   open = TRUE,
-  show_request = FALSE
+  show_request = FALSE,
+  full_screen = TRUE
 ) {
   rlang::check_installed("ellmer", reason = "for shinychat tool wrappers")
   app <- as_mcp_app(app)
@@ -736,7 +748,8 @@ as_shinychat_tool <- function(
         title = title %||% annotations$title,
         icon = icon %||% annotations$icon,
         open = open,
-        show_request = show_request
+        show_request = show_request,
+        full_screen = full_screen
       ),
       name = tool_nm,
       description = description,

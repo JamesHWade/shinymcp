@@ -101,6 +101,9 @@
   function bindControls(container, host, trigger) {
     var execute = container.querySelector('[data-shinymcp-action="execute"]');
     var reset = container.querySelector('[data-shinymcp-action="reset"]');
+    var fullscreen = container.querySelector(
+      '[data-shinymcp-action="fullscreen"]'
+    );
 
     showControls(container, trigger);
 
@@ -117,6 +120,13 @@
       });
       reset._shinymcpBound = true;
     }
+
+    if (fullscreen && !fullscreen._shinymcpBound) {
+      fullscreen.addEventListener("click", function () {
+        host.toggleFullscreen();
+      });
+      fullscreen._shinymcpBound = true;
+    }
   }
 
   function createHost(options) {
@@ -124,6 +134,103 @@
     var iframe = options.iframe;
     var config = options.config || {};
     var disposed = false;
+    var fullscreenFallback = false;
+
+    function fullscreenElement() {
+      return (
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        null
+      );
+    }
+
+    function requestFullscreen(el) {
+      if (el.requestFullscreen) {
+        return el.requestFullscreen();
+      }
+      if (el.webkitRequestFullscreen) {
+        return el.webkitRequestFullscreen();
+      }
+      return null;
+    }
+
+    function exitDocumentFullscreen() {
+      if (document.exitFullscreen) {
+        return document.exitFullscreen();
+      }
+      if (document.webkitExitFullscreen) {
+        return document.webkitExitFullscreen();
+      }
+      return null;
+    }
+
+    function isFullscreen() {
+      return fullscreenElement() === container || fullscreenFallback;
+    }
+
+    function updateFullscreenButton() {
+      var button = container.querySelector('[data-shinymcp-action="fullscreen"]');
+      var active = isFullscreen();
+      if (!button) return;
+      button.setAttribute("aria-pressed", active ? "true" : "false");
+      button.textContent = active ? "Exit full screen" : "Full screen";
+      button.setAttribute(
+        "title",
+        active ? "Exit full screen" : "Full screen"
+      );
+    }
+
+    function enterFallbackFullscreen() {
+      fullscreenFallback = true;
+      container.setAttribute("data-shinymcp-fullscreen", "true");
+      updateFullscreenButton();
+    }
+
+    function exitFallbackFullscreen() {
+      fullscreenFallback = false;
+      container.removeAttribute("data-shinymcp-fullscreen");
+      updateFullscreenButton();
+    }
+
+    function enterFullscreen() {
+      var requested = requestFullscreen(container);
+      if (requested && typeof requested["catch"] === "function") {
+        requested["catch"](function () {
+          enterFallbackFullscreen();
+        });
+        return;
+      }
+      if (!requested) {
+        enterFallbackFullscreen();
+      }
+    }
+
+    function exitFullscreen() {
+      if (fullscreenElement() === container) {
+        var exited = exitDocumentFullscreen();
+        if (exited && typeof exited["catch"] === "function") {
+          exited["catch"](function () {
+            exitFallbackFullscreen();
+          });
+        }
+        return;
+      }
+      exitFallbackFullscreen();
+    }
+
+    function onFullscreenChange() {
+      if (fullscreenElement() !== container) {
+        fullscreenFallback = false;
+        container.removeAttribute("data-shinymcp-fullscreen");
+      }
+      updateFullscreenButton();
+    }
+
+    function onKeydown(event) {
+      if (event.key === "Escape" && fullscreenFallback) {
+        exitFallbackFullscreen();
+      }
+    }
 
     function postToIframe(message) {
       if (!iframe || !iframe.contentWindow) return;
@@ -239,7 +346,8 @@
     function handleNotification(message) {
       if (
         message.method === "ui/notifications/size-changed" &&
-        (config.height === "auto" || config.height == null)
+        (config.height === "auto" || config.height == null) &&
+        !isFullscreen()
       ) {
         var nextHeight = message.params && message.params.height;
         if (typeof nextHeight === "number" && nextHeight > 0) {
@@ -294,10 +402,23 @@
         notify("ui/notifications/reset", {});
         setError(container, "");
       },
+      toggleFullscreen: function () {
+        if (isFullscreen()) {
+          exitFullscreen();
+        } else {
+          enterFullscreen();
+        }
+      },
       dispose: function () {
         if (disposed) return;
         disposed = true;
         window.removeEventListener("message", onMessage);
+        document.removeEventListener("fullscreenchange", onFullscreenChange);
+        document.removeEventListener("webkitfullscreenchange", onFullscreenChange);
+        document.removeEventListener("keydown", onKeydown);
+        if (isFullscreen()) {
+          exitFullscreen();
+        }
         delete hosts[config.instanceId];
         if (typeof options.onDispose === "function") {
           options.onDispose(host);
@@ -319,6 +440,10 @@
     }
 
     window.addEventListener("message", onMessage);
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", onFullscreenChange);
+    document.addEventListener("keydown", onKeydown);
+    updateFullscreenButton();
     hosts[config.instanceId] = host;
     return host;
   }

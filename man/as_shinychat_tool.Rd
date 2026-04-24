@@ -11,7 +11,8 @@ as_shinychat_tool(
   title = NULL,
   icon = NULL,
   open = TRUE,
-  show_request = FALSE
+  show_request = FALSE,
+  full_screen = TRUE
 )
 }
 \arguments{
@@ -29,6 +30,9 @@ the raw tool result.}
 \item{open}{Whether the card starts expanded.}
 
 \item{show_request}{Whether shinychat should show the request payload.}
+
+\item{full_screen}{Whether shinychat should offer its full-screen tool-card
+mode when supported.}
 }
 \description{
 Small single-card apps work best here. Multi-tool apps return a list of
