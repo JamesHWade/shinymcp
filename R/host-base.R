@@ -29,9 +29,30 @@ new_mcp_host_state <- function(
   state$height <- height
   state$debug <- debug
   state$model_context <- NULL
+  state$last_tool_call <- NULL
+  state$last_raw_result <- NULL
+  state$last_result <- NULL
   state$last_size <- NULL
   state$disposed <- FALSE
+  state$on_model_context <- NULL
+  state$on_tool_call <- NULL
+  state$on_size <- NULL
   state
+}
+
+#' Invoke an optional host-state callback
+#'
+#' @param state A host state environment.
+#' @param name Callback field name.
+#' @param value Callback payload.
+#' @return Invisibly, `value`.
+#' @noRd
+mcp_host_callback <- function(state, name, value) {
+  callback <- state[[name]]
+  if (is.function(callback)) {
+    callback(value, state)
+  }
+  invisible(value)
 }
 
 #' Build bridge config for a live host state
@@ -75,7 +96,21 @@ mcp_host_initialize <- function(state) {
 #' @return A formatted MCP tool result.
 #' @noRd
 mcp_host_call_tool <- function(state, tool_name, arguments = list()) {
-  format_tool_result(state$app$call_tool(tool_name, arguments))
+  raw_result <- state$app$call_tool(tool_name, arguments)
+  result <- format_tool_result(raw_result)
+  call <- list(
+    name = tool_name,
+    arguments = arguments,
+    raw_result = raw_result,
+    result = result
+  )
+
+  state$last_tool_call <- call
+  state$last_raw_result <- raw_result
+  state$last_result <- result
+  mcp_host_callback(state, "on_tool_call", call)
+
+  result
 }
 
 #' Read a resource through a host state
@@ -99,6 +134,7 @@ mcp_host_read_resource <- function(state, uri) {
 #' @noRd
 mcp_host_update_model_context <- function(state, context) {
   state$model_context <- context
+  mcp_host_callback(state, "on_model_context", context)
   invisible(state)
 }
 
@@ -111,6 +147,7 @@ mcp_host_update_model_context <- function(state, context) {
 #' @noRd
 mcp_host_notify_size <- function(state, width = NULL, height = NULL) {
   state$last_size <- compact_list(list(width = width, height = height))
+  mcp_host_callback(state, "on_size", state$last_size)
   invisible(state)
 }
 

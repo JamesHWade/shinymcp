@@ -118,6 +118,26 @@ server <- function(input, output, session) {
 
 `mcp_embed(card_app)` is the convenience helper for dynamic server-side contexts where a live session already exists.
 
+The returned host object also exposes read-only reactives so the outer Shiny app
+can observe the embedded card:
+
+```{r}
+server <- function(input, output, session) {
+  host <- mcp_host_server("card", app = card_app)
+
+  observeEvent(host$model_context(), {
+    # Current values the card is sending to the model context.
+    str(host$model_context())
+  })
+
+  observeEvent(host$last_tool_call(), {
+    # Raw R result plus formatted MCP structuredContent.
+    str(host$last_raw_result())
+    str(host$last_result()$structuredContent)
+  })
+}
+```
+
 ## Interaction modes
 
 `mcp_embed()` and `mcp_host_server()` support four trigger modes:
