@@ -31,6 +31,16 @@ pct <- function(x) {
   paste0(round(100 * x, 1), "%")
 }
 
+intent_input <- function() {
+  tags$input(
+    type = "hidden",
+    id = "_intent",
+    `data-shinymcp-input` = "_intent",
+    `data-shinymcp-type` = "text",
+    value = ""
+  )
+}
+
 shinymcp_revenue_forecaster <- function() {
   ui <- page_sidebar(
     theme = use_case_theme(),
@@ -95,7 +105,8 @@ shinymcp_revenue_forecaster <- function() {
     card(
       card_header("Monthly forecast"),
       mcp_table("forecast")
-    )
+    ),
+    intent_input()
   )
 
   tool <- ellmer::tool(
@@ -257,7 +268,8 @@ shinymcp_experiment_planner <- function() {
     card(
       card_header("Design inputs"),
       mcp_table("design")
-    )
+    ),
+    intent_input()
   )
 
   tool <- ellmer::tool(
@@ -441,7 +453,8 @@ shinymcp_incident_triage <- function() {
         card_header("Runbook"),
         mcp_table("runbook")
       )
-    )
+    ),
+    intent_input()
   )
 
   tool <- ellmer::tool(

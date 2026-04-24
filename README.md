@@ -230,7 +230,7 @@ system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp")
 ```
 
 For realistic demo scripts and shinychat integration, see
-`vignette("compelling-use-cases")` and
+`vignette("use-cases")` and
 `vignette("use-shinymcp-with-shinychat")`.
 
 ## How it works

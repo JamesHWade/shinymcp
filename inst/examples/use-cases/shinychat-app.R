@@ -70,30 +70,80 @@ use_case_tools <- list(
   )
 )
 
+has_openai_key <- nzchar(Sys.getenv("OPENAI_API_KEY"))
+
 ui <- page_fillable(
   fillable_mobile = TRUE,
   theme = bs_theme(preset = "shiny", primary = "#1a8a9e"),
   titlePanel("shinymcp use-case chat"),
-  chat_mod_ui(
-    "chat",
-    messages = list(
-      list(
-        role = "assistant",
-        content = paste(
-          "Ask for a revenue forecast, experiment plan, or incident triage.",
-          "Each tool call returns a live shinymcp card in the chat."
+  if (has_openai_key) {
+    chat_mod_ui(
+      "chat",
+      messages = list(
+        list(
+          role = "assistant",
+          content = paste(
+            "Ask for a revenue forecast, experiment plan, or incident triage.",
+            "Each tool call returns a live shinymcp card in the chat."
+          )
         )
       )
     )
-  )
+  } else {
+    chat_ui(
+      "chat",
+      messages = list(
+        list(
+          role = "assistant",
+          content = paste(
+            "Local demo mode: ask for revenue, experiment, or incident.",
+            "No model provider is configured, so the app will append a live",
+            "shinymcp card directly."
+          )
+        )
+      )
+    )
+  }
 )
 
-server <- function(input, output, session) {
-  client <- ellmer::chat("openai/gpt-4.1-nano")
-  for (tool in use_case_tools) {
-    client$register_tool(tool)
+local_demo_card <- function(message) {
+  message <- tolower(message %||% "")
+
+  if (grepl("experiment|test|sample|power", message)) {
+    return(mcp_content_result(
+      app = use_cases$experiment,
+      value = list(card = "experiment"),
+      title = "Experiment Planner"
+    ))
   }
-  chat_mod_server("chat", client)
+
+  if (grepl("incident|outage|triage|runbook", message)) {
+    return(mcp_content_result(
+      app = use_cases$incident,
+      value = list(card = "incident"),
+      title = "Incident Triage Console"
+    ))
+  }
+
+  mcp_content_result(
+    app = use_cases$revenue,
+    value = list(card = "revenue"),
+    title = "Revenue Scenario Board"
+  )
+}
+
+server <- function(input, output, session) {
+  if (has_openai_key) {
+    client <- ellmer::chat("openai/gpt-4.1-nano")
+    for (tool in use_case_tools) {
+      client$register_tool(tool)
+    }
+    chat_mod_server("chat", client)
+  } else {
+    observeEvent(input$chat_user_input, {
+      chat_append("chat", local_demo_card(input$chat_user_input))
+    })
+  }
 }
 
 shinyApp(ui, server)

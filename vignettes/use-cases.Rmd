@@ -1,8 +1,8 @@
 ---
-title: "Compelling shinymcp use cases"
+title: "shinymcp use cases"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Compelling shinymcp use cases}
+  %\VignetteIndexEntry{shinymcp use cases}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -104,10 +104,10 @@ The gallery also includes a Shiny app that registers all three cards as
 Rscript "$(Rscript -e 'cat(system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp"))')"
 ```
 
-That app uses `chat_mod_ui()` and `chat_mod_server()` with one ellmer client per
-Shiny session. It expects a configured provider for
-`ellmer::chat("openai/gpt-4.1-nano")`; change the model string if your local
-demo uses another provider.
+When `OPENAI_API_KEY` is available, that app uses `chat_mod_ui()` and
+`chat_mod_server()` with one ellmer client per Shiny session. Without a
+configured model provider, it falls back to local demo mode: type `revenue`,
+`experiment`, or `incident` and the app appends a live shinymcp card directly.
 
 ## Why these examples matter
 

@@ -23,8 +23,8 @@ navbar:
     articles:
       text: Articles
       menu:
-        - text: Compelling Use Cases
-          href: articles/compelling-use-cases.html
+        - text: Use Cases
+          href: articles/use-cases.html
         - text: Converting Shiny Apps
           href: articles/converting-shiny-apps.html
         - text: Automatic Conversion
