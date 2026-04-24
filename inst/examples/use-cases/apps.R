@@ -8,7 +8,9 @@ as_number <- function(x, default = 0) {
   }
   value <- as.numeric(x)
   if (is.na(value)) {
-    cli::cli_warn("Could not coerce {.val {x}} to number; using default {default}.")
+    cli::cli_warn(
+      "Could not coerce {.val {x}} to number; using default {default}."
+    )
     default
   } else {
     value
