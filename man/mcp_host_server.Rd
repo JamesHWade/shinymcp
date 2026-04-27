@@ -31,8 +31,9 @@ mcp_host_server(
 \item{debug}{Whether to enable debug affordances in the host shell.}
 }
 \value{
-A small control API with \code{instance_id}, \code{execute()}, \code{reset()}, and
-\code{dispose()}.
+A small control API with \code{instance_id}, \code{execute()}, \code{reset()},
+\code{dispose()}, and read-only reactives for \code{model_context}, \code{last_result},
+\code{last_raw_result}, \code{last_tool_call}, and \code{last_size}.
 }
 \description{
 Host shell server for an embedded MCP app

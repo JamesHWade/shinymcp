@@ -2,20 +2,30 @@ url: https://jameshwade.github.io/shinymcp/
 
 template:
   bootstrap: 5
-  bootswatch: cosmo
   bslib:
-    primary: "#1a8a9e"
-    border-radius: 0.5rem
-    btn-border-radius: 0.5rem
+    primary: "#0f766e"
+    secondary: "#475569"
+    success: "#15803d"
+    info: "#2563eb"
+    warning: "#b45309"
+    danger: "#b91c1c"
+    light: "#f8fafc"
+    dark: "#0f172a"
+    body-color: "#172033"
+    link-color: "#0f766e"
+    border-color: "#d9e3ef"
+    border-radius: 0.45rem
+    btn-border-radius: 0.45rem
 
 home:
   title: "shinymcp - Shiny Apps Inside AI Chat"
   description: >
     Convert Shiny apps into MCP Apps that render interactive UIs directly
     inside AI chat interfaces like Claude Desktop.
+  sidebar: false
 
 navbar:
-  bg: primary
+  bg: light
   structure:
     left: [intro, reference, articles]
     right: [search, github]
@@ -23,10 +33,20 @@ navbar:
     articles:
       text: Articles
       menu:
+        - text: Use Cases
+          href: articles/use-cases.html
         - text: Converting Shiny Apps
           href: articles/converting-shiny-apps.html
         - text: Automatic Conversion
           href: articles/automatic-conversion.html
+        - text: Choose Migration Path
+          href: articles/choose-the-right-migration-path.html
+        - text: Use with shinychat
+          href: articles/use-shinymcp-with-shinychat.html
+        - text: Compatibility Matrix
+          href: articles/compatibility-matrix.html
+        - text: Debugging shinymcp
+          href: articles/debugging-shinymcp.html
 
 reference:
   - title: Create MCP Apps

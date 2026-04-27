@@ -52,6 +52,14 @@ mcp_host_markup <- function(id, config = NULL, height = "auto") {
         class = "shinymcp-host-button shinymcp-host-button-secondary",
         `data-shinymcp-action` = "reset",
         "Reset"
+      ),
+      htmltools::tags$button(
+        type = "button",
+        class = "shinymcp-host-button shinymcp-host-button-secondary",
+        `data-shinymcp-action` = "fullscreen",
+        `aria-pressed` = "false",
+        title = "Full screen",
+        "Full screen"
       )
     )
   )
@@ -181,7 +189,7 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
           error = function(e) {
             list(
               content = list(
-                list(type = "text", text = paste("Error:", e$message))
+                list(type = "text", text = paste("Error:", conditionMessage(e)))
               ),
               isError = TRUE
             )
@@ -257,8 +265,11 @@ mcp_host_ui <- function(id) {
 #' @param height Preferred initial height for the host shell.
 #' @param initial_arguments Optional named list of initial tool arguments.
 #' @param debug Whether to enable debug affordances in the host shell.
-#' @return A small control API with `instance_id`, `execute()`, `reset()`, and
-#'   `dispose()`.
+#' @return A list with reactive `instance_id` (call as `host$instance_id()`),
+#'   imperative functions `execute()`, `reset()`, `dispose()`, and read-only
+#'   reactives `model_context`, `last_result`, `last_raw_result`,
+#'   `last_tool_call`, and `last_size`. All reactives must be called as
+#'   functions.
 #' @export
 mcp_host_server <- function(
   id,
@@ -269,8 +280,9 @@ mcp_host_server <- function(
   initial_arguments = NULL,
   debug = FALSE
 ) {
+  trigger <- match.arg(trigger)
+
   shiny::moduleServer(id, function(input, output, session) {
-    trigger <- match.arg(trigger)
     app <- as_mcp_app(app)
     registered <- register_shiny_host_instance(
       session = session,
@@ -282,6 +294,24 @@ mcp_host_server <- function(
       initial_arguments = initial_arguments,
       debug = debug
     )
+
+    model_context <- shiny::reactiveVal(registered$state$model_context)
+    last_result <- shiny::reactiveVal(registered$state$last_result)
+    last_raw_result <- shiny::reactiveVal(registered$state$last_raw_result)
+    last_tool_call <- shiny::reactiveVal(registered$state$last_tool_call)
+    last_size <- shiny::reactiveVal(registered$state$last_size)
+
+    registered$state$on_model_context <- function(value, state) {
+      model_context(value)
+    }
+    registered$state$on_tool_call <- function(value, state) {
+      last_tool_call(value)
+      last_raw_result(value$raw_result)
+      last_result(value$result)
+    }
+    registered$state$on_size <- function(value, state) {
+      last_size(value)
+    }
 
     session$onFlushed(
       function() {
@@ -295,6 +325,11 @@ mcp_host_server <- function(
 
     list(
       instance_id = shiny::reactive(registered$state$instance_id),
+      model_context = shiny::reactive(model_context()),
+      last_result = shiny::reactive(last_result()),
+      last_raw_result = shiny::reactive(last_raw_result()),
+      last_tool_call = shiny::reactive(last_tool_call()),
+      last_size = shiny::reactive(last_size()),
       execute = function(arguments = NULL) {
         session$sendCustomMessage(
           "shinymcp-host-command",

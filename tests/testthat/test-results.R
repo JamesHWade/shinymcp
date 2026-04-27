@@ -65,6 +65,7 @@ test_that("mcp_content_result is renderable by shinychat", {
   expect_true(inherits(result, "ellmer::ContentToolResult"))
   expect_equal(result@extra$display$title, "Card Title")
   expect_false(result@extra$display$show_request)
+  expect_true(result@extra$display$full_screen)
   expect_s3_class(result@extra$display$html, "shiny.tag")
   expect_true(inherits(result@request, "ellmer::ContentToolRequest"))
 
@@ -92,10 +93,63 @@ test_that("as_shinychat_tool wraps a single app tool", {
   expect_true(inherits(result, "ellmer::ContentToolResult"))
   expect_equal(result@extra$display$title, "Greeting Card")
   expect_equal(result@extra$display$text, "Hello Ada")
+  expect_true(result@extra$display$full_screen)
   expect_equal(result@value$message, "Hello Ada")
   expect_true(inherits(result@request, "ellmer::ContentToolRequest"))
 
   rendered <- shinychat::contents_shinychat(result)
   expect_equal(rendered$tool_name, "greet")
   expect_equal(rendered$value_type, "text")
+})
+
+test_that("full_screen = FALSE propagates through the result chain", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shinychat")
+
+  app <- make_greeting_card_app()
+
+  result <- mcp_content_result(
+    app = app,
+    value = list(status = "ok"),
+    full_screen = FALSE,
+    html = htmltools::tags$div("card")
+  )
+  expect_false(result@extra$display$full_screen)
+
+  wrapped <- as_shinychat_tool(app, full_screen = FALSE)
+  tool_result <- wrapped(name = "Ada")
+  expect_false(tool_result@extra$display$full_screen)
+})
+
+test_that("as_shinychat_tool handles ellmer TypeObject arguments", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shinychat")
+
+  app <- mcp_app(
+    ui = htmltools::tags$div("test"),
+    tools = list(
+      ellmer::tool(
+        fun = function(x = "a", n = 1) list(out = paste(x, n)),
+        name = "typed_tool",
+        description = "A tool with TypeObject args",
+        arguments = list(
+          x = ellmer::type_string("Input string"),
+          n = ellmer::type_number("Count")
+        )
+      )
+    ),
+    name = "typeobject-test"
+  )
+
+  # If ellmer_tool_arguments() regresses on TypeObject, wrapping would error
+  # or the tool would be uncallable.
+  wrapped <- as_shinychat_tool(
+    app,
+    summary = function(raw_result) raw_result$out
+  )
+  expect_true(inherits(wrapped, "ellmer::ToolDef"))
+
+  result <- wrapped(x = "hello", n = 2)
+  expect_true(inherits(result, "ellmer::ContentToolResult"))
+  expect_equal(result@extra$display$text, "hello 2")
 })

@@ -1,0 +1,133 @@
+---
+title: "shinymcp use cases"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{shinymcp use cases}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+`shinymcp` is strongest when an AI assistant needs to do more than print a
+number. The assistant can call a tool, receive structured data for reasoning,
+and show the user an interactive card with controls, tables, plots, and
+formatted output.
+
+The package includes a use-case gallery with three small but realistic MCP
+Apps:
+
+| Use case | What it demonstrates |
+|---|---|
+| Revenue scenario board | Scenario controls, model-facing structured values, a table, and an ARR plot |
+| Experiment planner | Statistical planning, a power curve, and a concise recommendation |
+| Incident triage console | Operational decision support, status HTML, and a runbook table |
+
+The apps are intentionally card-sized: controls fit in a compact grid, the
+primary answer is immediately visible, and secondary tables stay available
+without taking over the chat transcript.
+
+## Run a use case as an MCP App
+
+The gallery entrypoint serves one use case at a time. Set
+`SHINYMCP_USE_CASE` to `revenue`, `experiment`, or `incident`.
+
+```{bash}
+SHINYMCP_USE_CASE=revenue Rscript \
+  "$(Rscript -e 'cat(system.file("examples", "use-cases", "app.R", package = "shinymcp"))')"
+```
+
+For Claude Desktop or another MCP host, point the server command at that same
+`app.R` file and set the environment variable for the use case you want to
+show.
+
+## Revenue scenario board
+
+This card turns go-to-market assumptions into a twelve-month forecast. The
+assistant can reason over the structured result while the user sees the ARR
+trajectory and monthly forecast table.
+
+```{r}
+source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
+app <- shinymcp_use_case("revenue")
+app$call_tool("forecast_revenue", list(
+  segment = "Mid-market",
+  visitors = 25000,
+  trial_rate = 7,
+  win_rate = 22,
+  contract_value = 9000,
+  monthly_churn = 2.5
+))
+```
+
+## Experiment planner
+
+This card helps an assistant move from "can we detect a 15% lift?" to a
+specific sample size and runtime. The plot gives the human reviewer a quick
+sense of how much margin the design has.
+
+```{r}
+source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
+app <- shinymcp_use_case("experiment")
+app$call_tool("plan_experiment", list(
+  baseline_rate = 12,
+  minimum_effect = 15,
+  target_power = 0.9,
+  traffic_per_day = 6000
+))
+```
+
+## Incident triage console
+
+This card is useful for support, SRE, and operations chats. The assistant can
+collect facts conversationally, call the tool, and return a priority, briefing,
+and runbook without losing the structured values it needs for follow-up.
+
+```{r}
+source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
+app <- shinymcp_use_case("incident")
+app$call_tool("triage_incident", list(
+  service = "Payments",
+  severity = "Degraded",
+  affected_users = 1200,
+  minutes_open = 24,
+  regulated_data = TRUE
+))
+```
+
+## shinychat integration
+
+The gallery also includes a Shiny app that registers all three cards as
+`shinychat` tool results through `as_shinychat_tool()`.
+
+```{bash}
+Rscript "$(Rscript -e 'cat(system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp"))')"
+```
+
+When `OPENAI_API_KEY` is available, that app uses `chat_mod_ui()` and
+`chat_mod_server()` with one ellmer client per Shiny session. Without a
+configured model provider, it falls back to local demo mode: type `revenue`,
+`experiment`, or `incident` and the app appends a live shinymcp card directly.
+
+The Shiny session is still the runtime for those cards: it registers the
+`McpApp`, receives bridge events from the iframe, and executes tool calls in R.
+The iframe itself remains a portable MCP App surface instead of a nested Shiny
+app, which keeps each chat card small and reusable outside Shiny.
+
+## Why these examples matter
+
+These examples cover the surfaces most teams need before adopting MCP Apps:
+
+- Rich UI for people: inputs, tables, plots, and formatted HTML.
+- Structured values for the model: the assistant can reason over numbers
+  without scraping the display.
+- Portable deployment: the same `McpApp` can be served to an MCP host, embedded
+  in Shiny, or wrapped as a shinychat tool card.
+- Small cards over giant dashboards: each card has one job and maps cleanly to
+  one tool call.
