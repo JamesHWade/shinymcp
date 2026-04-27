@@ -49,5 +49,6 @@ mcp_host_server(
 
 ## Value
 
-A small control API with `instance_id`, `execute()`, `reset()`, and
-`dispose()`.
+A small control API with `instance_id`, `execute()`, `reset()`,
+`dispose()`, and read-only reactives for `model_context`, `last_result`,
+`last_raw_result`, `last_tool_call`, and `last_size`.

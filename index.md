@@ -1,11 +1,57 @@
 # shinymcp
 
-shinymcp converts [Shiny](https://shiny.posit.co/) apps into [MCP
-Apps](https://modelcontextprotocol.io/) — interactive UIs that render
-directly inside AI chat interfaces like Claude Desktop.
+[![Lifecycle:
+experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![CRAN
+status](https://www.r-pkg.org/badges/version/shinymcp)](https://CRAN.R-project.org/package=shinymcp)
+[![R-CMD-check](https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml)
+[![Codecov test
+coverage](https://codecov.io/gh/JamesHWade/shinymcp/graph/badge.svg)](https://app.codecov.io/gh/JamesHWade/shinymcp)
 
 ![shinymcp demo showing an interactive Palmer Penguins dashboard inside
 Claude Desktop](reference/figures/demo.gif)
+
+Shiny apps inside AI chat
+
+## Turn live Shiny workflows into MCP Apps.
+
+shinymcp converts Shiny interfaces and R computations into MCP Apps:
+interactive cards that can run in chat clients, Shiny hosts, and
+shinychat conversations.
+
+[Get started](#quick-start)[See use
+cases](https://jameshwade.github.io/shinymcp/articles/use-cases.html)[Use
+with
+shinychat](https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.html)
+
+**ui:// resources**Declare HTML app surfaces for MCP hosts.
+
+**postMessage bridge**Keep inputs, tool calls, and results synchronized.
+
+**Shiny hosting**Embed MCP Apps as full-screen-capable Shiny cards.
+
+## Start with a path
+
+[**Build**](#quick-start)
+
+### Create an MCP App directly
+
+Use Shiny or bslib inputs, add MCP output targets, and bind them to R
+tools.
+
+[**Convert**](https://jameshwade.github.io/shinymcp/articles/converting-shiny-apps.html)
+
+### Move an existing Shiny app
+
+Flatten reactive groups into tool functions while keeping the
+user-facing workflow.
+
+[**Integrate**](https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.html)
+
+### Render apps inside shinychat
+
+Return rich MCP cards from chat tools, including state sync and
+full-screen mode.
 
 ## Installation
 
@@ -214,7 +260,17 @@ system.file("examples", "bslib-inputs", "app.R", package = "shinymcp")
 # Full dashboard: Palmer Penguins with native shiny inputs, ggplot2, and
 # summary statistics
 system.file("examples", "penguins", "app.R", package = "shinymcp")
+
+# Use-case gallery: revenue planning, experiment design, incident triage,
+# plus a shinychat app that registers each MCP App as a rich tool card
+system.file("examples", "use-cases", "app.R", package = "shinymcp")
+system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp")
 ```
+
+For realistic demo scripts and shinychat integration, see
+[`vignette("use-cases")`](https://jameshwade.github.io/shinymcp/articles/use-cases.md)
+and
+[`vignette("use-shinymcp-with-shinychat")`](https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.md).
 
 ## How it works
 

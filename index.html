@@ -26,7 +26,7 @@
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
-    <nav class="navbar navbar-expand-lg fixed-top bg-primary" data-bs-theme="dark" aria-label="Site navigation"><div class="container">
+    <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
 
     <a class="navbar-brand me-2" href="index.html">shinymcp</a>
 
@@ -43,8 +43,13 @@
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="articles/converting-shiny-apps.html">Converting Shiny Apps</a></li>
+<li><a class="dropdown-item" href="articles/use-cases.html">Use Cases</a></li>
+    <li><a class="dropdown-item" href="articles/converting-shiny-apps.html">Converting Shiny Apps</a></li>
     <li><a class="dropdown-item" href="articles/automatic-conversion.html">Automatic Conversion</a></li>
+    <li><a class="dropdown-item" href="articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
+    <li><a class="dropdown-item" href="articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
+    <li><a class="dropdown-item" href="articles/compatibility-matrix.html">Compatibility Matrix</a></li>
+    <li><a class="dropdown-item" href="articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
   </ul>
 </li>
       </ul>
@@ -67,9 +72,63 @@
 </h1>
 </div>
 <!-- badges: start -->
-
-<p>shinymcp converts <a href="https://shiny.posit.co/" class="external-link">Shiny</a> apps into <a href="https://modelcontextprotocol.io/" class="external-link">MCP Apps</a> — interactive UIs that render directly inside AI chat interfaces like Claude Desktop.</p>
-<p><img src="reference/figures/demo.gif" alt="shinymcp demo showing an interactive Palmer Penguins dashboard inside Claude Desktop" width="100%"></p>
+<p><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a> <a href="https://CRAN.R-project.org/package=shinymcp" class="external-link"><img src="https://www.r-pkg.org/badges/version/shinymcp" alt="CRAN status"></a> <a href="https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a> <a href="https://app.codecov.io/gh/JamesHWade/shinymcp" class="external-link"><img src="https://codecov.io/gh/JamesHWade/shinymcp/graph/badge.svg" alt="Codecov test coverage"></a> <!-- badges: end --></p>
+<div class="shinymcp-hero" aria-label="shinymcp overview">
+<p><img class="shinymcp-hero-image" src="reference/figures/demo.gif" alt="shinymcp demo showing an interactive Palmer Penguins dashboard inside Claude Desktop"></p>
+<div class="shinymcp-hero-copy">
+<p class="shinymcp-eyebrow">
+Shiny apps inside AI chat
+</p>
+<h2>
+Turn live Shiny workflows into MCP Apps.
+</h2>
+<p>
+shinymcp converts Shiny interfaces and R computations into MCP Apps: interactive cards that can run in chat clients, Shiny hosts, and shinychat conversations.
+</p>
+<div class="shinymcp-actions">
+<p><a class="btn btn-primary" href="#quick-start">Get started</a><a class="btn btn-outline-primary" href="https://jameshwade.github.io/shinymcp/articles/use-cases.html">See use cases</a><a class="btn btn-outline-secondary" href="https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></p>
+</div>
+</div>
+</div>
+<div class="shinymcp-signal-row" aria-label="shinymcp capabilities">
+<div>
+<p><strong>ui:// resources</strong>Declare HTML app surfaces for MCP hosts.</p>
+</div>
+<div>
+<p><strong>postMessage bridge</strong>Keep inputs, tool calls, and results synchronized.</p>
+</div>
+<div>
+<p><strong>Shiny hosting</strong>Embed MCP Apps as full-screen-capable Shiny cards.</p>
+</div>
+</div>
+<div class="section level2">
+<h2 id="start-with-a-path">Start with a path<a class="anchor" aria-label="anchor" href="#start-with-a-path"></a>
+</h2>
+<div class="shinymcp-path-grid">
+<a class="shinymcp-path-card" href="#quick-start"><strong>Build</strong>
+<h3>
+Create an MCP App directly
+</h3>
+<p>
+Use Shiny or bslib inputs, add MCP output targets, and bind them to R tools.
+</p>
+</a><a class="shinymcp-path-card" href="https://jameshwade.github.io/shinymcp/articles/converting-shiny-apps.html"><strong>Convert</strong>
+<h3>
+Move an existing Shiny app
+</h3>
+<p>
+Flatten reactive groups into tool functions while keeping the user-facing workflow.
+</p>
+</a><a class="shinymcp-path-card" href="https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.html"><strong>Integrate</strong>
+<h3>
+Render apps inside shinychat
+</h3>
+<p>
+Return rich MCP cards from chat tools, including state sync and full-screen mode.
+</p>
+<p></p></a>
+</div>
+</div>
 <div class="section level2">
 <h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
@@ -258,7 +317,13 @@
 <span></span>
 <span><span class="co"># Full dashboard: Palmer Penguins with native shiny inputs, ggplot2, and</span></span>
 <span><span class="co"># summary statistics</span></span>
-<span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"penguins"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span></code></pre></div>
+<span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"penguins"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span>
+<span></span>
+<span><span class="co"># Use-case gallery: revenue planning, experiment design, incident triage,</span></span>
+<span><span class="co"># plus a shinychat app that registers each MCP App as a rich tool card</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"use-cases"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"use-cases"</span>, <span class="st">"shinychat-app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span></span></code></pre></div>
+<p>For realistic demo scripts and shinychat integration, see <code><a href="articles/use-cases.html">vignette("use-cases")</a></code> and <code><a href="articles/use-shinymcp-with-shinychat.html">vignette("use-shinymcp-with-shinychat")</a></code>.</p>
 </div>
 <div class="section level2">
 <h2 id="how-it-works">How it works<a class="anchor" aria-label="anchor" href="#how-it-works"></a>
@@ -288,54 +353,7 @@
 </ul>
 </div>
 </div>
-  </main><aside class="col-md-3"><div class="links">
-<h2 data-toc-skip>Links</h2>
-<ul class="list-unstyled">
-<li><a href="https://github.com/JamesHWade/shinymcp/" class="external-link">Browse source code</a></li>
-<li><a href="https://github.com/JamesHWade/shinymcp/issues" class="external-link">Report a bug</a></li>
-</ul>
-</div>
-
-<div class="license">
-<h2 data-toc-skip>License</h2>
-<ul class="list-unstyled">
-<li><a href="LICENSE.html">Full license</a></li>
-<li><small><a href="https://opensource.org/licenses/mit-license.php" class="external-link">MIT</a> + file <a href="LICENSE-text.html">LICENSE</a></small></li>
-</ul>
-</div>
-
-<div class="community">
-<h2 data-toc-skip>Community</h2>
-<ul class="list-unstyled">
-<li><a href="CODE_OF_CONDUCT.html">Code of conduct</a></li>
-</ul>
-</div>
-
-<div class="citation">
-<h2 data-toc-skip>Citation</h2>
-<ul class="list-unstyled">
-<li><a href="authors.html#citation">Citing shinymcp</a></li>
-</ul>
-</div>
-
-<div class="developers">
-<h2 data-toc-skip>Developers</h2>
-<ul class="list-unstyled">
-<li>James Wade <br><small class="roles"> Author, maintainer </small>   </li>
-</ul>
-</div>
-
-<div class="dev-status">
-<h2 data-toc-skip>Dev status</h2>
-<ul class="list-unstyled">
-<li><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a></li>
-<li><a href="https://CRAN.R-project.org/package=shinymcp" class="external-link"><img src="https://www.r-pkg.org/badges/version/shinymcp" alt="CRAN status"></a></li>
-<li><a href="https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
-<li><a href="https://app.codecov.io/gh/JamesHWade/shinymcp" class="external-link"><img src="https://codecov.io/gh/JamesHWade/shinymcp/graph/badge.svg" alt="Codecov test coverage"></a></li>
-</ul>
-</div>
-
-  </aside>
+  </main><aside class="col-md-3"></aside>
 </div>
 
 

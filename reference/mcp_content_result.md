@@ -12,6 +12,7 @@ mcp_content_result(
   icon = NULL,
   open = TRUE,
   show_request = FALSE,
+  full_screen = TRUE,
   html = NULL,
   markdown = NULL,
   text = NULL,
@@ -45,6 +46,11 @@ mcp_content_result(
 - show_request:
 
   Whether shinychat should show the request payload.
+
+- full_screen:
+
+  Whether shinychat should offer its full-screen tool-card mode when
+  supported.
 
 - html:
 

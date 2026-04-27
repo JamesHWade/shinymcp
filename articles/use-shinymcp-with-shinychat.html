@@ -21,7 +21,7 @@
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
-    <nav class="navbar navbar-expand-lg fixed-top bg-primary" data-bs-theme="dark" aria-label="Site navigation"><div class="container">
+    <nav class="navbar navbar-expand-lg fixed-top bg-light" data-bs-theme="light" aria-label="Site navigation"><div class="container">
 
     <a class="navbar-brand me-2" href="../index.html">shinymcp</a>
 
@@ -35,11 +35,16 @@
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
 <li class="nav-item"><a class="nav-link" href="../reference/index.html">Reference</a></li>
-<li class="nav-item dropdown">
+<li class="active nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="../articles/converting-shiny-apps.html">Converting Shiny Apps</a></li>
+<li><a class="dropdown-item" href="../articles/use-cases.html">Use Cases</a></li>
+    <li><a class="dropdown-item" href="../articles/converting-shiny-apps.html">Converting Shiny Apps</a></li>
     <li><a class="dropdown-item" href="../articles/automatic-conversion.html">Automatic Conversion</a></li>
+    <li><a class="dropdown-item" href="../articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
+    <li><a class="dropdown-item" href="../articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
+    <li><a class="dropdown-item" href="../articles/compatibility-matrix.html">Compatibility Matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
   </ul>
 </li>
       </ul>
@@ -69,8 +74,7 @@
 
     
     
-<p><code>shinymcp</code> now supports two runtime-first shinychat
-paths:</p>
+<p><code>shinymcp</code> supports two runtime-first shinychat paths:</p>
 <ol style="list-style-type: decimal">
 <li>Wrap a small <code>McpApp</code> as an ellmer tool with
 <code><a href="../reference/as_shinychat_tool.html">as_shinychat_tool()</a></code>.</li>
@@ -78,6 +82,15 @@ paths:</p>
 <code><a href="../reference/mcp_host_ui.html">mcp_host_ui()</a></code> / <code><a href="../reference/mcp_host_server.html">mcp_host_server()</a></code> or
 <code><a href="../reference/mcp_embed.html">mcp_embed()</a></code>.</li>
 </ol>
+<p>In both paths, the card is a portable MCP App iframe. When it runs
+inside Shiny, the active Shiny session owns the live host state and
+executes tool calls in R. The iframe stays lightweight HTML plus the
+shinymcp bridge rather than starting a nested Shiny runtime for every
+chat card.</p>
+<p><code>shinymcp</code> also sets shinychat’s
+<code>display$full_screen</code> flag for tool cards when available, and
+the embedded host shell includes its own full-screen control for direct
+Shiny embeds and older shinychat development builds.</p>
 <div class="section level2">
 <h2 id="tool-card-path-with-chat_mod_server">Tool-card path with <code>chat_mod_server()</code><a class="anchor" aria-label="anchor" href="#tool-card-path-with-chat_mod_server"></a>
 </h2>
@@ -131,6 +144,8 @@ paths:</p>
 transformed by <code>value_fn</code>.</li>
 <li>A human-facing shinychat tool card, which defaults to a live
 embedded <code>McpApp</code>.</li>
+<li>Full-screen affordances for larger card inspection, using
+shinychat’s native tool-card mode when available.</li>
 </ul>
 </div>
 <div class="section level2">
@@ -147,8 +162,7 @@ Shiny session and want to append a card yourself:</p>
 <span>    <span class="va">card</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mcp_content_result.html">mcp_content_result</a></span><span class="op">(</span></span>
 <span>      app <span class="op">=</span> <span class="va">card_app</span>,</span>
 <span>      value <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>status <span class="op">=</span> <span class="st">"ready"</span><span class="op">)</span>,</span>
-<span>      title <span class="op">=</span> <span class="st">"Greeting Card"</span>,</span>
-<span>      text <span class="op">=</span> <span class="st">"Adjust the card inputs to refine the result."</span></span>
+<span>      title <span class="op">=</span> <span class="st">"Greeting Card"</span></span>
 <span>    <span class="op">)</span></span>
 <span></span>
 <span>    <span class="fu"><a href="https://posit-dev.github.io/shinychat/r/reference/chat_append.html" class="external-link">chat_append</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="va">card</span><span class="op">)</span></span>
@@ -173,6 +187,23 @@ Shiny session and want to append a card yourself:</p>
 <span><span class="op">}</span></span></code></pre></div>
 <p><code>mcp_embed(card_app)</code> is the convenience helper for
 dynamic server-side contexts where a live session already exists.</p>
+<p>The returned host object also exposes read-only reactives so the
+outer Shiny app can observe the embedded card:</p>
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">host</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mcp_host_server.html">mcp_host_server</a></span><span class="op">(</span><span class="st">"card"</span>, app <span class="op">=</span> <span class="va">card_app</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">host</span><span class="op">$</span><span class="fu">model_context</span><span class="op">(</span><span class="op">)</span>, <span class="op">{</span></span>
+<span>    <span class="co"># Current values the card is sending to the model context.</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">host</span><span class="op">$</span><span class="fu">model_context</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent</a></span><span class="op">(</span><span class="va">host</span><span class="op">$</span><span class="fu">last_tool_call</span><span class="op">(</span><span class="op">)</span>, <span class="op">{</span></span>
+<span>    <span class="co"># Raw R result plus formatted MCP structuredContent.</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">host</span><span class="op">$</span><span class="fu">last_raw_result</span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/utils/str.html" class="external-link">str</a></span><span class="op">(</span><span class="va">host</span><span class="op">$</span><span class="fu">last_result</span><span class="op">(</span><span class="op">)</span><span class="op">$</span><span class="va">structuredContent</span><span class="op">)</span></span>
+<span>  <span class="op">}</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre></div>
 </div>
 <div class="section level2">
 <h2 id="interaction-modes">Interaction modes<a class="anchor" aria-label="anchor" href="#interaction-modes"></a>
@@ -200,6 +231,10 @@ four trigger modes:</p>
 strong reason to expose many parallel cards.</li>
 <li>Treat the chat card as the human surface and the
 <code>value_fn</code> output as the model-facing value.</li>
+<li>Use Shiny modules directly when you need a Shiny-only app with full
+reactive UI semantics.</li>
+<li>Use <code>McpApp</code> cards when you want the same experience to
+work in shinychat and MCP hosts.</li>
 </ul>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

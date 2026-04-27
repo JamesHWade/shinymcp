@@ -13,7 +13,8 @@ as_shinychat_tool(
   title = NULL,
   icon = NULL,
   open = TRUE,
-  show_request = FALSE
+  show_request = FALSE,
+  full_screen = TRUE
 )
 ```
 
@@ -48,3 +49,8 @@ as_shinychat_tool(
 - show_request:
 
   Whether shinychat should show the request payload.
+
+- full_screen:
+
+  Whether shinychat should offer its full-screen tool-card mode when
+  supported.
