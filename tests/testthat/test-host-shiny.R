@@ -19,6 +19,17 @@ test_that("mcp_embed requires an id outside a live session", {
   )
 })
 
+test_that("root_shiny_session unwraps Shiny session proxies", {
+  root <- structure(
+    list(userData = new.env(parent = emptyenv())),
+    class = "ShinySession"
+  )
+  proxy <- structure(list(rootScope = function() root), class = "session_proxy")
+
+  expect_identical(root_shiny_session(root), root)
+  expect_identical(root_shiny_session(proxy), root)
+})
+
 test_that("host state records model context, size, and tool results", {
   app <- mcp_app(
     ui = htmltools::tagList(
