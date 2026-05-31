@@ -14,14 +14,14 @@ example.
 
 Before converting, it helps to understand what changes:
 
-|                  | Shiny                                                                                                                                | MCP App                                                                                                                                                  |
-|------------------|--------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Runs in**      | Browser tab                                                                                                                          | AI chat interface (iframe)                                                                                                                               |
-| **Server**       | Persistent R process with reactive graph                                                                                             | Stateless tool calls                                                                                                                                     |
-| **Reactivity**   | [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html), [`observe()`](https://rdrr.io/pkg/shiny/man/observe.html), `render*()`  | Tool function called on input change                                                                                                                     |
-| **UI framework** | shiny.js + WebSocket                                                                                                                 | Plain HTML + postMessage bridge                                                                                                                          |
-| **State**        | Server-side reactive values                                                                                                          | Recomputed each tool call                                                                                                                                |
-| **Layout**       | [`fluidPage()`](https://rdrr.io/pkg/shiny/man/fluidPage.html), [`sidebarLayout()`](https://rdrr.io/pkg/shiny/man/sidebarLayout.html) | bslib ([`page_sidebar()`](https://rstudio.github.io/bslib/reference/page_sidebar.html), [`card()`](https://rstudio.github.io/bslib/reference/card.html)) |
+|  | Shiny | MCP App |
+|----|----|----|
+| **Runs in** | Browser tab | AI chat interface (iframe) |
+| **Server** | Persistent R process with reactive graph | Stateless tool calls |
+| **Reactivity** | [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html), [`observe()`](https://rdrr.io/pkg/shiny/man/observe.html), `render*()` | Tool function called on input change |
+| **UI framework** | shiny.js + WebSocket | Plain HTML + postMessage bridge |
+| **State** | Server-side reactive values | Recomputed each tool call |
+| **Layout** | [`fluidPage()`](https://rdrr.io/pkg/shiny/man/fluidPage.html), [`sidebarLayout()`](https://rdrr.io/pkg/shiny/man/sidebarLayout.html) | bslib ([`page_sidebar()`](https://rstudio.github.io/bslib/reference/page_sidebar.html), [`card()`](https://rstudio.github.io/bslib/reference/card.html)) |
 
 The core shift: **flatten your reactive graph into tool functions**.
 Each connected group of inputs → reactives → outputs becomes a single
@@ -34,6 +34,7 @@ Start with your Shiny app and list every input and output. Here’s a
 typical penguins Shiny app:
 
 ``` r
+
 # --- Original Shiny app ---
 library(shiny)
 library(ggplot2)
@@ -109,11 +110,11 @@ The JS bridge auto-detects inputs by matching tool argument names to
 element `id` attributes. This means you can keep your Shiny inputs as-is
 — just ensure the `id` matches a tool argument name:
 
-| Shiny input                                  | What to do                               |
-|----------------------------------------------|------------------------------------------|
+| Shiny input | What to do |
+|----|----|
 | `selectInput("species", "Species", choices)` | Keep it! Auto-detected by `id="species"` |
-| `selectInput("x_var", "X axis", choices)`    | Keep it! Auto-detected by `id="x_var"`   |
-| `checkboxInput("trend", "Show trend line")`  | Keep it! Auto-detected by `id="trend"`   |
+| `selectInput("x_var", "X axis", choices)` | Keep it! Auto-detected by `id="x_var"` |
+| `checkboxInput("trend", "Show trend line")` | Keep it! Auto-detected by `id="trend"` |
 
 For outputs, replace Shiny outputs with shinymcp equivalents:
 
@@ -137,6 +138,7 @@ Standard
 etc. are auto-detected by the bridge:
 
 ``` r
+
 library(shinymcp)
 library(bslib)
 library(htmltools)
@@ -192,6 +194,7 @@ For plots, render to a temporary PNG and return the base64-encoded
 image. The bridge displays it as an `<img>` element.
 
 ``` r
+
 tools <- list(
   ellmer::tool(
     fun = function(
@@ -281,6 +284,7 @@ Important details:
 Wire up the UI, tools, and server:
 
 ``` r
+
 app <- mcp_app(ui, tools, name = "penguins-explorer")
 serve(app)
 ```
@@ -312,6 +316,7 @@ If all your outputs share the same reactive dependencies, they belong in
 a single tool. This is the most common case:
 
 ``` r
+
 # Shiny: two outputs from one reactive
 server <- function(input, output, session) {
   data <- reactive({ mtcars[mtcars$cyl == input$cyl, ] })
@@ -338,6 +343,7 @@ If outputs have completely independent inputs, use separate tools. The
 bridge calls all tools whose inputs changed:
 
 ``` r
+
 # Tool 1: only uses the "dataset" input
 ellmer::tool(
   fun = function(dataset = "mtcars") { ... },
@@ -374,6 +380,7 @@ For `tableOutput`, return an HTML table string.
 easiest approach:
 
 ``` r
+
 fun = function(dataset = "mtcars") {
   data <- head(get(dataset, envir = asNamespace("datasets")), 10)
   list(
@@ -404,6 +411,7 @@ Since MCP Apps use htmltools directly (not Shiny’s `fluidPage`), use
 bslib for layout. Common patterns:
 
 ``` r
+
 # Sidebar layout (standard shiny inputs auto-detected)
 page_sidebar(
   sidebar = sidebar(
@@ -454,5 +462,6 @@ Some Shiny features don’t have MCP App equivalents:
 The complete converted penguins app is available at:
 
 ``` r
+
 system.file("examples", "penguins", "app.R", package = "shinymcp")
 ```

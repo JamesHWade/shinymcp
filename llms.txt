@@ -59,6 +59,7 @@ You can install the development version of shinymcp from
 [GitHub](https://github.com/) with:
 
 ``` r
+
 # install.packages("pak")
 pak::pak("JamesHWade/shinymcp")
 ```
@@ -71,6 +72,7 @@ standard shiny or bslib inputs — the bridge auto-detects them by
 matching tool argument names to element `id` attributes.
 
 ``` r
+
 library(shinymcp)
 library(bslib)
 
@@ -131,6 +133,7 @@ tool that takes input values as arguments and returns a named list of
 outputs.
 
 ``` r
+
 # --- Shiny ---
 server <- function(input, output, session) {
   filtered <- reactive({
@@ -180,6 +183,7 @@ shinymcp includes a parse-analyze-generate pipeline that can scaffold an
 MCP App from an existing Shiny app:
 
 ``` r
+
 convert_app("path/to/my-shiny-app")
 ```
 
@@ -208,6 +212,7 @@ etc.) whose `id` matches a tool argument name. This means you can use
 the Shiny and bslib inputs you already know:
 
 ``` r
+
 sidebar(
   shiny::selectInput("species", "Species", choices),
   shiny::numericInput("n", "Count", value = 10),
@@ -220,6 +225,7 @@ For edge cases (id doesn’t match arg name, custom widgets), use
 to explicitly mark an element:
 
 ``` r
+
 mcp_input(shiny::radioButtons("fmt", "Format", c("summary", "head")), id = "fmt")
 ```
 
@@ -232,17 +238,18 @@ generates.
 
 ### Outputs
 
-| Shiny                                   | shinymcp                                                                      | Notes                                  |
-|-----------------------------------------|-------------------------------------------------------------------------------|----------------------------------------|
-| `textOutput()` / `verbatimTextOutput()` | [`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_text.md)   | Renders in `<pre>` with monospace font |
-| `plotOutput()`                          | [`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md)   | Tool returns base64-encoded PNG        |
-| `tableOutput()`                         | [`mcp_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_table.md) | Tool returns HTML table string         |
-| `htmlOutput()`                          | [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md)   | Tool returns raw HTML                  |
+| Shiny | shinymcp | Notes |
+|----|----|----|
+| `textOutput()` / `verbatimTextOutput()` | [`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_text.md) | Renders in `<pre>` with monospace font |
+| `plotOutput()` | [`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md) | Tool returns base64-encoded PNG |
+| `tableOutput()` | [`mcp_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_table.md) | Tool returns HTML table string |
+| `htmlOutput()` | [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md) | Tool returns raw HTML |
 
 You can also turn any tag into an output target with
 [`mcp_output()`](https://jameshwade.github.io/shinymcp/reference/mcp_output.md):
 
 ``` r
+
 mcp_output(tags$pre(id = "result"), type = "text")
 ```
 
@@ -251,6 +258,7 @@ mcp_output(tags$pre(id = "result"), type = "text")
 shinymcp ships with example apps:
 
 ``` r
+
 # Minimal: mcp_select() + text output
 system.file("examples", "hello-mcp", "app.R", package = "shinymcp")
 

@@ -25,6 +25,7 @@ development builds.
 ## Tool-card path with `chat_mod_server()`
 
 ``` r
+
 library(shiny)
 library(bslib)
 library(ellmer)
@@ -87,6 +88,7 @@ when you already have a live Shiny session and want to append a card
 yourself:
 
 ``` r
+
 ui <- page_fillable(chat_ui("chat"))
 
 server <- function(input, output, session) {
@@ -107,6 +109,7 @@ server <- function(input, output, session) {
 For authored Shiny UIs, use the host shell helpers directly:
 
 ``` r
+
 ui <- page_fillable(
   mcp_host_ui("card")
 )
@@ -127,6 +130,7 @@ The returned host object also exposes read-only reactives so the outer
 Shiny app can observe the embedded card:
 
 ``` r
+
 server <- function(input, output, session) {
   host <- mcp_host_server("card", app = card_app)
 

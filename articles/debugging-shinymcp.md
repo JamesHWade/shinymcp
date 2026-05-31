@@ -5,6 +5,7 @@
 Start with the parser and analyzer:
 
 ``` r
+
 ir <- parse_shiny_app("path/to/app")
 analysis <- analyze_reactive_graph(ir)
 
@@ -33,6 +34,7 @@ Use `format_tool_result()` during development when you want to see
 exactly what the runtime will send back to the host:
 
 ``` r
+
 format_tool_result(list(
   summary = mcp_result_text("ready"),
   table = mcp_result_table(head(mtcars))
@@ -42,6 +44,7 @@ format_tool_result(list(
 For shinychat wrappers, inspect the `ContentToolResult` directly:
 
 ``` r
+
 tool <- as_shinychat_tool(card_app)
 result <- tool(dataset = "mtcars")
 

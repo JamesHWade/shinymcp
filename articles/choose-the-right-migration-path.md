@@ -13,6 +13,7 @@ scaffold-oriented.
 Use this when you know the compact interaction you want.
 
 ``` r
+
 app <- mcp_app(
   ui = htmltools::tagList(
     mcp_select("dataset", "Dataset", c("mtcars", "iris")),
@@ -56,6 +57,7 @@ several connected reactive islands that should become separate chat
 cards.
 
 ``` r
+
 cards <- as_mcp_apps("path/to/shiny-app")
 convert_app("path/to/shiny-app", mode = "cards")
 ```
@@ -72,6 +74,7 @@ Use `convert_app(mode = "scaffold")` when you want a starting point for
 manual completion.
 
 ``` r
+
 convert_app("path/to/shiny-app", mode = "scaffold")
 ```
 

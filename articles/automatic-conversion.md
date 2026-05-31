@@ -16,6 +16,7 @@ Point
 at a Shiny app directory:
 
 ``` r
+
 library(shinymcp)
 
 convert_app("path/to/my-shiny-app")
@@ -37,13 +38,13 @@ convert_app("path/to/my-shiny-app")
 
 The generated directory contains:
 
-| File                  | Purpose                                                                                                  |
-|-----------------------|----------------------------------------------------------------------------------------------------------|
-| `app.R`               | Entrypoint that wires up UI and tools                                                                    |
-| `ui.R`                | UI built with shinymcp components                                                                        |
-| `tools.R`             | [`ellmer::tool()`](https://ellmer.tidyverse.org/reference/tool.html) definitions for each reactive group |
-| `server.R`            | Server setup with state environment                                                                      |
-| `CONVERSION_NOTES.md` | Review notes (complex apps only)                                                                         |
+| File | Purpose |
+|----|----|
+| `app.R` | Entrypoint that wires up UI and tools |
+| `ui.R` | UI built with shinymcp components |
+| `tools.R` | [`ellmer::tool()`](https://ellmer.tidyverse.org/reference/tool.html) definitions for each reactive group |
+| `server.R` | Server setup with state environment |
+| `CONVERSION_NOTES.md` | Review notes (complex apps only) |
 
 ## The pipeline
 
@@ -61,6 +62,7 @@ reads the app’s R source and extracts a structured intermediate
 representation (IR):
 
 ``` r
+
 ir <- parse_shiny_app("path/to/my-shiny-app")
 ir
 ```
@@ -104,6 +106,7 @@ The parser classifies apps by complexity:
 takes the IR and builds a dependency graph:
 
 ``` r
+
 analysis <- analyze_reactive_graph(ir)
 analysis
 ```
@@ -139,6 +142,7 @@ outputs.
 writes the MCP App files:
 
 ``` r
+
 generate_mcp_app(analysis, ir, output_dir = "my-app-mcp")
 ```
 
@@ -161,22 +165,22 @@ It generates:
 
 The pipeline handles these Shiny patterns out of the box:
 
-| Shiny pattern                                                                                                                             | MCP App equivalent                                                                                                                                                 |
-|-------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [`selectInput()`](https://rdrr.io/pkg/shiny/man/selectInput.html)                                                                         | [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)                                                                                    |
-| [`textInput()`](https://rdrr.io/pkg/shiny/man/textInput.html)                                                                             | [`mcp_text_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_text_input.md)                                                                            |
-| [`numericInput()`](https://rdrr.io/pkg/shiny/man/numericInput.html)                                                                       | [`mcp_numeric_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_numeric_input.md)                                                                      |
-| [`checkboxInput()`](https://rdrr.io/pkg/shiny/man/checkboxInput.html)                                                                     | [`mcp_checkbox()`](https://jameshwade.github.io/shinymcp/reference/mcp_checkbox.md)                                                                                |
-| [`sliderInput()`](https://rdrr.io/pkg/shiny/man/sliderInput.html)                                                                         | [`mcp_slider()`](https://jameshwade.github.io/shinymcp/reference/mcp_slider.md)                                                                                    |
-| [`radioButtons()`](https://rdrr.io/pkg/shiny/man/radioButtons.html)                                                                       | [`mcp_radio()`](https://jameshwade.github.io/shinymcp/reference/mcp_radio.md) (or [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)) |
-| [`actionButton()`](https://rdrr.io/pkg/shiny/man/actionButton.html)                                                                       | [`mcp_action_button()`](https://jameshwade.github.io/shinymcp/reference/mcp_action_button.md)                                                                      |
-| [`plotOutput()`](https://rdrr.io/pkg/shiny/man/plotOutput.html)                                                                           | [`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md) with base64 PNG rendering                                                              |
-| [`textOutput()`](https://rdrr.io/pkg/shiny/man/textOutput.html) / [`verbatimTextOutput()`](https://rdrr.io/pkg/shiny/man/textOutput.html) | [`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_text.md)                                                                                        |
-| [`tableOutput()`](https://rdrr.io/pkg/shiny/man/renderTable.html)                                                                         | [`mcp_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_table.md)                                                                                      |
-| [`htmlOutput()`](https://rdrr.io/pkg/shiny/man/htmlOutput.html) / [`uiOutput()`](https://rdrr.io/pkg/shiny/man/htmlOutput.html)           | [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md)                                                                                        |
-| [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html) chains                                                                        | Flattened into tool function body                                                                                                                                  |
-| `app.R` (single file)                                                                                                                     | Fully supported                                                                                                                                                    |
-| `ui.R` / `server.R` (split files)                                                                                                         | Fully supported                                                                                                                                                    |
+| Shiny pattern | MCP App equivalent |
+|----|----|
+| [`selectInput()`](https://rdrr.io/pkg/shiny/man/selectInput.html) | [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md) |
+| [`textInput()`](https://rdrr.io/pkg/shiny/man/textInput.html) | [`mcp_text_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_text_input.md) |
+| [`numericInput()`](https://rdrr.io/pkg/shiny/man/numericInput.html) | [`mcp_numeric_input()`](https://jameshwade.github.io/shinymcp/reference/mcp_numeric_input.md) |
+| [`checkboxInput()`](https://rdrr.io/pkg/shiny/man/checkboxInput.html) | [`mcp_checkbox()`](https://jameshwade.github.io/shinymcp/reference/mcp_checkbox.md) |
+| [`sliderInput()`](https://rdrr.io/pkg/shiny/man/sliderInput.html) | [`mcp_slider()`](https://jameshwade.github.io/shinymcp/reference/mcp_slider.md) |
+| [`radioButtons()`](https://rdrr.io/pkg/shiny/man/radioButtons.html) | [`mcp_radio()`](https://jameshwade.github.io/shinymcp/reference/mcp_radio.md) (or [`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)) |
+| [`actionButton()`](https://rdrr.io/pkg/shiny/man/actionButton.html) | [`mcp_action_button()`](https://jameshwade.github.io/shinymcp/reference/mcp_action_button.md) |
+| [`plotOutput()`](https://rdrr.io/pkg/shiny/man/plotOutput.html) | [`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md) with base64 PNG rendering |
+| [`textOutput()`](https://rdrr.io/pkg/shiny/man/textOutput.html) / [`verbatimTextOutput()`](https://rdrr.io/pkg/shiny/man/textOutput.html) | [`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_text.md) |
+| [`tableOutput()`](https://rdrr.io/pkg/shiny/man/renderTable.html) | [`mcp_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_table.md) |
+| [`htmlOutput()`](https://rdrr.io/pkg/shiny/man/htmlOutput.html) / [`uiOutput()`](https://rdrr.io/pkg/shiny/man/htmlOutput.html) | [`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_html.md) |
+| [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html) chains | Flattened into tool function body |
+| `app.R` (single file) | Fully supported |
+| `ui.R` / `server.R` (split files) | Fully supported |
 
 ## What needs manual review
 
@@ -194,6 +198,7 @@ The generator creates the tool skeleton but uses placeholder code like
 `paste("Result for:", x)`. Replace this with the actual computation:
 
 ``` r
+
 # Generated placeholder:
 update_scatter_and_stats <- ellmer::tool(
   fun = function(species, x_var, y_var, trend) {
@@ -236,6 +241,7 @@ as a warning. Replace with
 and return HTML strings from the tool:
 
 ``` r
+
 # Instead of renderUI(), return HTML from the tool:
 fun = function(show_detail = FALSE) {
   html <- if (show_detail) {
@@ -273,6 +279,7 @@ By default,
 writes to `{path}_mcp/`. Specify a custom output directory:
 
 ``` r
+
 convert_app("my-app", output_dir = "output/my-mcp-app")
 ```
 

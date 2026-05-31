@@ -8,11 +8,11 @@ plots, and formatted output.
 The package includes a use-case gallery with three small but realistic
 MCP Apps:
 
-| Use case                | What it demonstrates                                                        |
-|-------------------------|-----------------------------------------------------------------------------|
-| Revenue scenario board  | Scenario controls, model-facing structured values, a table, and an ARR plot |
-| Experiment planner      | Statistical planning, a power curve, and a concise recommendation           |
-| Incident triage console | Operational decision support, status HTML, and a runbook table              |
+| Use case | What it demonstrates |
+|----|----|
+| Revenue scenario board | Scenario controls, model-facing structured values, a table, and an ARR plot |
+| Experiment planner | Statistical planning, a power curve, and a concise recommendation |
+| Incident triage console | Operational decision support, status HTML, and a runbook table |
 
 The apps are intentionally card-sized: controls fit in a compact grid,
 the primary answer is immediately visible, and secondary tables stay
@@ -39,6 +39,7 @@ The assistant can reason over the structured result while the user sees
 the ARR trajectory and monthly forecast table.
 
 ``` r
+
 source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
 app <- shinymcp_use_case("revenue")
 app$call_tool("forecast_revenue", list(
@@ -58,6 +59,7 @@ specific sample size and runtime. The plot gives the human reviewer a
 quick sense of how much margin the design has.
 
 ``` r
+
 source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
 app <- shinymcp_use_case("experiment")
 app$call_tool("plan_experiment", list(
@@ -76,6 +78,7 @@ a priority, briefing, and runbook without losing the structured values
 it needs for follow-up.
 
 ``` r
+
 source(system.file("examples", "use-cases", "apps.R", package = "shinymcp"))
 app <- shinymcp_use_case("incident")
 app$call_tool("triage_incident", list(
