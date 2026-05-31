@@ -21,11 +21,41 @@ sanitize_dom_id <- function(x) {
 }
 
 #' @noRd
+root_shiny_session <- function(session) {
+  if (inherits(session, "ShinySession")) {
+    return(session)
+  }
+
+  root_scope <- tryCatch(
+    session$rootScope,
+    error = function(...) NULL
+  )
+  if (is.null(root_scope) && is.list(session)) {
+    root_scope <- tryCatch(
+      unclass(session)$rootScope,
+      error = function(...) NULL
+    )
+  }
+  if (is.function(root_scope)) {
+    root <- tryCatch(
+      root_scope(),
+      error = function(...) NULL
+    )
+    if (inherits(root, "ShinySession")) {
+      return(root)
+    }
+  }
+
+  session
+}
+
+#' @noRd
 active_shiny_session <- function() {
   session <- tryCatch(
     shiny::getDefaultReactiveDomain(),
     error = function(...) NULL
   )
+  session <- root_shiny_session(session)
   if (inherits(session, "ShinySession")) session else NULL
 }
 
@@ -133,6 +163,7 @@ register_shiny_host_instance <- function(
 
 #' @noRd
 ensure_shiny_host_registry <- function(session = active_shiny_session()) {
+  session <- root_shiny_session(session)
   if (!inherits(session, "ShinySession")) {
     cli::cli_abort("An active Shiny session is required for live host state.")
   }
