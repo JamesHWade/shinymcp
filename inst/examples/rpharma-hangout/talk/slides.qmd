@@ -1,0 +1,683 @@
+---
+title: "Bring Shiny Workflows to Claude"
+subtitle: "Expose reviewed R/Shiny tools as MCP Apps that Claude and other MCP clients can call — with typed contracts and deterministic R"
+author: "James Wade"
+date: "2026-06-16"
+date-format: "[R/Pharma genAI Day] · MMMM D, YYYY"
+brand: _brand.yml
+format:
+  revealjs:
+    theme: [default, clinical.scss]
+    slide-number: c/t
+    center: false
+    incremental: false
+    code-line-numbers: true
+    syntax-highlighting: github
+    code-overflow: wrap
+    width: 1280
+    height: 720
+    footer: "shinymcp · Shiny apps for MCP clients · R/Pharma genAI Day"
+    transition: fade
+    title-slide-attributes:
+      data-background-color: "#0e1622"
+    include-in-header:
+      text: |
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,500;0,600;0,700;1,500&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+---
+
+# Claude, meet your R tools {.section-divider background-color="#1b2f44"}
+
+## Claude can call an R-backed Shiny workflow
+
+**shinymcp** turns reviewed R/Shiny tools into MCP Apps for MCP clients.
+
+- R/Pharma genAI Day · June 16
+- A way to expose clinical R tools to Claude, ChatGPT, Copilot, and other MCP clients
+- Open source. Experimental. Everything you'll see runs on **synthetic data**.
+
+::: {.notes}
+Open with the concrete claim. A tool written in R can be exposed through an MCP server and called from Claude or another MCP client. Set the credibility frame early: open source, experimental, not on CRAN, synthetic data throughout. Then outline the structure: MCP, MCP Apps, shinymcp, Claude integration, Shiny integration, and validation boundaries.
+:::
+
+## The integration gap
+
+- You have R packages, Shiny apps, and clinical tools your team has reviewed
+- The MCP-capable clients people are testing are external: **Claude, ChatGPT, Copilot, VS Code**
+- Reimplementing the same logic for each client creates drift, review burden, and vendor-specific code
+
+. . .
+
+[Goal: let MCP clients call reviewed R tools without moving the computation out of R.]{.takeaway}
+
+::: {.notes}
+Name the actual gap. This audience does not need to be convinced Shiny is useful. They need a credible path from existing R assets into the MCP clients their teams are evaluating. The costly issue is duplicated clinical logic and duplicated validation. The claim is that R can stay the computation layer while MCP clients get a declared way to call it.
+:::
+
+## Agenda
+
+:::: {.cardgrid}
+::: {.gcard}
+[01]{.gnum}[MCP]{.gtitle}[A standard connection between MCP-capable clients and external tools.]{.gbody}
+:::
+::: {.gcard}
+[02]{.gnum}[MCP Apps]{.gtitle}[A callable tool that can also carry an interactive UI.]{.gbody}
+:::
+::: {.gcard}
+[03]{.gnum}[shinymcp]{.gtitle}[Wrap R/Shiny workflows as those tools and apps.]{.gbody}
+:::
+::: {.gcard data-accent="green"}
+[04]{.gnum}[Clients]{.gtitle}[Claude and other MCP clients can call the R-backed contract.]{.gbody}
+:::
+::: {.gcard data-accent="orange"}
+[05]{.gnum}[Shiny]{.gtitle}[The same card still works in the dashboards teams know.]{.gbody}
+:::
+::::
+
+::: {.notes}
+This is the table of contents. Move quickly. It tells the room this will not be a generic MCP explainer and not only a Shiny demo. The central claim is that one R-backed tool can be exposed through a standard contract and used in more than one client.
+:::
+
+# Why MCP {.section-divider background-color="#1b2f44"}
+
+## MCP in one slide
+
+- **MCP client:** Claude, ChatGPT, Copilot, VS Code
+- **MCP server:** your process exposing approved tools
+- **Tools:** named functions with declared inputs
+- **Resources:** addressable context or UI assets
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-flow">
+    <div class="dgm-node is-blue">
+      <span class="k">MCP CLIENT</span>
+      <span class="t">Claude</span>
+      <span class="s">ChatGPT · Copilot</span>
+    </div>
+    <div class="dgm-arr pair">
+      <div class="dgm-arr"><span class="lab">tools/call</span><span class="ln"></span></div>
+      <div class="dgm-arr back green"><span class="lab">tool result</span><span class="ln"></span></div>
+      <div class="dgm-arr back"><span class="lab">resources/read</span><span class="ln"></span></div>
+    </div>
+    <div class="dgm-node">
+      <span class="k">MCP SERVER</span>
+      <span class="t">MCP server</span>
+      <span class="s">R process</span>
+    </div>
+    <div class="dgm-arr green"><span class="lab">call</span><span class="ln"></span></div>
+    <div class="dgm-node is-green">
+      <span class="k">BACKEND</span>
+      <span class="t">R functions</span>
+      <span class="s">clinical logic</span>
+    </div>
+  </div>
+</div>
+```
+
+::: {.notes}
+Keep the protocol explanation concrete. MCP is a standard connection between an MCP-capable client and an external process. The client does not need to know R. It sees named tools, schemas, resources, and results. The R process does the work behind that contract.
+:::
+
+## Why MCP matters in pharma
+
+- One **declared contract**, instead of client-specific glue
+- Tool calls have names, schemas, arguments, and results you can inspect
+- Open ecosystem path: build once, integrate across MCP clients as support matures
+- A better answer than having a model read pixels from a dashboard
+
+. . .
+
+[MCP is a standard way to expose approved analytical tools.]{.takeaway}
+
+::: {.notes}
+Translate MCP into pharma language. This is about exposing approved analytical tools through a reviewable protocol. The key contrast is protocol call versus screen reading. A protocol call is reviewable. A dashboard scrape is not. Be precise that client support varies; the contract is the portable part.
+:::
+
+# What MCP Apps add {.section-divider background-color="#1b2f44"}
+
+## Tool vs MCP App: callable function plus UI
+
+- **Plain MCP tool**: client calls a named function → gets a return value
+- **MCP App**: that same tool ALSO carries a UI the user can touch
+- User interactions route back through the **same tool call**
+
+```{=html}
+<div class="dgm-lanes">
+  <div class="dgm-group">
+    <span class="gl">Plain MCP tool</span>
+    <div class="dgm-flow">
+      <div class="dgm-node is-blue"><span class="k">MCP CLIENT</span><span class="t">Claude</span></div>
+      <div class="dgm-arr"><span class="lab">tools/call</span><span class="ln"></span></div>
+      <div class="dgm-node is-green"><span class="k">TOOL</span><span class="t">screen_safety_signal()</span></div>
+      <div class="dgm-arr back"><span class="lab">returns</span><span class="ln"></span></div>
+      <div class="dgm-node"><span class="k">RESULT</span><span class="t">Text result</span></div>
+    </div>
+  </div>
+  <div class="dgm-group is-accent">
+    <span class="gl">MCP App (adds a UI)</span>
+    <div class="dgm-flow">
+      <div class="dgm-node is-blue"><span class="k">MCP CLIENT</span><span class="t">Claude</span></div>
+      <div class="dgm-arr"><span class="lab">tools/call</span><span class="ln"></span></div>
+      <div class="dgm-node is-green"><span class="k">TOOL</span><span class="t">screen_safety_signal()</span></div>
+      <div class="dgm-arr dashed"><span class="lab">_meta.ui.resourceUri</span><span class="ln"></span></div>
+      <div class="dgm-node is-blue"><span class="k">UI RESOURCE</span><span class="t">ui:// card</span><span class="s">dropdown + plot</span></div>
+    </div>
+  </div>
+</div>
+```
+
+> Same function. Optional UI. Same tool contract.
+
+::: {.notes}
+Explain the mechanism plainly. A normal MCP tool is a callable function. An MCP App adds a UI resource associated with that tool. The client can render the UI, and user interactions go back through the same typed tool call. The existing analysis function becomes the tool; the UI becomes an optional interaction layer.
+:::
+
+## The MCP App contract
+
+- Tool schema: **what the client may call**
+- `ui://` resource: **what the human may touch**
+- Structured result: **what the client may route, summarize, or log**
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-split">
+    <div class="dgm-flow">
+      <div class="dgm-node is-blue"><span class="k">UI:// RESOURCE</span><span class="t">Interactive card</span></div>
+      <div class="dgm-arr"><span class="lab">renders</span><span class="ln"></span></div>
+      <div class="dgm-node"><span class="k">TOOL SCHEMA</span><span class="t">Tool schema</span><span class="s">name + typed args</span></div>
+      <div class="dgm-arr"><span class="lab">calls</span><span class="ln"></span></div>
+      <div class="dgm-node is-green"><span class="k">R FUNCTION</span><span class="t">R function</span><span class="s">computes</span></div>
+    </div>
+    <div class="dgm-arr"><span class="ln"></span></div>
+    <div class="dgm-split__branches">
+      <div class="row"><div class="dgm-arr"><span class="lab">for the human</span><span class="ln"></span></div> <div class="dgm-node"><span class="k">DISPLAY</span><span class="t">Display</span><span class="s">memo / table / plot</span></div></div>
+      <div class="row"><div class="dgm-arr green"><span class="lab">for the client</span><span class="ln"></span></div> <div class="dgm-node is-green"><span class="k">MODEL_VALUE</span><span class="t">model_value</span><span class="s">typed handoff</span></div></div>
+    </div>
+  </div>
+</div>
+```
+
+::: {.notes}
+This is the core model. The app is not a web page the model reads from pixels. It is a contract: schema, UI resource, and structured result. The human gets a card; the model gets typed data.
+:::
+
+## No Shiny.js, no server: names matching ids
+
+- Inside an MCP client there is **no Shiny server and no Shiny.js**
+- shinymcp ships ~300 lines of **dependency-free ES5 JS** — no npm build
+- The bridge matches tool **argument names** to DOM element **ids**
+
+. . .
+
+**Contract:** arg name `==` input id · result key `==` output id
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-map">
+    <div class="head">Tool schema (R)</div><div></div><div class="head r">DOM (HTML)</div>
+    <div class="chip l">cohort</div><div class="eq"><span>==</span></div><div class="chip r">select#cohort</div>
+    <div class="chip l">ae_term</div><div class="eq"><span>==</span></div><div class="chip r">input#ae_term</div>
+    <div class="chip l">grade_threshold</div><div class="eq"><span>==</span></div><div class="chip r">input#grade_threshold</div>
+    <div class="chip l">risk_limit</div><div class="eq"><span>==</span></div><div class="chip r">input#risk_limit</div>
+  </div>
+  <div class="dgm-cap">no Shiny.js — the bridge matches arg names to element ids</div>
+</div>
+```
+
+::: {.notes}
+The bridge reads the tool argument names, finds inputs whose ids match, and connects them. That replaces the Shiny.js websocket pattern for this narrow use case. The bridge is inspectable vanilla JS. Honest caveat: the binding is convention-based, so a typo can break the mapping; the bridge warns when an argument does not map to an input. The mcp_*() components exist to keep names aligned. Native shiny::selectInput("cohort") also works.
+:::
+
+# Why shinymcp {.section-divider background-color="#1b2f44"}
+
+## What shinymcp gives the R team
+
+:::: {.cardgrid}
+::: {.gcard}
+[R]{.gnum}[Stat programmers]{.gtitle}[Reviewed R remains the computation layer.]{.gbody}
+:::
+::: {.gcard}
+[UI]{.gnum}[Shiny teams]{.gtitle}[Existing app patterns become MCP tools with optional UI.]{.gbody}
+:::
+::: {.gcard}
+[DS]{.gnum}[Data scientists]{.gtitle}[Clients call approved tools instead of reimplementing logic.]{.gbody}
+:::
+::: {.gcard data-accent="green"}
+[GxP]{.gnum}[Governance]{.gtitle}[Typed inputs and outputs are easier to review than prose.]{.gbody}
+:::
+::: {.gcard data-accent="orange"}
+[Ops]{.gnum}[Platforms]{.gtitle}[One open-standard integration path across clients.]{.gbody}
+:::
+::::
+
+::: {.notes}
+Make the value proposition audience-specific. The R team keeps R as the compute layer. The Shiny team keeps familiar UI patterns. Data scientists get a callable approved tool. Governance gets a smaller contract to inspect than a custom app, a custom API, and prompt-specific behavior.
+:::
+
+## Before / after
+
+::: {.columns}
+::: {.column width="50%"}
+::: {style="border-left:5px solid #ff7518; padding-left:1rem;"}
+**Typical Shiny app**
+
+- Outputs are human-facing
+- External clients need glue, screenshots, or a separate API
+- The module is tied to one host app
+:::
+:::
+::: {.column width="50%"}
+::: {style="border-left:5px solid #087443; padding-left:1rem;"}
+**With shinymcp**
+
+- The widget is ALSO a tool with a schema an MCP client can call
+- Results include display output **PLUS** structured model values
+- The same card can be served to MCP clients, Shiny, or shinychat
+:::
+:::
+:::
+
+::: {.notes}
+This compare panel is still on screen in the demo, but state it plainly. The same workflow gained a typed, callable contract. The statistical logic is unchanged; the integration boundary changed.
+:::
+
+# Integrate with Claude {.section-divider background-color="#1b2f44"}
+
+## What Claude sees
+
+```r
+# app.R
+app <- mcp_app(ui = ui, tools = list(tool), name = "rpharma-safety-signal")
+serve(app)  # stdio MCP server by default
+```
+
+```json
+{
+  "mcpServers": {
+    "rpharma-safety-signal": {
+      "command": "Rscript",
+      "args": ["/path/to/app.R"]
+    }
+  }
+}
+```
+
+::: {.notes}
+Claude does not need a Python rewrite. It launches an MCP server command. That command can be Rscript. The R process exposes tools and resources. Be precise: the tool contract is the stable cross-client piece; interactive UI rendering depends on the client and connector mode. Claude Desktop supports local MCP servers; Claude custom connectors support remote MCP servers.
+:::
+
+## One R tool, multiple clients
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-fan">
+    <div class="dgm-fan__src">
+      <div class="dgm-flow">
+        <div class="dgm-node is-green"><span class="k">R TOOL</span><span class="t">Safety screen</span><span class="s">screen_safety_signal()</span></div>
+        <div class="dgm-arr"><span class="lab">wrap</span><span class="ln"></span></div>
+        <div class="dgm-node is-blue"><span class="k">MCP APP</span><span class="t">shinymcp</span><span class="s">ui:// resource</span></div>
+      </div>
+    </div>
+    <div class="dgm-fan__hub"></div>
+    <div class="dgm-fan__targets">
+      <div class="row"><span class="spur"></span><div class="dgm-node"><span class="k">MCP CLIENT</span><span class="t">Claude</span><span class="s">local or remote MCP</span></div></div>
+      <div class="row"><span class="spur"></span><div class="dgm-node"><span class="k">MCP CLIENT</span><span class="t">ChatGPT / Copilot</span><span class="s">MCP-capable</span></div></div>
+      <div class="row"><span class="spur"></span><div class="dgm-node"><span class="k">EMBED</span><span class="t">Shiny dashboard</span><span class="s">embedded card</span></div></div>
+      <div class="row"><span class="spur"></span><div class="dgm-node"><span class="k">EMBED</span><span class="t">shinychat</span><span class="s">tool card</span></div></div>
+    </div>
+  </div>
+</div>
+```
+
+> The client changes. The R function and contract do not.
+
+::: {.notes}
+Do not over-index on any one client. Claude is the concrete example because it supports MCP and the audience knows it. The broader point is client portability. The caveat is client support variance: some clients may call tools without rendering every UI affordance. The stable part is that R is exposed through a standard contract.
+:::
+
+# Code: the contract {.section-divider background-color="#1b2f44"}
+
+## Code 1 — the inputs and outputs (real code)
+
+```r
+# Inputs — these ids become the tool's argument names
+mcp_select("cohort", "Cohort", cohort_choices)
+mcp_select("ae_term", "AE term", ae_terms)
+mcp_numeric_input("grade_threshold", "Minimum grade",
+                  value = 3, min = 1, max = 4, step = 1)
+mcp_numeric_input("risk_limit", "RR watch limit",
+                  value = 1.8, min = 1, max = 5, step = 0.1)
+
+# Outputs — these ids receive the result keys
+mcp_text("memo"); mcp_table("evidence"); mcp_plot("risk_plot"); mcp_html("audit")
+```
+
+::: {.notes}
+First real code, straight from the demo's Safety Signal Scout. The input ids — cohort, ae_term, grade_threshold, risk_limit — are deliberately the same names that become the tool's arguments; that is the mapping contract from the last slide. The output ids — memo, evidence, risk_plot, audit — are the result keys the function fills. Nothing exotic; ordinary Shiny inputs with one discipline: aligned names.
+:::
+
+## Code 2 — the tool IS your validated function, declared
+
+```r
+tool <- ellmer::tool(
+  fun = function(cohort = "All cohorts", ae_term = "Neutropenia",
+                 grade_threshold = 3, risk_limit = 1.8) {
+    # filter to cohort; event = AE grade >= grade_threshold; split by arm;
+    # Haldane-corrected RR; small_cell flag; explicit decision thresholds
+    # ... your validated, fixed-seed R ...
+  },
+  name = "screen_safety_signal",
+  description = "Screen aggregate AE risk and return a guarded safety-review memo.",
+  arguments = list(
+    cohort          = ellmer::type_string("Cohort to screen."),
+    ae_term         = ellmer::type_string("Adverse event term."),
+    grade_threshold = ellmer::type_number("Minimum AE grade to count."),
+    risk_limit      = ellmer::type_number("Relative-risk watch limit.")
+  )
+)
+```
+
+::: {.notes}
+This is the validated-computation slide. The fun= body is fixed-seed R: filter to cohort, mark events at the grade threshold, split by arm, Haldane-corrected relative risk, explicit decision logic. That is the function you unit-test today. ellmer::tool() gives it a name and a typed signature an MCP client can call.
+:::
+
+## Code 3 — the typed handoff: human display + machine model_value
+
+```r
+list(
+  memo = mcp_result_text(memo, model_value = list(   # <- typed, for the client
+    widget = "Safety Signal Scout", cohort = cohort, ae_term = ae_term,
+    risk_ratio = rr, risk_delta = risk_delta,
+    decision = decision, small_cell = small_cell)),
+  evidence  = mcp_result_table(evidence, text = "Aggregate AE evidence table."),
+  risk_plot = mcp_result_plot(function() barplot(...), model_value = list(...)),
+  audit     = mcp_result_html(audit)
+)
+```
+
+::: {.notes}
+Each result carries the rendered display the user sees and an optional model_value: the typed object the client receives separately. Note small_cell in the payload: the statistician-review flag is computed in R and travels as data. The client does not scrape the memo; it reads this list. Also note what is not here: patient-level rows. The boundary is a property of what this function returns.
+:::
+
+# Shiny integration {.section-divider background-color="#1b2f44"}
+
+## Why Shiny remains useful
+
+- Shiny is where many teams already review the workflow
+- shinymcp lets the **same MCP App** run inside that app for adoption and testing
+- The Shiny app can inspect the same typed handoff an MCP client would receive
+
+. . .
+
+[Shiny provides a familiar review view for the same MCP contract.]{.takeaway}
+
+::: {.notes}
+Position Shiny precisely. It is the local review and adoption path. You can show the card inside the dashboard, inspect the handoff, and let teams use a familiar app while the same contract can be served to Claude or another MCP client.
+:::
+
+## Code 4 — one definition, multiple homes
+
+```r
+app <- mcp_app(ui = ui, tools = list(tool), name = "rpharma-safety-signal")
+
+# Embed live in a Shiny dashboard:
+mcp_host_ui("safety")
+mcp_host_server("safety", app = app, trigger = "submit",
+                initial_arguments = list(cohort = "Lung", ae_term = "Neutropenia"))
+
+# Drop into a shinychat conversation:
+as_shinychat_tool(app)
+
+# Serve to Claude or another MCP client:
+serve(app)
+```
+
+::: {.notes}
+One definition, multiple client paths. The same McpApp embeds in the Shiny dashboard, wraps as an ellmer/shinychat tool, or serves over MCP. The active Shiny session owns host state and runs the tool in R; the iframe stays lightweight, no nested Shiny runtime per card.
+:::
+
+# Live demo {.section-divider background-color="#1b2f44"}
+
+## What to watch in the demo
+
+App: **Oncology Signal Room** — a normal Shiny clinical dashboard + an MCP widget bay
+
+::: {.fragment}
+**CHECK 1 · CLIENT PATHS** — integration strip shows Shiny, shinychat, and MCP resource targets
+:::
+::: {.fragment}
+**CHECK 2 · TYPED RESULT** — press Apply → the right-hand panel gets a **typed object**, no screen scraping
+:::
+::: {.fragment}
+**CHECK 3 · TOOL SWAP** — one dropdown replaces the MCP App, including UI, schema, outputs, and contract
+:::
+
+::: {style="color:#455468; margin-top:1rem;"}
+All data is synthetic · fixed seed `set.seed(616)` · n = 384
+:::
+
+::: {.notes}
+Prime the audience before switching to the live app so they know what to inspect. First: client paths. Second: typed handoff. Third: full MCP App swap, not a hidden tab. Say "synthetic data" out loud and point at the sidebar's synthetic-only note.
+:::
+
+## [LIVE] Oncology Signal Room {background-color="#172033"}
+
+::: {style="color:#f6f8fb; font-size:1.6em; font-weight:700;"}
+Live app — synthetic data only
+:::
+
+::: {style="color:#ff7518; margin-top:2rem;"}
+Watch the right-hand Contract inspector on every Apply.
+:::
+
+::: {.notes}
+Target 10–11 min. Keep the right-hand Contract inspector / handoff column visible throughout. App pre-warmed and running locally; browser console open off-screen.
+
+CLICK-PATH:
+1. Open at defaults (Cohort=All cohorts, AE lens=Neutropenia, skill=Safety Signal Scout). Point at the 4 metric boxes + study plot: "the dashboard your team already has." Say "synthetic."
+2. Sidebar: Cohort -> Lung. Watch the metric boxes + study plot redraw — ordinary Shiny reactivity, the host, not the widget.
+3. Scroll to the MCP widget bay; point at the integration strip (mcp_host_server / as_shinychat_tool / ui:// URI): "this is the same R-backed tool exposed to multiple clients."
+4. Inside Safety Signal Scout set Cohort=Lung, AE term=Neutropenia, Min grade=3, RR watch limit=1.8 -> press APPLY. Read the memo, evidence table, event-rate plot, and especially the audit block.
+5. Point right: Contract inspector (screen_safety_signal, ui:// URI, arg schema) + "Last widget handoff" table + green Meeting-note now populated. "The parent app did not scrape the screen; it received this typed object."
+6. Lower RR watch limit to ~1.2 -> APPLY again. Decision flips toward "Open a focused safety review" / "Monitor and request QC"; handoff table + meeting note recompute deterministically.
+7. Sidebar: switch Approved MCP skill -> Enrollment Rescue Simulator. The whole MCP App swaps (UI + schema + outputs); Contract inspector now shows simulate_enrollment_rescue. Set monthly_randomized=20 -> APPLY; status moves to watch/rescue, path stretches past the orange target line, meeting note routes to data management. Restore defaults to land clean.
+
+Slow down on step 3 and step 5. Step 3 shows the client paths. Step 5 shows the contract: typed result, no screen scraping. Step 6 proves determinism. Step 7 proves app-level replacement. Trigger is "submit" — nothing recomputes until Apply; if a panel reads "Waiting for Apply", just press Apply.
+:::
+
+## What just happened
+
+- A Shiny workflow became a **portable MCP App**
+- A client received `screen_safety_signal(...)` as a **typed tool contract**
+- The result included display output **plus** machine-readable `model_value`
+- The R function computed deterministically; the client only selected and parameterized
+- The audit pane kept the boundary explicit: aggregate evidence only
+
+::: {.notes}
+Close the loop against the claim. The demo was shown inside Shiny because that is a reliable local preview, but the important part was the contract: an MCP client can call the same tool by name with the same arguments and receive the same typed object. Then transition to validation boundaries.
+:::
+
+# Review boundaries {.section-divider background-color="#1b2f44"}
+
+## What makes this reviewable?
+
+:::: {.cardgrid}
+::: {.gcard}
+[01]{.gnum}[Deterministic R]{.gtitle}[The tool body is your validated function, not the LLM.]{.gbody}
+:::
+::: {.gcard}
+[02]{.gnum}[Declared schemas]{.gtitle}[The client fills typed slots; it cannot invent inputs.]{.gbody}
+:::
+::: {.gcard}
+[03]{.gnum}[Aggregate boundary]{.gtitle}[Return aggregate evidence and audit metadata, not patient rows.]{.gbody}
+:::
+::: {.gcard data-accent="green"}
+[04]{.gnum}[Typed handoff]{.gtitle}[The client receives `model_value`, not scraped DOM text.]{.gbody}
+:::
+::: {.gcard data-accent="orange"}
+[05]{.gnum}[Human decision]{.gtitle}[Outputs support review; they do not replace accountability.]{.gbody}
+:::
+::::
+
+::: {.notes}
+These points come after the audience understands the integration. They are the conditions under which "Claude can call this R tool" becomes a reviewable claim. Be explicit that aggregate-only is a property of the tool you write. shinymcp provides the contract; validation and privacy design are still your process.
+:::
+
+## The handoff is typed and logged
+
+- Every result can carry two things: a rendered display + a typed `model_value`
+- The client receives **data**, not scraped DOM text
+- The same object can feed a meeting note, audit log, or downstream review workflow
+
+```{=html}
+<div class="dgm-split">
+  <div class="dgm-node"><span class="k">TOOL RESULT</span><span class="t">One result</span></div>
+  <div class="dgm-arr"><span class="ln"></span></div>
+  <div class="dgm-split__branches">
+    <div class="row">
+      <div class="dgm-arr"><span class="lab">display · memo / table / plot</span><span class="ln"></span></div>
+      <div class="dgm-node is-blue"><span class="k">HUMAN</span><span class="t">The human</span></div>
+    </div>
+    <div class="row">
+      <div class="dgm-arr green"><span class="lab">model_value · typed</span><span class="ln"></span></div>
+      <div class="dgm-node is-green"><span class="k">MACHINE</span><span class="t">Client / log</span><span class="s">meeting note</span></div>
+    </div>
+  </div>
+</div>
+```
+
+> Display for the human, model_value for the client — same result, two consumers.
+
+::: {.notes}
+The same tool result yields a human-facing card and a machine-facing typed object. The client does not parse prose; it reads the list. This is the difference between screen reading and an inspectable contract.
+:::
+
+## The sandbox is not the whole data boundary
+
+- MCP Apps are rendered as isolated app views in supporting clients
+- Host and app communicate through a defined protocol conversation
+- The data boundary still comes from **what your tool returns**
+- Treat sandboxing as one layer, not a compliance certificate
+
+::: {.notes}
+This is the security caveat slide. Do not overclaim the iframe. In local Shiny preview the iframe uses allow-scripts allow-same-origin, and different MCP clients make different rendering choices. The data boundary is the aggregate-only return contract plus the client's tool approval and logging model.
+:::
+
+# Conversion at scale {.section-divider background-color="#1b2f44"}
+
+## Conversion pipeline
+
+```r
+convert_app(path)   # orchestrates the pipeline:
+# parse_shiny_app()        -> ShinyAppIR (AST)
+# analyze_reactive_graph() -> input / reactive / output clusters
+# generate_mcp_app()       -> MCP App scaffold (HTML + tools.R + server.R)
+```
+
+- Each connected **input → reactive → output** group becomes **one tool**
+- **Honest scope:** it writes a working scaffold with **placeholder tool bodies** — you fill in the real computation
+
+```{=html}
+<div class="dgm dgm-pipe">
+  <div class="dgm-flow">
+    <div class="dgm-node"><span class="k">SOURCE</span><span class="t">app.R</span></div>
+    <div class="dgm-arr"><span class="lab">parse_shiny_app()</span><span class="ln"></span></div>
+    <div class="dgm-node"><span class="k">AST</span><span class="t">ShinyAppIR</span></div>
+    <div class="dgm-arr"><span class="lab">analyze_reactive_graph()</span><span class="ln"></span></div>
+    <div class="dgm-node"><span class="k">GRAPH</span><span class="t">ReactiveAnalysis</span><span class="s">input / reactive / output clusters</span></div>
+    <div class="dgm-arr"><span class="lab">generate_mcp_app()</span><span class="ln"></span></div>
+    <div class="dgm-node is-blue"><span class="k">OUTPUT</span><span class="t">MCP App</span></div>
+  </div>
+</div>
+```
+
+::: {style="color:#455468;"}
+`convert_app()` does the middle three steps · you fill the validated bodies
+:::
+
+::: {.notes}
+Address "how do I do this for my 40 existing apps?" Be direct. convert_app() maps the reactive graph and writes structure; it does NOT auto-port arbitrary logic. You get a scaffold, then a human fills in the reviewed computation. Statelessness is useful here: each tools/call re-runs from arguments, so every call is reproducible.
+:::
+
+# Honest limits {.section-divider background-color="#1b2f44"}
+
+## What this is — and what it is NOT
+
+::: {.columns}
+::: {.column width="50%"}
+**IS**
+
+- An **experimental** package for exposing R/Shiny tools through MCP
+- Lifecycle: **experimental** — install from GitHub via `pak`
+- Emits both `_meta.ui.resourceUri` and legacy `ui/resourceUri` for client compatibility
+:::
+::: {.column width="50%"}
+**IS NOT**
+
+- A GxP-qualified, GA, validated product — validation is still a **process you own**
+- Not on CRAN yet
+- A guarantee that every client will render every interactive UI the same way
+:::
+:::
+
+::: {.notes}
+Say it straight: experimental, not GA, not validated out of the box. The privacy and reproducibility properties come from how you write the function plus your validation process. Client support varies, especially for interactive rendering. The portable core is the typed tool contract and the R-backed computation.
+:::
+
+# Objections {.section-divider background-color="#1b2f44"}
+
+## The questions you're already asking
+
+| Objection | Answer |
+|---|---|
+| "Why not just build a Claude tool?" | Because MCP gives you an open contract you can reuse across clients |
+| "LLMs can't be validated" | The LLM doesn't compute; the **deterministic R tool** does |
+| "Will this leak patient data?" | Only return aggregate evidence; the boundary is in the tool contract |
+| "Does every client render the UI?" | Tool calls are the stable part; interactive UI support is client-dependent |
+| "What's the validation focus?" | Unit-test the R tools; inspect the JS bridge; assert the typed `model_value` |
+
+::: {.notes}
+Pre-empt the room's real objections in their language so Q&A can go deeper. The point is not Claude-only integration; it is keeping R tools portable across MCP clients. Then return to the same validation spine: deterministic R computes, the tool returns aggregate data, and a human remains accountable.
+:::
+
+# Close {.section-divider background-color="#1b2f44"}
+
+## Serve R tools to MCP clients
+
+::: {style="color:#39729e; font-weight:700; font-size:1.15em;"}
+- Your validated R function becomes the tool body
+- Claude or another MCP client can call it through a typed contract
+- The same MCP App can still run inside Shiny for adoption and review
+- The handoff is typed, logged, and aggregate by design
+- No rewrite of the clinical logic into a client-specific stack
+:::
+
+::: {style="color:#455468; margin-top:1rem;"}
+MCP standard · MCP App UI · shinymcp R adapter · Claude integration · Shiny review path
+:::
+
+::: {.notes}
+Land on the concrete claim. R/Shiny tools can be served to MCP clients without moving the computation out of R. The reason this is reviewable is the contract: deterministic R, declared schema, aggregate result, typed handoff, human review.
+:::
+
+## Try it / read it / fork it — and Q&A
+
+- **Install:** `pak::pak("JamesHWade/shinymcp")` (GitHub; experimental)
+- **Start with the demo you just saw:** `inst/examples/rpharma-hangout/app.R`
+- **Read the bridge:** `inst/js/shinymcp-bridge.js` (~300 lines, vanilla ES5 — inspect it)
+- **Docs:** [jameshwade.github.io/shinymcp](https://jameshwade.github.io/shinymcp)
+- **Try the Claude path:** create a small `app.R` with `mcp_app()` + `serve(app)`
+
+. . .
+
+::: {style="color:#ff7518; font-weight:700; font-size:1.2em; margin-top:1rem;"}
+Expose one reviewed Shiny workflow through MCP.
+
+Wrap one function. Serve it over MCP. Then embed it back in Shiny.
+:::
+
+::: {.notes}
+Clear next step: take one reviewed Shiny/R function and expose it as an MCP App. Point them at the exact demo file, then at the minimal Claude Desktop pattern in the docs. Encourage them to read the bridge because it is small enough to inspect. Anticipated deep cuts: remote versus local MCP, client support variance for UI rendering, validation packaging, statelessness, sandbox posture, and the manual-fill step in convert_app().
+:::
