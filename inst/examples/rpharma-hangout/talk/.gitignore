@@ -1,0 +1,6 @@
+/.quarto/
+**/*.quarto_ipynb
+
+# rendered Quarto output (regenerate with `quarto render slides.qmd`)
+/slides.html
+/slides_files/

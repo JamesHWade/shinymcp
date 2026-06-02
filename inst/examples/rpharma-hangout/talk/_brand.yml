@@ -1,0 +1,42 @@
+meta:
+  name: Clinical Technical Deck
+
+color:
+  palette:
+    blue: "#39729e"
+    orange: "#ff7518"
+    green: "#087443"
+    ink: "#172033"
+    muted: "#455468"
+    paper: "#f6f8fb"
+  foreground: ink
+  background: paper
+  primary: blue
+  secondary: orange
+  success: green
+
+typography:
+  fonts:
+    - family: Public Sans
+      source: google
+      weight: [400, 500, 600, 700]
+      style: [normal, italic]
+    - family: Spectral
+      source: google
+      weight: [500, 600, 700]
+    - family: IBM Plex Mono
+      source: google
+      weight: [400, 500, 600]
+  base:
+    family: Public Sans
+    size: 1.1em
+    line-height: 1.5
+  headings:
+    family: Spectral
+    weight: 600
+    color: ink
+  monospace:
+    family: IBM Plex Mono
+    size: 0.9em
+  link:
+    color: blue
