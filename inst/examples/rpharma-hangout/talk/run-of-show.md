@@ -10,7 +10,7 @@
 - **The one thing they should remember:** the client changes, but the R function and typed contract do not.
 - **Everything runs on synthetic data.** Say so early and often.
 
-## Timing table (sums to 50)
+## Timing table (fills the 50-minute slot — the final close + Q&A block flexes to use the remaining time)
 
 | Block | Start | Dur | Goal |
 |---|---:|---:|---|
