@@ -2,6 +2,7 @@ url: https://jameshwade.github.io/shinymcp/
 
 template:
   bootstrap: 5
+  light-switch: true
   bslib:
     primary: "#0f766e"
     secondary: "#475569"
@@ -28,7 +29,7 @@ navbar:
   bg: light
   structure:
     left: [intro, reference, articles]
-    right: [search, github]
+    right: [search, lightswitch, github]
   components:
     articles:
       text: Articles
