@@ -8,3 +8,8 @@ src/*.o
 src/*.so
 src/*.dll
 docs
+slides_files/
+
+# Local tooling / publish metadata (machine-specific, not shared)
+.positai/
+.posit/

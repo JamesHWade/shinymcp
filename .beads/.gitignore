@@ -20,6 +20,12 @@ last-touched
 db.sqlite
 bd.db
 
+# Dolt backend (local database; issues sync via the tracked JSONL files)
+dolt/
+dolt-access.lock
+ephemeral.sqlite3
+export-state/
+
 # Worktree redirect file (contains relative path to main repo's .beads/)
 # Must not be committed as paths would be wrong in other clones
 redirect
