@@ -29,9 +29,9 @@
       return m + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
     }
     var SPEC = {
-      Adelie:    { c: "#ff6b35", n: 50, bill_length_mm: [38.8, 2.7], bill_depth_mm: [18.3, 1.2], flipper_length_mm: [190, 6.5], body_mass_g: [3700, 460] },
-      Chinstrap: { c: "#7b2d8e", n: 34, bill_length_mm: [48.8, 3.3], bill_depth_mm: [18.4, 1.1], flipper_length_mm: [196, 7.1], body_mass_g: [3733, 384] },
-      Gentoo:    { c: "#0f7173", n: 44, bill_length_mm: [47.5, 3.1], bill_depth_mm: [15.0, 1.0], flipper_length_mm: [217, 6.5], body_mass_g: [5076, 504] }
+      Adelie:    { n: 50, bill_length_mm: [38.8, 2.7], bill_depth_mm: [18.3, 1.2], flipper_length_mm: [190, 6.5], body_mass_g: [3700, 460] },
+      Chinstrap: { n: 34, bill_length_mm: [48.8, 3.3], bill_depth_mm: [18.4, 1.1], flipper_length_mm: [196, 7.1], body_mass_g: [3733, 384] },
+      Gentoo:    { n: 44, bill_length_mm: [47.5, 3.1], bill_depth_mm: [15.0, 1.0], flipper_length_mm: [217, 6.5], body_mass_g: [5076, 504] }
     };
     var COLORS = { Adelie: "#ff6b35", Chinstrap: "#7b2d8e", Gentoo: "#0f7173" };
     var LABELS = { bill_length_mm: "Bill Length (mm)", bill_depth_mm: "Bill Depth (mm)", flipper_length_mm: "Flipper Length (mm)", body_mass_g: "Body Mass (g)" };

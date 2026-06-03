@@ -60,7 +60,7 @@ body { background: var(--smc-page); color: var(--smc-ink); font-family: var(--sm
 h1, h2, h3, h4, h5, .h1, .h2, .h3 { font-family: var(--smc-sans); letter-spacing: -0.02em; color: var(--smc-ink); }
 a { color: var(--smc-primary-strong); }
 
-.navbar { background: color-mix(in oklab, var(--smc-page) 88%, transparent) !important; backdrop-filter: saturate(140%) blur(12px); border-bottom: 1px solid var(--smc-border); }
+.navbar { background: var(--smc-page) !important; background: color-mix(in oklab, var(--smc-page) 88%, transparent) !important; -webkit-backdrop-filter: saturate(140%) blur(12px); backdrop-filter: saturate(140%) blur(12px); border-bottom: 1px solid var(--smc-border); }
 .navbar .navbar-brand { font-family: var(--smc-mono); font-weight: 600; letter-spacing: -0.02em; color: var(--smc-ink); }
 .navbar .nav-link { color: var(--smc-muted) !important; font-weight: 550; }
 .navbar .nav-link:hover, .navbar .nav-link.active { color: var(--smc-ink) !important; }
@@ -101,8 +101,8 @@ pre, .sourceCode pre { background: var(--smc-code-bg) !important; border: 1px so
 .smc-hero h1.smc-title { font-size: clamp(2.3rem, 4.6vw, 3.5rem); line-height: 1.04; font-weight: 800; letter-spacing: -0.025em; max-width: 16ch; margin: 0 auto; border: 0; }
 .smc-hero .smc-lede { font-size: clamp(1.05rem, 1.5vw, 1.22rem); line-height: 1.6; color: var(--smc-muted); max-width: 52ch; margin: 20px auto 0; }
 .smc-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 28px 0 18px; }
-/* pandoc wraps the two raw-HTML <a> buttons in a <p>; dissolve it so they stay flex items */
-.smc-actions > p { display: contents; margin: 0; }
+/* pandoc wraps the two raw-HTML <a> buttons in a <p>; lay it out as the flex row itself */
+.smc-actions > p { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin: 0; }
 
 .smc-demo-frame { max-width: 940px; margin: 8px auto 0; border-radius: 14px; overflow: hidden; border: 1px solid var(--smc-border-strong); background: var(--smc-chat); box-shadow: var(--smc-shadow-lg); }
 .smc-demo-cap { text-align: center; color: var(--smc-faint); font-family: var(--smc-mono); font-size: 0.78rem; margin-top: 16px; }
@@ -160,9 +160,9 @@ pre, .sourceCode pre { background: var(--smc-code-bg) !important; border: 1px so
 .smc-mcp-head { font-size: 0.75rem; font-weight: 700; color: var(--smc-muted); padding: 8px 12px; border-bottom: 1px solid var(--smc-border); background: var(--smc-surface-2); }
 .smc-plot-wrap { position: relative; }
 .smc-canvas { display: block; width: 100%; height: 230px; }
-.smc-running { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 9px; background: color-mix(in oklab, #ffffff 72%, transparent); color: #54637a; font-family: var(--smc-mono); font-size: 0.78rem; }
+.smc-running { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 9px; background: color-mix(in oklab, var(--smc-surface) 72%, transparent); color: var(--smc-muted); font-family: var(--smc-mono); font-size: 0.78rem; }
 .smc-running code { color: var(--smc-primary-strong); background: none; padding: 0; }
-.smc-spin { width: 15px; height: 15px; border: 2px solid #cfd9e6; border-top-color: var(--smc-primary); border-radius: 50%; animation: smc-spin 0.7s linear infinite; }
+.smc-spin { width: 15px; height: 15px; border: 2px solid var(--smc-border-strong); border-top-color: var(--smc-primary); border-radius: 50%; animation: smc-spin 0.7s linear infinite; }
 @keyframes smc-spin { to { transform: rotate(360deg); } }
 .smc-stats { margin: 0; padding: 12px 14px; font-family: var(--smc-mono); font-size: 0.72rem; line-height: 1.7; color: var(--smc-ink); white-space: pre; overflow-x: auto; }
 
