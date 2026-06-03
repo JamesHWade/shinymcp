@@ -6,6 +6,8 @@
   var hosts = {};
   var pendingToolCalls = {};
   var domObserver = null;
+  var disconnectDisposeTimers = {};
+  var DISCONNECT_DISPOSE_DELAY_MS = 1000;
 
   function jsonParse(text) {
     try {
@@ -439,6 +441,7 @@
         } else {
           unbindFullscreenListeners();
         }
+        cancelDisconnectedHostDispose(config.instanceId);
         delete hosts[config.instanceId];
         if (typeof options.onDispose === "function") {
           options.onDispose(host);
@@ -488,10 +491,16 @@
   }
 
   function initContainer(container) {
-    if (!container || container._shinymcpHost) return;
+    if (!container) return;
+
+    if (container._shinymcpHost) {
+      cancelDisconnectedHostDispose(container._shinymcpHost.config.instanceId);
+      return;
+    }
 
     var config = readContainerConfig(container);
     if (!config || !config.instanceId || !config.appHtml) return;
+    cancelDisconnectedHostDispose(config.instanceId);
 
     var iframe = container.querySelector("[data-shinymcp-host-frame]");
     if (!iframe) return;
@@ -544,8 +553,37 @@
     setStatus(container, "connecting", "connecting...");
   }
 
+  function cancelDisconnectedHostDispose(instanceId) {
+    var timer = disconnectDisposeTimers[instanceId];
+    if (!timer) return;
+    clearTimeout(timer);
+    delete disconnectDisposeTimers[instanceId];
+  }
+
+  function scheduleDisconnectedHostDispose(host) {
+    var instanceId = host && host.config && host.config.instanceId;
+    if (!instanceId || disconnectDisposeTimers[instanceId]) return;
+
+    disconnectDisposeTimers[instanceId] = setTimeout(function () {
+      delete disconnectDisposeTimers[instanceId];
+      if (hosts[instanceId] !== host) return;
+      if (!host.container || host.container.isConnected) return;
+      host.dispose();
+    }, DISCONNECT_DISPOSE_DELAY_MS);
+  }
+
   function scanForHosts(root) {
     var scope = root && root.querySelectorAll ? root : document;
+    // querySelectorAll only matches descendants, so check the root itself too.
+    // Some hosts (e.g. shinychat's raw-HTML component) inject our container as a
+    // top-level added node via innerHTML, in which case it IS the scanned node.
+    if (
+      scope.nodeType === 1 &&
+      scope.matches &&
+      scope.matches("[data-shinymcp-host]")
+    ) {
+      initContainer(scope);
+    }
     var nodes = scope.querySelectorAll("[data-shinymcp-host]");
     for (var i = 0; i < nodes.length; i++) {
       initContainer(nodes[i]);
@@ -556,8 +594,12 @@
     var ids = Object.keys(hosts);
     for (var i = 0; i < ids.length; i++) {
       var host = hosts[ids[i]];
-      if (!host || !host.container || host.container.isConnected) continue;
-      host.dispose();
+      if (!host || !host.container) continue;
+      if (host.container.isConnected) {
+        cancelDisconnectedHostDispose(ids[i]);
+      } else {
+        scheduleDisconnectedHostDispose(host);
+      }
     }
   }
 

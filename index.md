@@ -15,7 +15,7 @@
 </div>
 
 <div id="smc-demo" class="smc-demo-frame" data-logo="logo.png"></div>
-<p class="smc-demo-cap">↑ a real MCP App — change an input, the bridge calls your R tool and redraws the card in place</p>
+<p class="smc-demo-cap">↑ static MCP App mock-up — change an input to preview the UI flow. The quick start below shows the real R-backed bridge.</p>
 
 <div class="smc-section">
 <h2 id="start-with-a-path">Three ways in</h2>
