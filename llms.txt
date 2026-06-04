@@ -10,8 +10,8 @@ GitHub](https://github.com/JamesHWade/shinymcp)
 
 \> `pak::pak(“JamesHWade/shinymcp”)`
 
-↑ a real MCP App — change an input, the bridge calls your R tool and
-redraws the card in place
+↑ static MCP App mock-up — change an input to preview the UI flow. The
+quick start below shows the real R-backed bridge.
 
 ## Three ways in
 

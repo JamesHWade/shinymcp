@@ -1,5 +1,5 @@
 /* =============================================================================
- * shinymcp — live "MCP App inside AI chat" demo for the pkgdown home page
+ * shinymcp — static MCP App mock-up for the pkgdown home page
  * Drop in at:  pkgdown/extra.js   (loaded on every page; only runs on home)
  * Mounts into: <div id="smc-demo"></div>  (placed in index.md)
  * Pure vanilla JS — no dependencies.
@@ -140,10 +140,10 @@
         '<div class="row-asst">' +
           '<div class="smc-asst-mark"><img src="' + logo + '" alt=""></div>' +
           '<div class="smc-asst-body">' +
-            '<p class="smc-asst-text">Here\'s an interactive explorer. Adjust the inputs and I\'ll recompute in R:</p>' +
-            '<div class="smc-toolcall">⚡ <span>called <code>explore_penguins</code></span> <span class="ok">200 OK</span></div>' +
+            '<p class="smc-asst-text">Here\'s a static mock-up of the interactive card flow. In a real shinymcp app, changing inputs calls your R tool:</p>' +
+            '<div class="smc-toolcall">⚡ <span>simulated <code>explore_penguins</code></span> <span class="ok">200 OK</span></div>' +
             '<div class="smc-mcp">' +
-              '<div class="smc-mcp-bar"><span class="smc-mcp-title">Palmer Penguins Explorer</span><span class="smc-mcp-badge"><span class="dot"></span>MCP App</span></div>' +
+              '<div class="smc-mcp-bar"><span class="smc-mcp-title">Palmer Penguins Explorer</span><span class="smc-mcp-badge"><span class="dot"></span>MCP App mock-up</span></div>' +
               '<div class="smc-mcp-body">' +
                 '<div class="smc-mcp-side">' +
                   '<label class="smc-field"><span>Species</span><select data-k="species"><option>All</option><option>Adelie</option><option>Chinstrap</option><option>Gentoo</option></select></label>' +
