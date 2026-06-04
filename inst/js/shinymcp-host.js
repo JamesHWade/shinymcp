@@ -6,7 +6,6 @@
   var hosts = {};
   var pendingToolCalls = {};
   var domObserver = null;
-  var disconnectDisposeTimers = {};
   var DISCONNECT_DISPOSE_DELAY_MS = 1000;
 
   function jsonParse(text) {
@@ -433,6 +432,7 @@
         }
       },
       dispose: function () {
+        var activeHost = hosts[config.instanceId] === host;
         if (disposed) return;
         disposed = true;
         window.removeEventListener("message", onMessage);
@@ -441,9 +441,14 @@
         } else {
           unbindFullscreenListeners();
         }
-        cancelDisconnectedHostDispose(config.instanceId);
-        delete hosts[config.instanceId];
-        if (typeof options.onDispose === "function") {
+        cancelDisconnectedHostDispose(host);
+        if (container._shinymcpHost === host) {
+          delete container._shinymcpHost;
+        }
+        if (activeHost) {
+          delete hosts[config.instanceId];
+        }
+        if (activeHost && typeof options.onDispose === "function") {
           options.onDispose(host);
         }
       },
@@ -464,7 +469,11 @@
 
     window.addEventListener("message", onMessage);
     updateFullscreenButton();
+    var previousHost = hosts[config.instanceId];
     hosts[config.instanceId] = host;
+    if (previousHost && previousHost !== host) {
+      previousHost.dispose();
+    }
     return host;
   }
 
@@ -494,13 +503,12 @@
     if (!container) return;
 
     if (container._shinymcpHost) {
-      cancelDisconnectedHostDispose(container._shinymcpHost.config.instanceId);
+      cancelDisconnectedHostDispose(container._shinymcpHost);
       return;
     }
 
     var config = readContainerConfig(container);
     if (!config || !config.instanceId || !config.appHtml) return;
-    cancelDisconnectedHostDispose(config.instanceId);
 
     var iframe = container.querySelector("[data-shinymcp-host-frame]");
     if (!iframe) return;
@@ -553,20 +561,18 @@
     setStatus(container, "connecting", "connecting...");
   }
 
-  function cancelDisconnectedHostDispose(instanceId) {
-    var timer = disconnectDisposeTimers[instanceId];
+  function cancelDisconnectedHostDispose(host) {
+    var timer = host && host._shinymcpDisconnectDisposeTimer;
     if (!timer) return;
     clearTimeout(timer);
-    delete disconnectDisposeTimers[instanceId];
+    host._shinymcpDisconnectDisposeTimer = null;
   }
 
   function scheduleDisconnectedHostDispose(host) {
-    var instanceId = host && host.config && host.config.instanceId;
-    if (!instanceId || disconnectDisposeTimers[instanceId]) return;
+    if (!host || host._shinymcpDisconnectDisposeTimer) return;
 
-    disconnectDisposeTimers[instanceId] = setTimeout(function () {
-      delete disconnectDisposeTimers[instanceId];
-      if (hosts[instanceId] !== host) return;
+    host._shinymcpDisconnectDisposeTimer = setTimeout(function () {
+      host._shinymcpDisconnectDisposeTimer = null;
       if (!host.container || host.container.isConnected) return;
       host.dispose();
     }, DISCONNECT_DISPOSE_DELAY_MS);
@@ -596,7 +602,7 @@
       var host = hosts[ids[i]];
       if (!host || !host.container) continue;
       if (host.container.isConnected) {
-        cancelDisconnectedHostDispose(ids[i]);
+        cancelDisconnectedHostDispose(host);
       } else {
         scheduleDisconnectedHostDispose(host);
       }
