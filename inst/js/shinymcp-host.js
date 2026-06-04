@@ -6,6 +6,7 @@
   var hosts = {};
   var pendingToolCalls = {};
   var domObserver = null;
+  var DISCONNECT_DISPOSE_DELAY_MS = 1000;
 
   function jsonParse(text) {
     try {
@@ -431,6 +432,7 @@
         }
       },
       dispose: function () {
+        var activeHost = hosts[config.instanceId] === host;
         if (disposed) return;
         disposed = true;
         window.removeEventListener("message", onMessage);
@@ -439,8 +441,14 @@
         } else {
           unbindFullscreenListeners();
         }
-        delete hosts[config.instanceId];
-        if (typeof options.onDispose === "function") {
+        cancelDisconnectedHostDispose(host);
+        if (container._shinymcpHost === host) {
+          delete container._shinymcpHost;
+        }
+        if (activeHost) {
+          delete hosts[config.instanceId];
+        }
+        if (activeHost && typeof options.onDispose === "function") {
           options.onDispose(host);
         }
       },
@@ -461,7 +469,11 @@
 
     window.addEventListener("message", onMessage);
     updateFullscreenButton();
+    var previousHost = hosts[config.instanceId];
     hosts[config.instanceId] = host;
+    if (previousHost && previousHost !== host) {
+      previousHost.dispose();
+    }
     return host;
   }
 
@@ -488,7 +500,12 @@
   }
 
   function initContainer(container) {
-    if (!container || container._shinymcpHost) return;
+    if (!container) return;
+
+    if (container._shinymcpHost) {
+      cancelDisconnectedHostDispose(container._shinymcpHost);
+      return;
+    }
 
     var config = readContainerConfig(container);
     if (!config || !config.instanceId || !config.appHtml) return;
@@ -544,8 +561,35 @@
     setStatus(container, "connecting", "connecting...");
   }
 
+  function cancelDisconnectedHostDispose(host) {
+    var timer = host && host._shinymcpDisconnectDisposeTimer;
+    if (!timer) return;
+    clearTimeout(timer);
+    host._shinymcpDisconnectDisposeTimer = null;
+  }
+
+  function scheduleDisconnectedHostDispose(host) {
+    if (!host || host._shinymcpDisconnectDisposeTimer) return;
+
+    host._shinymcpDisconnectDisposeTimer = setTimeout(function () {
+      host._shinymcpDisconnectDisposeTimer = null;
+      if (!host.container || host.container.isConnected) return;
+      host.dispose();
+    }, DISCONNECT_DISPOSE_DELAY_MS);
+  }
+
   function scanForHosts(root) {
     var scope = root && root.querySelectorAll ? root : document;
+    // querySelectorAll only matches descendants, so check the root itself too.
+    // Some hosts (e.g. shinychat's raw-HTML component) inject our container as a
+    // top-level added node via innerHTML, in which case it IS the scanned node.
+    if (
+      scope.nodeType === 1 &&
+      scope.matches &&
+      scope.matches("[data-shinymcp-host]")
+    ) {
+      initContainer(scope);
+    }
     var nodes = scope.querySelectorAll("[data-shinymcp-host]");
     for (var i = 0; i < nodes.length; i++) {
       initContainer(nodes[i]);
@@ -556,8 +600,12 @@
     var ids = Object.keys(hosts);
     for (var i = 0; i < ids.length; i++) {
       var host = hosts[ids[i]];
-      if (!host || !host.container || host.container.isConnected) continue;
-      host.dispose();
+      if (!host || !host.container) continue;
+      if (host.container.isConnected) {
+        cancelDisconnectedHostDispose(host);
+      } else {
+        scheduleDisconnectedHostDispose(host);
+      }
     }
   }
 
