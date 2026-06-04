@@ -2,6 +2,7 @@ library(shiny)
 library(bslib)
 library(htmltools)
 library(ellmer)
+library(shinychat)
 library(shinymcp)
 
 make_trial_data <- function() {
@@ -55,37 +56,200 @@ trial_css <- function() {
     "
     .rp-shell {
       min-height: 100vh;
-      background: #f6f8fb;
+      background:
+        linear-gradient(180deg, #edf3f9 0, #f7f9fb 270px, #f6f8fb 100%);
+      color: #172033;
+    }
+    .bslib-page-navbar {
+      background:
+        linear-gradient(180deg, #edf3f9 0, #f7f9fb 270px, #f6f8fb 100%);
+      color: #172033;
+    }
+    .bslib-page-navbar > .container-fluid {
+      padding-right: 0;
+      padding-left: 0;
+    }
+    .bslib-page-navbar > .navbar {
+      margin-bottom: 0;
+      border-top: 6px solid #39729e;
+      border-bottom: 1px solid rgba(57, 114, 158, 0.22);
+      background: rgba(255, 255, 255, 0.94);
+    }
+    .bslib-page-navbar .navbar-brand {
+      color: #39729e;
+      font-weight: 820;
+    }
+    .bslib-page-navbar .navbar-nav > li > a,
+    .bslib-page-navbar .nav-link {
+      color: #344054;
+      font-weight: 700;
+    }
+    .bslib-page-navbar .navbar-nav > li.active > a,
+    .bslib-page-navbar .nav-link.active {
+      color: #39729e;
+    }
+    .rp-navbar-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .rp-navbar-mark {
+      display: inline-grid;
+      place-items: center;
+      width: 1.55rem;
+      height: 1.55rem;
+      border-radius: 50%;
+      background: #39729e;
+      color: #ffffff;
+      font-size: 0.78rem;
+      font-weight: 820;
+      box-shadow: inset -0.28rem 0 0 #ff7518;
     }
     .rp-band {
+      position: relative;
+      overflow: hidden;
       display: grid;
-      gap: 0.35rem;
-      padding: 1rem 1.2rem;
-      border-bottom: 1px solid #dbe4ee;
-      background: #ffffff;
+      gap: 1rem;
+      padding: 1rem 1.2rem 1.15rem;
+      border-bottom: 1px solid rgba(57, 114, 158, 0.22);
+      background:
+        linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(237, 243, 249, 0.92)),
+        repeating-linear-gradient(
+          90deg,
+          rgba(57, 114, 158, 0.08) 0,
+          rgba(57, 114, 158, 0.08) 1px,
+          transparent 1px,
+          transparent 46px
+        );
+    }
+    .rp-band::after {
+      content: '';
+      position: absolute;
+      right: 1.25rem;
+      top: 0.85rem;
+      width: 180px;
+      height: 74px;
+      border: 1px solid rgba(57, 114, 158, 0.18);
+      border-radius: 999px;
+      background:
+        linear-gradient(90deg, rgba(255, 117, 24, 0.18) 0 50%, rgba(57, 114, 158, 0.16) 50% 100%);
+      transform: rotate(-10deg);
+      pointer-events: none;
+    }
+    .rp-brand-row {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+    }
+    .rp-brand-lockup {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.55rem;
+      min-width: 0;
+    }
+    .rp-brand-mark {
+      display: inline-grid;
+      place-items: center;
+      width: 2.35rem;
+      height: 2.35rem;
+      border-radius: 50%;
+      background: #39729e;
+      color: #ffffff;
+      font-weight: 820;
+      box-shadow: inset -0.42rem 0 0 #ff7518;
+    }
+    .rp-wordmark {
+      color: #39729e;
+      font-size: 1.08rem;
+      font-weight: 820;
+      letter-spacing: 0;
+      white-space: nowrap;
+    }
+    .rp-wordmark-slash {
+      color: #ff7518;
+      padding: 0 0.05rem;
+    }
+    .rp-event-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.9rem;
+      padding: 0.25rem 0.65rem;
+      border: 1px solid rgba(255, 117, 24, 0.35);
+      border-radius: 999px;
+      background: #fff7ed;
+      color: #78430d;
+      font-size: 0.72rem;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .rp-hero-content {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(250px, 0.33fr);
+      gap: 1.2rem;
+      align-items: end;
     }
     .rp-eyebrow {
-      color: #616f7d;
+      color: #39729e;
       font-size: 0.74rem;
-      font-weight: 700;
+      font-weight: 760;
       text-transform: uppercase;
       letter-spacing: 0;
     }
     .rp-title {
       margin: 0;
       color: #172033;
-      font-size: 1.45rem;
+      font-size: 1.65rem;
       line-height: 1.15;
-      font-weight: 760;
+      font-weight: 820;
     }
     .rp-subtitle {
       max-width: 920px;
-      margin: 0;
+      margin: 0.35rem 0 0;
       color: #455468;
       font-size: 0.92rem;
     }
+    .rp-hero-card {
+      min-width: 0;
+      padding: 0.8rem 0.9rem;
+      border: 1px solid rgba(57, 114, 158, 0.2);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+      box-shadow: 0 10px 30px rgba(23, 32, 51, 0.06);
+    }
+    .rp-hero-card-label {
+      color: #667085;
+      font-size: 0.68rem;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+    .rp-hero-card-value {
+      margin-top: 0.2rem;
+      color: #39729e;
+      font-size: 1rem;
+      font-weight: 820;
+      line-height: 1.18;
+    }
+    .rp-hero-card-note {
+      margin-top: 0.25rem;
+      color: #455468;
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
     .rp-layout {
       padding: 1rem;
+    }
+    .rp-assistant-page {
+      padding: 1rem;
+    }
+    .rp-assistant-page .rp-chat-section {
+      max-width: 1040px;
+      margin: 0 auto 0.9rem;
     }
     .rp-metrics {
       display: grid;
@@ -109,7 +273,7 @@ trial_css <- function() {
     }
     .rp-metric-value {
       margin-top: 0.35rem;
-      color: #182230;
+      color: #39729e;
       font-size: 1.55rem;
       line-height: 1;
       font-weight: 780;
@@ -140,7 +304,7 @@ trial_css <- function() {
     }
     .rp-note {
       padding: 0.75rem;
-      border-left: 5px solid #d96c3b;
+      border-left: 5px solid #ff7518;
       background: #fff7ed;
       color: #3b2a1f;
       font-size: 0.84rem;
@@ -194,7 +358,7 @@ trial_css <- function() {
       border-left: 5px solid #087443;
     }
     .rp-compare[data-kind='shiny'] {
-      border-left: 5px solid #7a5af8;
+      border-left: 5px solid #ff7518;
     }
     .rp-compare h2 {
       margin: 0 0 0.55rem;
@@ -209,6 +373,209 @@ trial_css <- function() {
       padding-left: 1rem;
       color: #455468;
       font-size: 0.84rem;
+    }
+    .rp-benefit-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0.65rem;
+      margin: 0.85rem 0;
+    }
+    .rp-benefit-card {
+      min-width: 0;
+      padding: 0.85rem;
+      border: 1px solid #dbe4ee;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.95);
+    }
+    .rp-benefit-card[data-live='true'] {
+      border-color: #a6d8b6;
+      background: #f6fef9;
+    }
+    .rp-benefit-step {
+      color: #667085;
+      font-size: 0.68rem;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }
+    .rp-benefit-title {
+      margin-top: 0.22rem;
+      color: #172033;
+      font-size: 0.92rem;
+      font-weight: 760;
+      line-height: 1.2;
+    }
+    .rp-benefit-body {
+      margin-top: 0.35rem;
+      color: #455468;
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+    .rp-benefit-value {
+      display: block;
+      margin-top: 0.4rem;
+      padding: 0.35rem 0.45rem;
+      border-radius: 6px;
+      background: #f1f5f9;
+      color: #243b53;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        'Liberation Mono', monospace;
+      font-size: 0.72rem;
+      overflow-wrap: anywhere;
+    }
+    .rp-chat-section {
+      margin: 0.85rem 0;
+    }
+    .rp-chat-card {
+      border: 1px solid rgba(57, 114, 158, 0.24);
+      border-radius: 8px;
+      overflow: hidden;
+      background: #ffffff;
+      box-shadow: 0 10px 28px rgba(23, 32, 51, 0.06);
+    }
+    .rp-chat-card > .card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 0.8rem;
+      border-bottom: 1px solid rgba(57, 114, 158, 0.18);
+      background: #edf3f9;
+    }
+    .rp-chat-heading {
+      color: #172033;
+      font-size: 0.98rem;
+      font-weight: 780;
+      line-height: 1.2;
+    }
+    .rp-chat-subtitle {
+      margin-top: 0.2rem;
+      color: #455468;
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+    .rp-chat-mode {
+      flex: 0 0 auto;
+      padding: 0.2rem 0.55rem;
+      border: 1px solid rgba(8, 116, 67, 0.25);
+      border-radius: 999px;
+      background: #f0fdf4;
+      color: #087443;
+      font-size: 0.68rem;
+      font-weight: 780;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .rp-chat-body {
+      padding: 0;
+    }
+    .rp-chat-body shiny-chat-container {
+      --shiny-chat-max-width: 100%;
+      --shiny-chat-footer-color: #455468;
+      --shiny-chat-footer-font-size: 0.76rem;
+    }
+    .rp-chat-body shiny-chat-footer,
+    .rp-chat-body .shiny-chat-footer {
+      border-top: 1px solid rgba(57, 114, 158, 0.18);
+      padding: 0.65rem 0.75rem;
+      background: #f8fafc;
+    }
+    .rp-chat-footer {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.55rem;
+      color: #455468;
+      font-size: 0.76rem;
+      line-height: 1.35;
+    }
+    .rp-chat-footer-copy {
+      min-width: 220px;
+      flex: 1 1 360px;
+    }
+    .rp-chat-footer-copy strong {
+      color: #172033;
+    }
+    .rp-chat-footer-chips {
+      display: flex;
+      flex: 0 1 auto;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+    .rp-chat-footer-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.45rem;
+      padding: 0.1rem 0.45rem;
+      border: 1px solid rgba(57, 114, 158, 0.2);
+      border-radius: 999px;
+      background: #ffffff;
+      color: #39729e;
+      font-size: 0.68rem;
+      font-weight: 760;
+      white-space: nowrap;
+    }
+    .rp-chat-welcome {
+      display: grid;
+      gap: 0.65rem;
+      color: #344054;
+      font-size: 0.9rem;
+      line-height: 1.38;
+    }
+    .rp-chat-welcome strong {
+      color: #172033;
+    }
+    .rp-chat-suggestion-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 0.55rem;
+    }
+    .rp-chat-suggestion {
+      display: block;
+      min-width: 0;
+      padding: 0.72rem;
+      border: 1px solid #dbe4ee;
+      border-left: 5px solid #39729e;
+      border-radius: 8px;
+      background: #ffffff;
+      color: #172033;
+      cursor: pointer;
+    }
+    .rp-chat-suggestion.suggestion {
+      text-decoration: none;
+      padding-inline: 0.72rem;
+    }
+    .rp-chat-suggestion.suggestion::after {
+      content: 'Run';
+      display: inline-flex;
+      align-items: center;
+      min-height: 1.35rem;
+      margin-top: 0.45rem;
+      padding: 0 0.45rem;
+      border-radius: 999px;
+      background: #edf3f9;
+      color: #39729e;
+      font-size: 0.65rem;
+      font-weight: 780;
+      text-decoration: none;
+    }
+    .rp-chat-suggestion:hover {
+      border-color: rgba(255, 117, 24, 0.45);
+      background: #fffaf5;
+    }
+    .rp-chat-suggestion-title {
+      display: block;
+      color: #39729e;
+      font-size: 0.78rem;
+      font-weight: 780;
+      line-height: 1.2;
+    }
+    .rp-chat-suggestion-body {
+      display: block;
+      margin-top: 0.25rem;
+      color: #455468;
+      font-size: 0.72rem;
+      line-height: 1.3;
     }
     .rp-handoff {
       display: grid;
@@ -227,8 +594,8 @@ trial_css <- function() {
       min-height: 1.6rem;
       padding: 0.15rem 0.45rem;
       border-radius: 999px;
-      background: #eef4ff;
-      color: #243b53;
+      background: #edf3f9;
+      color: #39729e;
       font-size: 0.72rem;
       font-weight: 700;
     }
@@ -253,6 +620,24 @@ trial_css <- function() {
         'Liberation Mono', monospace;
       font-size: 0.72rem;
       overflow-wrap: anywhere;
+    }
+    .rp-callout {
+      display: grid;
+      gap: 0.35rem;
+      padding: 0.65rem;
+      border-left: 5px solid #39729e;
+      border-radius: 6px;
+      background: #eef7fb;
+      color: #243b53;
+      font-size: 0.8rem;
+    }
+    .rp-callout strong {
+      color: #172033;
+    }
+    .rp-key-table td:first-child {
+      width: 42%;
+      color: #667085;
+      font-weight: 760;
     }
     .rp-meeting-note {
       display: grid;
@@ -301,8 +686,8 @@ trial_css <- function() {
       flex: 0 0 auto;
       border-radius: 999px;
       padding: 0.22rem 0.55rem;
-      background: #ecfdf3;
-      color: #067647;
+      background: #edf3f9;
+      color: #39729e;
       font-size: 0.7rem;
       font-weight: 760;
     }
@@ -389,21 +774,33 @@ trial_css <- function() {
     .rp-audit {
       display: grid;
       gap: 0.45rem;
-      border-left: 5px solid #7a5af8;
+      border-left: 5px solid #39729e;
       padding: 0.65rem;
-      background: #f4f3ff;
-      color: #2f2a47;
+      background: #edf3f9;
+      color: #243b53;
       font-size: 0.8rem;
     }
     .rp-audit strong {
-      color: #1d1b2f;
+      color: #172033;
     }
     @media (max-width: 900px) {
+      .rp-band::after {
+        opacity: 0.28;
+        right: -4.5rem;
+      }
+      .rp-hero-content {
+        grid-template-columns: 1fr;
+      }
       .rp-dashboard,
       .rp-output-grid,
       .rp-explain-grid,
-      .rp-host-strip {
+      .rp-host-strip,
+      .rp-benefit-grid,
+      .rp-chat-suggestion-grid {
         grid-template-columns: 1fr;
+      }
+      .rp-chat-footer {
+        align-items: flex-start;
       }
       .rp-output-wide {
         grid-column: auto;
@@ -623,7 +1020,7 @@ safety_signal_app <- function(data = trial_data) {
         risk_plot = mcp_result_plot(
           function() {
             rates <- vapply(counts, function(x) x$rate, numeric(1))
-            colors <- c("#2a6f97", "#d96c3b")
+            colors <- c("#39729e", "#ff7518")
             barplot(
               rates * 100,
               names.arg = arms,
@@ -636,7 +1033,7 @@ safety_signal_app <- function(data = trial_data) {
             abline(
               h = control$rate * 100 * risk_limit,
               lty = 2,
-              col = "#7a5af8"
+              col = "#39729e"
             )
             grid(nx = NA, ny = NULL, col = "#d9e3e6")
           },
@@ -822,7 +1219,7 @@ enrollment_rescue_app <- function(data = trial_data) {
               ylab = "Randomized subjects",
               main = "Randomization path"
             )
-            abline(h = target_subjects, lty = 2, col = "#d96c3b")
+            abline(h = target_subjects, lty = 2, col = "#ff7518")
             grid(col = "#d9e3e6")
           },
           model_value = list(month = months, randomized = cumulative),
@@ -868,6 +1265,256 @@ result_model_value <- function(result) {
   NULL
 }
 
+active_tool_definition <- function(app) {
+  app$tool_definitions()[[1]]
+}
+
+benefit_card <- function(step, title, body, value = NULL, live = FALSE) {
+  tags$div(
+    class = "rp-benefit-card",
+    `data-live` = if (isTRUE(live)) "true" else "false",
+    tags$div(class = "rp-benefit-step", step),
+    tags$div(class = "rp-benefit-title", title),
+    tags$div(class = "rp-benefit-body", body),
+    if (!is.null(value)) {
+      tags$code(class = "rp-benefit-value", value)
+    }
+  )
+}
+
+benefit_panel <- function(app, result) {
+  definition <- active_tool_definition(app)
+  model <- result_model_value(result)
+  received <- if (is.null(model)) {
+    "Waiting for Apply"
+  } else {
+    model$decision %||% model$status %||% "Structured result received"
+  }
+  action <- if (is.null(model)) {
+    "No downstream note yet"
+  } else if (identical(model$widget, "Safety Signal Scout")) {
+    "Study-team safety follow-up is ready"
+  } else {
+    "Enrollment action plan is ready"
+  }
+
+  tags$section(
+    class = "rp-benefit-grid",
+    benefit_card(
+      "1. Approved skill",
+      "The dropdown swaps a complete MCP App",
+      "This is not just a hidden Shiny tab. The selected skill carries its own UI, tool, schema, and output contract.",
+      app$name
+    ),
+    benefit_card(
+      "2. Agent contract",
+      "The inputs are inspectable before execution",
+      "An agent can call this tool by name with explicit arguments instead of guessing from the screen.",
+      paste0(
+        definition$name,
+        "(",
+        length(definition$inputSchema$properties),
+        " args)"
+      )
+    ),
+    benefit_card(
+      "3. Structured handoff",
+      "The parent app receives data, not scraped text",
+      "After Apply, the host gets a typed result it can route, summarize, or audit.",
+      received,
+      live = !is.null(model)
+    ),
+    benefit_card(
+      "4. Portable UI",
+      "The same card can run elsewhere",
+      "The visible widget is linked to a ui:// resource and can also be used in shinychat or an MCP host.",
+      action,
+      live = !is.null(model)
+    )
+  )
+}
+
+model_rows <- function(model) {
+  if (is.null(model)) {
+    return(data.frame(field = character(), value = character()))
+  }
+
+  if (identical(model$widget, "Safety Signal Scout")) {
+    return(data.frame(
+      field = c(
+        "Skill",
+        "Decision",
+        "Cohort",
+        "AE term",
+        "Risk ratio",
+        "Risk delta",
+        "QC flag"
+      ),
+      value = c(
+        model$widget,
+        model$decision,
+        model$cohort,
+        model$ae_term,
+        round(model$risk_ratio, 2),
+        pct(model$risk_delta),
+        if (isTRUE(model$small_cell)) "small event cell" else "cell counts OK"
+      ),
+      check.names = FALSE
+    ))
+  }
+
+  data.frame(
+    field = c(
+      "Skill",
+      "Status",
+      "Randomized now",
+      "Remaining",
+      "Months to target",
+      "Avoided queries"
+    ),
+    value = c(
+      model$widget,
+      model$status,
+      fmt_int(model$current_randomized),
+      fmt_int(model$remaining),
+      model$months_to_target,
+      fmt_int(model$avoided_queries)
+    ),
+    check.names = FALSE
+  )
+}
+
+chat_suggestion_card <- function(title, body, prompt) {
+  tags$span(
+    class = "rp-chat-suggestion suggestion submit",
+    `data-suggestion` = prompt,
+    tags$span(class = "rp-chat-suggestion-title", title),
+    tags$span(class = "rp-chat-suggestion-body", body)
+  )
+}
+
+chat_welcome_message <- function() {
+  tags$div(
+    class = "rp-chat-welcome",
+    tags$div(
+      tags$strong("Study assistant."),
+      " This shinychat panel uses startup messages, submit-ready suggestion cards, and shinymcp tool-result cards."
+    ),
+    tags$div(
+      "Pick a card or type a request. The response is the same approved MCP App, rendered as a chat-native tool card with the call arguments attached."
+    ),
+    tags$div(
+      class = "rp-chat-suggestion-grid",
+      chat_suggestion_card(
+        "Safety signal screen",
+        "Run the current cohort and AE lens through the Safety Signal Scout.",
+        "Screen the current safety lens with the approved MCP skill."
+      ),
+      chat_suggestion_card(
+        "Enrollment rescue plan",
+        "Open the enrollment simulator as a chat tool card.",
+        "Build an enrollment rescue plan with the MCP simulator."
+      ),
+      chat_suggestion_card(
+        "Study-team packet",
+        "Return both cards for a meeting-ready handoff.",
+        "Prepare both the safety screen and enrollment rescue packet."
+      ),
+      chat_suggestion_card(
+        "Live update check",
+        "Open a chat card that reruns when inputs change.",
+        "Show how live card updates work in shinychat."
+      )
+    )
+  )
+}
+
+chat_footer_message <- function() {
+  tags$div(
+    class = "rp-chat-footer",
+    tags$div(
+      class = "rp-chat-footer-copy",
+      tags$strong("Footer guardrail."),
+      " Suggestions call approved aggregate tools. Chat cards auto-update on debounce; dashboard embeds use Apply for deliberate reruns."
+    ),
+    tags$div(
+      class = "rp-chat-footer-chips",
+      tags$span(class = "rp-chat-footer-chip", "No patient rows"),
+      tags$span(class = "rp-chat-footer-chip", "Tool args visible"),
+      tags$span(class = "rp-chat-footer-chip", "ui:// portable")
+    )
+  )
+}
+
+chat_panel <- function(height = "620px") {
+  tags$section(
+    class = "rp-chat-section",
+    card(
+      class = "rp-chat-card",
+      full_screen = TRUE,
+      card_header(
+        tags$div(
+          tags$div(class = "rp-chat-heading", "shinychat study assistant"),
+          tags$div(
+            class = "rp-chat-subtitle",
+            "A chat-native route to the same shinymcp cards, using welcome content and clickable suggestions."
+          )
+        ),
+        tags$span(class = "rp-chat-mode", "auto-update cards")
+      ),
+      card_body(
+        class = "rp-chat-body",
+        chat_ui(
+          "study_chat",
+          greeting = chat_greeting(chat_welcome_message()),
+          placeholder = "Ask for a safety screen, enrollment plan, or both...",
+          width = "100%",
+          height = height,
+          fill = FALSE,
+          footer = chat_footer_message()
+        )
+      )
+    )
+  )
+}
+
+chat_route <- function(message) {
+  message <- tolower(message %||% "")
+
+  if (grepl("both|packet|meeting|handoff|study-team", message)) {
+    return("both")
+  }
+  if (grepl("live|update|auto|rerun|refresh|debounce", message)) {
+    return("live_update")
+  }
+  if (grepl("enroll|random|rescue|screen failure|query|milestone", message)) {
+    return("enrollment")
+  }
+  "safety"
+}
+
+chat_intro <- function(route) {
+  switch(
+    route,
+    safety = paste(
+      "Running the Safety Signal Scout with the dashboard cohort and AE lens.",
+      "The card below is a shinymcp app rendered through shinychat's tool-result UI."
+    ),
+    enrollment = paste(
+      "Running the Enrollment Rescue Simulator as a chat tool card.",
+      "The result keeps the interactive MCP card and the structured handoff together."
+    ),
+    live_update = paste(
+      "Opening the Safety Signal Scout in shinychat's live-card mode.",
+      "Change an input inside the card and it reruns on debounce; no Apply button is needed in this chat surface."
+    ),
+    both = paste(
+      "Preparing both approved MCP skills for a study-team packet.",
+      "Each result is an independent shinymcp card that can move between Shiny, shinychat, and an MCP host."
+    )
+  )
+}
+
 handoff_view <- function(result) {
   if (is.null(result)) {
     return(tags$div(
@@ -886,8 +1533,16 @@ handoff_view <- function(result) {
     ))
   }
 
+  rows <- model_rows(model)
   tags$div(
     class = "rp-handoff",
+    tags$div(
+      class = "rp-callout",
+      tags$strong("What shinymcp adds here"),
+      tags$div(
+        "The iframe rendered the card for the user, but the parent Shiny app also received this structured model value from the MCP tool result."
+      )
+    ),
     tags$div(
       class = "rp-pill-row",
       tags$span(class = "rp-pill", model$widget %||% "MCP widget"),
@@ -896,9 +1551,14 @@ handoff_view <- function(result) {
         model$decision %||% model$status %||% "ready"
       )
     ),
-    tags$pre(
-      style = "white-space: pre-wrap; margin: 0;",
-      paste(capture.output(str(model, give.attr = FALSE)), collapse = "\n")
+    tags$table(
+      class = "rp-key-table",
+      tags$tbody(lapply(seq_len(nrow(rows)), function(i) {
+        tags$tr(
+          tags$td(rows$field[[i]]),
+          tags$td(rows$value[[i]])
+        )
+      }))
     )
   )
 }
@@ -926,7 +1586,7 @@ host_strip <- function(app) {
 }
 
 contract_view <- function(app) {
-  definition <- app$tool_definitions()[[1]]
+  definition <- active_tool_definition(app)
   properties <- definition$inputSchema$properties %||% list()
   fields <- data.frame(
     argument = names(properties),
@@ -1056,19 +1716,66 @@ comparison_panel <- function() {
   )
 }
 
-ui <- page_fillable(
-  theme = bs_theme(version = 5, bootswatch = "flatly"),
-  class = "rp-shell",
-  trial_css(),
+demo_theme <- function() {
+  bs_theme(
+    version = 5,
+    bootswatch = "flatly",
+    primary = "#39729e",
+    secondary = "#ff7518",
+    success = "#087443"
+  )
+}
+
+navbar_title <- function() {
+  tags$span(
+    class = "rp-navbar-brand",
+    tags$span(class = "rp-navbar-mark", "R"),
+    HTML("R<span class=\"rp-wordmark-slash\">/</span>Pharma shinymcp")
+  )
+}
+
+masthead <- function() {
   tags$section(
     class = "rp-band",
-    tags$div(class = "rp-eyebrow", "R/Pharma genAI Day demo"),
-    tags$h1(class = "rp-title", "Oncology Signal Room"),
-    tags$p(
-      class = "rp-subtitle",
-      "A normal Shiny clinical dashboard with a safe MCP widget bay. The widgets are deterministic R tools wrapped as portable MCP Apps, so they can run in Shiny, chat, or an MCP host."
+    tags$div(
+      class = "rp-brand-row",
+      tags$div(
+        class = "rp-brand-lockup",
+        tags$span(class = "rp-brand-mark", "R"),
+        tags$div(
+          class = "rp-wordmark",
+          HTML("R<span class=\"rp-wordmark-slash\">/</span>Pharma")
+        )
+      ),
+      tags$div(class = "rp-event-pill", "genAI Day | June 16")
+    ),
+    tags$div(
+      class = "rp-hero-content",
+      tags$div(
+        tags$div(class = "rp-eyebrow", "Hands-on clinical AI demo"),
+        tags$h1(class = "rp-title", "Oncology Signal Room"),
+        tags$p(
+          class = "rp-subtitle",
+          "A normal Shiny clinical dashboard with a safe MCP widget bay. The widgets are deterministic R tools wrapped as portable MCP Apps, so they can run in Shiny, chat, or an MCP host."
+        )
+      ),
+      tags$aside(
+        class = "rp-hero-card",
+        tags$div(class = "rp-hero-card-label", "Community theme"),
+        tags$div(
+          class = "rp-hero-card-value",
+          "Open source R for drug development"
+        ),
+        tags$div(
+          class = "rp-hero-card-note",
+          "Collegial, vendor-free workflow built for the R/Pharma audience."
+        )
+      )
     )
-  ),
+  )
+}
+
+dashboard_page <- function() {
   layout_sidebar(
     class = "rp-layout",
     sidebar = sidebar(
@@ -1097,6 +1804,7 @@ ui <- page_fillable(
         "Synthetic data only. The demo intentionally returns aggregate evidence and audit metadata rather than patient-level rows."
       )
     ),
+    uiOutput("benefit_panel"),
     comparison_panel(),
     tags$section(
       class = "rp-metrics",
@@ -1154,11 +1862,59 @@ ui <- page_fillable(
       )
     )
   )
+}
+
+assistant_page <- function() {
+  tags$div(
+    class = "rp-assistant-page",
+    chat_panel(height = "640px")
+  )
+}
+
+ui <- page_navbar(
+  title = navbar_title(),
+  theme = demo_theme(),
+  fillable = TRUE,
+  fillable_mobile = TRUE,
+  window_title = "R/Pharma shinymcp demo",
+  header = tagList(
+    trial_css(),
+    masthead()
+  ),
+  nav_panel("Dashboard", dashboard_page(), value = "dashboard"),
+  nav_panel(
+    "shinychat assistant",
+    assistant_page(),
+    value = "shinychat"
+  )
 )
 
 server <- function(input, output, session) {
   safety_card <- safety_signal_app()
   enrollment_card <- enrollment_rescue_app()
+
+  safety_chat_tool <- as_shinychat_tool(
+    safety_card,
+    title = function(arguments, ...) {
+      paste("Safety Signal Scout -", arguments$ae_term %||% "current AE")
+    },
+    open = TRUE,
+    show_request = TRUE,
+    full_screen = TRUE
+  )
+  enrollment_chat_tool <- as_shinychat_tool(
+    enrollment_card,
+    title = function(arguments, ...) {
+      paste(
+        "Enrollment Rescue Simulator -",
+        fmt_int(arguments$target_subjects %||% 520),
+        "target"
+      )
+    },
+    open = TRUE,
+    show_request = TRUE,
+    full_screen = TRUE
+  )
 
   safety_host <- mcp_host_server(
     "safety",
@@ -1250,7 +2006,7 @@ server <- function(input, output, session) {
     barplot(
       mat,
       beside = TRUE,
-      col = c("#2a6f97", "#d96c3b"),
+      col = c("#39729e", "#ff7518"),
       border = NA,
       ylim = c(0, max(10, max(mat) * 1.25)),
       ylab = "Rate (%)",
@@ -1259,7 +2015,7 @@ server <- function(input, output, session) {
     legend(
       "topright",
       legend = rownames(mat),
-      fill = c("#2a6f97", "#d96c3b"),
+      fill = c("#39729e", "#ff7518"),
       bty = "n"
     )
     grid(nx = NA, ny = NULL, col = "#d9e3e6")
@@ -1314,6 +2070,39 @@ server <- function(input, output, session) {
 
   output$handoff <- renderUI({
     handoff_view(active_result())
+  })
+
+  output$benefit_panel <- renderUI({
+    benefit_panel(active_app(), active_result())
+  })
+
+  observeEvent(input$study_chat_user_input, {
+    route <- chat_route(input$study_chat_user_input)
+    chat_append("study_chat", chat_intro(route))
+
+    if (route %in% c("safety", "both", "live_update")) {
+      chat_append(
+        "study_chat",
+        safety_chat_tool(
+          cohort = input$cohort %||% "All cohorts",
+          ae_term = input$ae %||% "Neutropenia",
+          grade_threshold = 3,
+          risk_limit = 1.8
+        )
+      )
+    }
+
+    if (route %in% c("enrollment", "both")) {
+      chat_append(
+        "study_chat",
+        enrollment_chat_tool(
+          target_subjects = 520,
+          monthly_randomized = 54,
+          screen_failure_rate = 16,
+          query_reduction = 30
+        )
+      )
+    }
   })
 
   output$host_strip <- renderUI({
