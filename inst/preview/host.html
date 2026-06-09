@@ -181,12 +181,19 @@ iframe {
     appSrc: "/app.html",
     initialize: function () {
       return {
-        protocolVersion: "2025-06-18",
+        protocolVersion: "2026-01-26",
         hostInfo: {
           name: "shinymcp-preview",
           version: "0.1.0"
         },
-        hostCapabilities: {}
+        hostCapabilities: {},
+        hostContext: {
+          theme: window.matchMedia &&
+            window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light",
+          displayMode: "inline"
+        }
       };
     },
     setStatus: function (state, text) {

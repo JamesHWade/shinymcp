@@ -26,12 +26,38 @@ McpApp <- R6::R6Class(
     #' @param theme Optional bslib theme (a [bslib::bs_theme()] object). If
     #'   provided, the UI will be wrapped in a themed page. Not needed if `ui`
     #'   is already a [bslib::page()].
+    #' @param csp Optional named list of Content Security Policy domain
+    #'   declarations for the app's `ui://` resource, per the MCP Apps spec.
+    #'   Hosts block undeclared external domains. Fields: `connect_domains`
+    #'   (fetch/XHR/WebSocket origins), `resource_domains` (scripts, styles,
+    #'   images, fonts), `frame_domains` (nested iframes), `base_uri_domains`.
+    #'   Apps with fully inlined assets (the shinymcp default) don't need this.
+    #' @param permissions Optional named list of sandbox permissions the app
+    #'   needs (e.g. `list(camera = list())`). Most apps don't need this.
+    #' @param prefers_border Optional logical; hint that the host should draw
+    #'   a border around the embedded app.
+    #' @param tool_visibility Optional named list mapping tool names to
+    #'   visibility scopes per the MCP Apps spec. Each entry is a character
+    #'   vector drawn from `c("model", "app")`. Use `"app"` for tools only the
+    #'   UI should call (hidden from the model), `"model"` for tools the UI
+    #'   should not call. Default (unset) is both.
+    #' @param trigger When the UI calls tools as inputs change: `"debounce"`
+    #'   (default, batches rapid changes) or `"change"` (immediate). The
+    #'   `"submit"` and `"manual"` modes only apply inside shinymcp's own
+    #'   Shiny host, which provides Apply/Run buttons.
+    #' @param debounce_ms Debounce interval in milliseconds (default 250).
     initialize = function(
       ui,
       tools = list(),
       name = "shinymcp-app",
       version = "0.1.0",
-      theme = NULL
+      theme = NULL,
+      csp = NULL,
+      permissions = NULL,
+      prefers_border = NULL,
+      tool_visibility = NULL,
+      trigger = NULL,
+      debounce_ms = NULL
     ) {
       if (!inherits(ui, c("shiny.tag", "shiny.tag.list"))) {
         rlang::abort(
@@ -54,10 +80,42 @@ McpApp <- R6::R6Class(
         ui <- bslib::page(theme = theme, ui)
       }
 
+      if (!is.null(trigger)) {
+        trigger <- rlang::arg_match0(
+          trigger,
+          c("debounce", "change", "submit", "manual")
+        )
+      }
+      if (!is.null(tool_visibility)) {
+        if (!is.list(tool_visibility) || is.null(names(tool_visibility))) {
+          rlang::abort(
+            "`tool_visibility` must be a named list (tool name -> scopes).",
+            class = "shinymcp_error_validation"
+          )
+        }
+        for (nm in names(tool_visibility)) {
+          scopes <- tool_visibility[[nm]]
+          if (!is.character(scopes) || !all(scopes %in% c("model", "app"))) {
+            rlang::abort(
+              cli::format_inline(
+                "Visibility for tool {.val {nm}} must be a character vector drawn from {.val {c('model', 'app')}}."
+              ),
+              class = "shinymcp_error_validation"
+            )
+          }
+        }
+      }
+
       self$name <- name
       self$version <- version
       private$.ui <- ui
       private$.tools <- tools
+      private$.csp_meta <- csp_to_meta(csp)
+      private$.permissions <- permissions
+      private$.prefers_border <- prefers_border
+      private$.tool_visibility <- tool_visibility
+      private$.trigger <- trigger
+      private$.debounce_ms <- debounce_ms
 
       invisible(self)
     },
@@ -70,12 +128,14 @@ McpApp <- R6::R6Class(
       tool_names <- private$get_tool_names()
       tool_args <- private$get_tool_arg_names()
 
-      config <- list(
+      config <- compact_list(list(
         appName = self$name,
         version = self$version,
         tools = I(tool_names),
-        toolArgs = tool_args
-      )
+        toolArgs = tool_args,
+        trigger = private$.trigger,
+        debounceMs = private$.debounce_ms
+      ))
       if (!is.null(bridge_config)) {
         config <- utils::modifyList(config, bridge_config, keep.null = TRUE)
       }
@@ -153,16 +213,11 @@ McpApp <- R6::R6Class(
     #' Returns a list of tool definition objects suitable for JSON-RPC.
     #' Each tool includes `_meta.ui.resourceUri` linking it to the app's
     #' UI resource, which tells MCP Apps-capable hosts to render the UI.
-    tool_definitions = function() {
+    #' @param include_ui_meta Whether to attach `_meta.ui` to each tool.
+    #'   Set to `FALSE` for clients that did not advertise the MCP Apps
+    #'   extension capability, so tools degrade gracefully to text-only.
+    tool_definitions = function(include_ui_meta = TRUE) {
       uri <- self$resource_uri()
-      # Include both new and legacy _meta formats for compatibility
-      # ext-apps SDK normalizes both: _meta.ui.resourceUri and _meta["ui/resourceUri"]
-      meta <- list(
-        `_meta` = list(
-          ui = list(resourceUri = uri),
-          `ui/resourceUri` = uri
-        )
-      )
 
       lapply(private$.tools, function(tool) {
         def <- if (is_ellmer_tool(tool)) {
@@ -172,12 +227,13 @@ McpApp <- R6::R6Class(
             inputSchema = type_object_to_schema(tool@arguments)
           )
         } else if (is.list(tool)) {
-          list(
+          compact_list(list(
             name = tool$name %||% "unnamed",
             description = tool$description %||% "",
             inputSchema = tool$inputSchema %||%
-              list(type = "object", properties = list())
-          )
+              list(type = "object", properties = list()),
+            outputSchema = tool$outputSchema
+          ))
         } else {
           list(
             name = "unnamed",
@@ -185,8 +241,43 @@ McpApp <- R6::R6Class(
             inputSchema = list(type = "object", properties = list())
           )
         }
-        c(def, meta)
+
+        if (!include_ui_meta) {
+          return(def)
+        }
+
+        ui_meta <- list(resourceUri = uri)
+        visibility <- private$.tool_visibility[[def$name]] %||%
+          (if (!is_ellmer_tool(tool) && is.list(tool)) tool$visibility)
+        if (!is.null(visibility)) {
+          ui_meta$visibility <- I(visibility)
+        }
+
+        # Include both new and legacy _meta formats for compatibility.
+        # The flat "ui/resourceUri" key is deprecated in the 2026-01-26 spec
+        # but some hosts still normalize it.
+        def[["_meta"]] <- list(
+          ui = ui_meta,
+          `ui/resourceUri` = uri
+        )
+        def
       })
+    },
+
+    #' @description Get the `_meta` for this app's ui:// resource
+    #' Returns the `_meta` list (CSP domains, permissions, prefersBorder)
+    #' to attach to the resource in `resources/list` and `resources/read`
+    #' responses, or `NULL` when nothing was declared.
+    resource_meta = function() {
+      ui_meta <- compact_list(list(
+        csp = private$.csp_meta,
+        permissions = private$.permissions,
+        prefersBorder = private$.prefers_border
+      ))
+      if (length(ui_meta) == 0) {
+        return(NULL)
+      }
+      list(ui = ui_meta)
     },
 
     #' @description Call a tool by name
@@ -239,6 +330,12 @@ McpApp <- R6::R6Class(
   private = list(
     .ui = NULL,
     .tools = list(),
+    .csp_meta = NULL,
+    .permissions = NULL,
+    .prefers_border = NULL,
+    .tool_visibility = NULL,
+    .trigger = NULL,
+    .debounce_ms = NULL,
 
     # Inline HTML dependencies as <style> and <script> tags.
     inline_dependencies = function(deps) {
@@ -363,6 +460,10 @@ McpApp <- R6::R6Class(
         ".shinymcp-input-group button { padding: 8px 16px; border: none; border-radius: 4px; background: #0066cc; color: white; font-size: 14px; cursor: pointer; }",
         ".shinymcp-input-group button:hover { background: #0052a3; }",
         ".shinymcp-output { border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; min-height: 40px; background: #fafafa; }",
+        # Dark mode: the bridge sets data-bs-theme from the host's theme
+        ":root[data-bs-theme='dark'] body { color: #e6e6e6; background: #212529; }",
+        ":root[data-bs-theme='dark'] .shinymcp-input-group select, :root[data-bs-theme='dark'] .shinymcp-input-group input[type='text'], :root[data-bs-theme='dark'] .shinymcp-input-group input[type='number'] { background: #2b3035; color: #e6e6e6; border-color: #495057; }",
+        ":root[data-bs-theme='dark'] .shinymcp-output { background: #2b3035; border-color: #495057; }",
         sep = "\n"
       )
     }
@@ -383,6 +484,30 @@ McpApp <- R6::R6Class(
 #' @param theme Optional [bslib::bs_theme()] object. Supports
 #'   `brand` for [brand.yml](https://posit-dev.github.io/brand-yml/) theming.
 #'   Not needed if `ui` is already a [bslib::page()].
+#' @param csp Optional named list of Content Security Policy domain
+#'   declarations for the app's `ui://` resource, per the MCP Apps spec.
+#'   MCP hosts apply a restrictive default policy that blocks all external
+#'   network access and assets, so any domain your app loads from at runtime
+#'   must be declared here. Fields (snake_case or spec camelCase):
+#'   * `connect_domains`: origins for fetch/XHR/WebSocket requests
+#'   * `resource_domains`: origins for scripts, styles, images, fonts
+#'   * `frame_domains`: origins for nested iframes
+#'   * `base_uri_domains`: allowed `base-uri` values
+#'
+#'   Apps with fully inlined assets (the shinymcp default) don't need this.
+#' @param permissions Optional named list of iframe permissions the app
+#'   needs, e.g. `list(camera = list())`. Most apps don't need this.
+#' @param prefers_border Optional logical hint that the host should draw a
+#'   border around the embedded app.
+#' @param tool_visibility Optional named list mapping tool names to MCP Apps
+#'   visibility scopes (character vectors drawn from `c("model", "app")`).
+#'   Use `"app"` for tools only the rendered UI should call (hidden from the
+#'   model's tool list), `"model"` for tools the UI must not call. Unset
+#'   tools are visible to both.
+#' @param trigger When the UI calls tools as inputs change: `"debounce"`
+#'   (default) or `"change"`. `"submit"`/`"manual"` only apply inside
+#'   shinymcp's own Shiny host.
+#' @param debounce_ms Debounce interval in milliseconds (default 250).
 #' @param ... Additional arguments passed to `McpApp$new()`
 #' @return An [McpApp] object
 #' @export
@@ -392,6 +517,12 @@ mcp_app <- function(
   name = "shinymcp-app",
   version = "0.1.0",
   theme = NULL,
+  csp = NULL,
+  permissions = NULL,
+  prefers_border = NULL,
+  tool_visibility = NULL,
+  trigger = NULL,
+  debounce_ms = NULL,
   ...
 ) {
   McpApp$new(
@@ -400,6 +531,12 @@ mcp_app <- function(
     name = name,
     version = version,
     theme = theme,
+    csp = csp,
+    permissions = permissions,
+    prefers_border = prefers_border,
+    tool_visibility = tool_visibility,
+    trigger = trigger,
+    debounce_ms = debounce_ms,
     ...
   )
 }

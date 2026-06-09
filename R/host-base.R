@@ -87,7 +87,7 @@ mcp_host_bridge_config <- function(state) {
 #' @noRd
 mcp_host_initialize <- function(state) {
   compact_list(list(
-    protocolVersion = SHINYMCP_PROTOCOL_VERSION,
+    protocolVersion = SHINYMCP_APPS_PROTOCOL_VERSION,
     hostInfo = list(
       name = "shinymcp-host",
       version = as.character(utils::packageVersion("shinymcp"))

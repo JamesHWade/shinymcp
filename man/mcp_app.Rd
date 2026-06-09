@@ -10,6 +10,12 @@ mcp_app(
   name = "shinymcp-app",
   version = "0.1.0",
   theme = NULL,
+  csp = NULL,
+  permissions = NULL,
+  prefers_border = NULL,
+  tool_visibility = NULL,
+  trigger = NULL,
+  debounce_ms = NULL,
   ...
 )
 }
@@ -27,6 +33,38 @@ mcp_app(
 \item{theme}{Optional \code{\link[bslib:bs_theme]{bslib::bs_theme()}} object. Supports
 \code{brand} for \href{https://posit-dev.github.io/brand-yml/}{brand.yml} theming.
 Not needed if \code{ui} is already a \code{\link[bslib:page]{bslib::page()}}.}
+
+\item{csp}{Optional named list of Content Security Policy domain
+declarations for the app's \verb{ui://} resource, per the MCP Apps spec.
+MCP hosts apply a restrictive default policy that blocks all external
+network access and assets, so any domain your app loads from at runtime
+must be declared here. Fields (snake_case or spec camelCase):
+\itemize{
+\item \code{connect_domains}: origins for fetch/XHR/WebSocket requests
+\item \code{resource_domains}: origins for scripts, styles, images, fonts
+\item \code{frame_domains}: origins for nested iframes
+\item \code{base_uri_domains}: allowed \code{base-uri} values
+}
+
+Apps with fully inlined assets (the shinymcp default) don't need this.}
+
+\item{permissions}{Optional named list of iframe permissions the app
+needs, e.g. \code{list(camera = list())}. Most apps don't need this.}
+
+\item{prefers_border}{Optional logical hint that the host should draw a
+border around the embedded app.}
+
+\item{tool_visibility}{Optional named list mapping tool names to MCP Apps
+visibility scopes (character vectors drawn from \code{c("model", "app")}).
+Use \code{"app"} for tools only the rendered UI should call (hidden from the
+model's tool list), \code{"model"} for tools the UI must not call. Unset
+tools are visible to both.}
+
+\item{trigger}{When the UI calls tools as inputs change: \code{"debounce"}
+(default) or \code{"change"}. \code{"submit"}/\code{"manual"} only apply inside
+shinymcp's own Shiny host.}
+
+\item{debounce_ms}{Debounce interval in milliseconds (default 250).}
 
 \item{...}{Additional arguments passed to \code{McpApp$new()}}
 }

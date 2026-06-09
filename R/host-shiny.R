@@ -288,6 +288,12 @@ mcp_host_ui <- function(id) {
 
 #' Host shell server for an embedded MCP app
 #'
+#' @details
+#' The embedded app is rendered via `srcdoc` in an iframe with
+#' `sandbox="allow-scripts allow-same-origin"`, i.e. on the same origin as
+#' the hosting Shiny app. This is appropriate for embedding apps you wrote
+#' and trust; it is not a hardened boundary for running third-party HTML.
+#'
 #' @param id Shiny module id.
 #' @param app An [McpApp] object.
 #' @param trigger Interaction mode: `"change"`, `"debounce"`, `"submit"`, or

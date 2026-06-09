@@ -30,8 +30,9 @@ serve <- function(app, type = c("stdio", "http"), port = 8080, ...) {
     uri = app$resource_uri(),
     name = app$name,
     description = paste("MCP App:", app$name),
-    mime_type = "text/html;profile=mcp-app",
-    content_fn = function() app$html_resource()
+    mime_type = SHINYMCP_UI_MIME_TYPE,
+    content_fn = function() app$html_resource(),
+    meta = app$resource_meta()
   )
 
   switch(
@@ -55,6 +56,7 @@ serve <- function(app, type = c("stdio", "http"), port = 8080, ...) {
 serve_stdio <- function(app, registry) {
   cli::cli_inform("shinymcp: serving over stdio")
 
+  session <- new_mcp_session()
   con <- file("stdin", "r")
   on.exit(close(con))
 
@@ -78,7 +80,7 @@ serve_stdio <- function(app, registry) {
       response <- jsonrpc_error(NULL, -32700, "Parse error: invalid JSON")
     } else {
       response <- tryCatch(
-        dispatch_message(message, app, registry),
+        dispatch_message(message, app, registry, session),
         error = function(e) {
           cli::cli_alert_danger("Internal error: {e$message}")
           jsonrpc_error(message$id, -32603, paste("Internal error:", e$message))
@@ -113,6 +115,8 @@ serve_http <- function(app, registry, port) {
 
   cli::cli_inform("shinymcp: serving over HTTP on port {port}")
 
+  session <- new_mcp_session()
+
   httpuv::runServer(
     host = "127.0.0.1",
     port = port,
@@ -134,7 +138,7 @@ serve_http <- function(app, registry, port) {
           response <- jsonrpc_error(NULL, -32700, "Parse error: invalid JSON")
         } else {
           response <- tryCatch(
-            dispatch_message(message, app, registry),
+            dispatch_message(message, app, registry, session),
             error = function(e) {
               cli::cli_alert_danger("Internal error: {e$message}")
               jsonrpc_error(
@@ -164,6 +168,21 @@ serve_http <- function(app, registry, port) {
 
 # ---- Message dispatch ----
 
+#' Create per-connection MCP session state
+#'
+#' Tracks what the client declared during `initialize`, most importantly
+#' whether it advertised the MCP Apps UI extension capability.
+#'
+#' @return A mutable environment.
+#' @noRd
+new_mcp_session <- function() {
+  session <- new.env(parent = emptyenv())
+  # Lenient default: clients that skip initialize still get UI metadata.
+  session$client_supports_ui <- TRUE
+  session$protocol_version <- SHINYMCP_PROTOCOL_VERSION
+  session
+}
+
 #' Dispatch a JSON-RPC message to the appropriate handler
 #'
 #' Tries resource handler first, then tool dispatch, then built-in methods.
@@ -171,9 +190,15 @@ serve_http <- function(app, registry, port) {
 #' @param message Parsed JSON-RPC message
 #' @param app McpApp object
 #' @param registry ResourceRegistry object
+#' @param session Per-connection session state from [new_mcp_session()]
 #' @return A JSON-RPC response list, or NULL for notifications
 #' @noRd
-dispatch_message <- function(message, app, registry) {
+dispatch_message <- function(
+  message,
+  app,
+  registry,
+  session = new_mcp_session()
+) {
   method <- message$method
 
   # Handle notifications (no id field means no response expected)
@@ -187,7 +212,11 @@ dispatch_message <- function(message, app, registry) {
 
   # Built-in protocol methods
   if (identical(method, "initialize")) {
-    return(handle_initialize(message, app, registry))
+    return(handle_initialize(message, app, registry, session))
+  }
+
+  if (identical(method, "ping")) {
+    return(jsonrpc_response(message$id, setNames(list(), character(0))))
   }
 
   if (identical(method, "shutdown")) {
@@ -202,7 +231,7 @@ dispatch_message <- function(message, app, registry) {
 
   # Tool dispatch
   if (identical(method, "tools/list")) {
-    return(handle_tools_list(message, app))
+    return(handle_tools_list(message, app, session))
   }
 
   if (identical(method, "tools/call")) {
@@ -216,19 +245,28 @@ dispatch_message <- function(message, app, registry) {
 # ---- Built-in method handlers ----
 
 #' Handle initialize request
+#'
+#' Negotiates the protocol version and records whether the client advertised
+#' the MCP Apps UI extension (`io.modelcontextprotocol/ui`). When the client
+#' did not, tools are still served but without UI metadata so they degrade
+#' gracefully to text-only operation.
+#'
 #' @param message Parsed JSON-RPC message
 #' @param app McpApp object
 #' @param registry ResourceRegistry object
+#' @param session Per-connection session state
 #' @noRd
-handle_initialize <- function(message, app, registry) {
+handle_initialize <- function(
+  message,
+  app,
+  registry,
+  session = new_mcp_session()
+) {
   empty_obj <- setNames(list(), character(0))
 
-  # Negotiate protocol version: respond with the client's version or our
-
-  # maximum supported version, whichever is lower
-  client_version <- message$params$protocolVersion %||% "2024-11-05"
-  server_version <- SHINYMCP_PROTOCOL_VERSION
-  negotiated <- min(client_version, server_version)
+  negotiated <- negotiate_protocol_version(message$params$protocolVersion)
+  session$protocol_version <- negotiated
+  session$client_supports_ui <- client_supports_mcp_apps(message$params)
 
   jsonrpc_response(
     message$id,
@@ -250,11 +288,19 @@ handle_initialize <- function(message, app, registry) {
 # ---- Tool handlers ----
 
 #' Handle tools/list request
+#'
+#' UI metadata (`_meta.ui`) is included only when the client advertised the
+#' MCP Apps extension capability during initialize (or never initialized,
+#' in which case we default to including it).
+#'
 #' @param message Parsed JSON-RPC message
 #' @param app McpApp object
+#' @param session Per-connection session state
 #' @noRd
-handle_tools_list <- function(message, app) {
-  tools <- app$tool_definitions()
+handle_tools_list <- function(message, app, session = new_mcp_session()) {
+  tools <- app$tool_definitions(
+    include_ui_meta = isTRUE(session$client_supports_ui)
+  )
   jsonrpc_response(message$id, list(tools = tools))
 }
 

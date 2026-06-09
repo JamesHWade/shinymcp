@@ -1,0 +1,260 @@
+---
+title: "The MCP Apps Protocol in shinymcp"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{The MCP Apps Protocol in shinymcp}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+shinymcp implements the [MCP Apps
+specification](https://github.com/modelcontextprotocol/ext-apps)
+(version **2026-01-26**), the optional Model Context Protocol extension
+that lets MCP servers ship interactive HTML UIs that render inside AI
+chat clients. This article explains how the protocol works, exactly
+which parts shinymcp implements, and where shinymcp deliberately
+deviates. Read this when you want to debug a misbehaving app, integrate
+with a new host, or contribute to shinymcp itself.
+
+## The three parties
+
+Every MCP App involves three processes:
+
+1. **Server** — your R process, started by `serve(app)`. It answers
+   MCP JSON-RPC requests over stdio or HTTP: `tools/list`,
+   `tools/call`, `resources/list`, `resources/read`.
+2. **Host** — the chat client (Claude Desktop, ChatGPT, VS Code, or
+   shinymcp's own Shiny host and `preview_app()`). It talks MCP to the
+   server and renders your app's HTML inside a sandboxed iframe.
+3. **View** — your app's HTML page running inside that iframe. The
+   shinymcp JS bridge (inlined into the page) talks to the host with
+   postMessage/JSON-RPC. It never talks to the server directly; the
+   host proxies everything.
+
+## Lifecycle walkthrough
+
+A typical session looks like this:
+
+```
+Host  -> Server   initialize (advertises extensions["io.modelcontextprotocol/ui"])
+Host  <- Server   capabilities + negotiated protocolVersion
+Host  -> Server   tools/list
+Host  <- Server   tools with _meta.ui.resourceUri = "ui://your-app"
+Model            calls a tool; host sees _meta.ui.resourceUri
+Host  -> Server   resources/read "ui://your-app"
+Host  <- Server   HTML (text/html;profile=mcp-app) + _meta.ui (CSP, border)
+Host             renders HTML in a sandboxed iframe
+
+View  -> Host     ui/initialize (appInfo, appCapabilities)
+View  <- Host     hostInfo + hostContext (theme, locale, displayMode, styles)
+View  -> Host     ui/notifications/initialized
+Host  -> View     ui/notifications/tool-input (the model's arguments)
+Host  -> View     ui/notifications/tool-result (when the call completes)
+
+User changes an input in the iframe:
+View  -> Host     ui/update-model-context (current input values)
+View  -> Host     tools/call (debounced)
+Host  -> Server   tools/call (proxied)
+View  <- Host     result -> bridge updates output elements
+
+Host  -> View     ui/resource-teardown (before removing the iframe)
+View  <- Host     response, then cleanup
+```
+
+Two messages in that flow do the heavy lifting for the AI experience:
+
+- **`ui/update-model-context`** pushes the UI's current state into the
+  model's context. This is why the model "knows" what the user selected
+  in the rendered app and can act on it in the next turn.
+- **`ui/notifications/tool-input`** flows the other way: when the model
+  calls a tool, the host pushes those arguments into the UI so the
+  rendered controls match what the model asked for.
+
+## Compliance summary
+
+### Server (MCP over stdio/HTTP)
+
+| Spec feature | Status |
+|---|---|
+| `initialize` version negotiation (2024-11-05 … 2025-11-25) | ✅ |
+| Extension capability check (`io.modelcontextprotocol/ui`) | ✅ graceful degradation (see below) |
+| `tools/list`, `tools/call` | ✅ |
+| `resources/list`, `resources/read` | ✅ |
+| `ping` | ✅ |
+| Tool `_meta.ui.resourceUri` | ✅ (plus deprecated flat `ui/resourceUri` alias) |
+| Tool `_meta.ui.visibility` (`"model"` / `"app"` scoping) | ✅ via `mcp_app(tool_visibility = )` |
+| Resource `_meta.ui.csp` / `permissions` / `prefersBorder` | ✅ via `mcp_app(csp = , permissions = , prefers_border = )` |
+| `tools` `outputSchema` | ✅ pass-through for plain-list tools |
+| List pagination (`cursor`) | ❌ not needed for single-app servers |
+| `resources/subscribe`, `listChanged` notifications | ❌ |
+
+### View (JS bridge, MCP Apps 2026-01-26)
+
+| Spec feature | Status |
+|---|---|
+| `ui/initialize` handshake + `ui/notifications/initialized` | ✅ |
+| `ui/notifications/tool-input` / `tool-result` / `tool-cancelled` / `tool-input-partial` | ✅ (partial input accepted, not yet rendered progressively) |
+| `ui/update-model-context` (request semantics) | ✅ |
+| `ui/notifications/size-changed` via ResizeObserver | ✅ |
+| `ui/resource-teardown` (responds before cleanup) | ✅ |
+| `ping` | ✅ |
+| JSON-RPC error responses surfaced to callers | ✅ |
+| Host context: `theme` → `data-bs-theme`, `locale`, `styles.variables` | ✅ applied automatically |
+| `ui/open-link`, `ui/message`, `ui/request-display-mode`, `notifications/message` | ✅ exposed via `window.shinymcp` (below) |
+| `resources/read` from the view | ❌ not yet |
+
+### Graceful degradation
+
+MCP Apps is an *optional, negotiated* extension. Clients advertise
+support in `initialize` under
+`capabilities.extensions["io.modelcontextprotocol/ui"]`. When a client
+does **not** advertise it, shinymcp still serves all tools — it just
+omits the `_meta.ui` annotations. Your tools keep working as ordinary
+text tools in any MCP client; the interactive UI lights up only where
+the host supports it. You don't need to do anything to get this
+behavior.
+
+## Theming: matching the host's light/dark mode
+
+The host tells the view its theme in `hostContext` (and again via
+`ui/notifications/host-context-changed` when it changes). The shinymcp
+bridge applies it automatically by setting `data-bs-theme="dark"` (or
+`"light"`) on the document element:
+
+- **bslib apps** (Bootstrap 5.3+) restyle automatically.
+- **Plain shinymcp components** get a built-in dark variant.
+- **Custom CSS** can opt in with selectors like
+  `:root[data-bs-theme="dark"] .my-widget { ... }`.
+
+Host-provided `styles.variables` (CSS custom properties) are also
+applied to `:root`, so hosts that publish design tokens flow through.
+
+## CSP: why external assets fail, and how to declare them
+
+This is the most common production footgun. **Hosts apply a restrictive
+Content Security Policy to the iframe** — by default roughly
+`default-src 'none'; script-src 'self' 'unsafe-inline'; connect-src 'none'`.
+That means:
+
+- No `fetch()`/XHR/WebSocket to any external service.
+- No scripts, stylesheets, fonts, or images loaded from CDNs.
+- Failures are *silent* — assets just don't load.
+
+shinymcp's default posture avoids all of this: `html_resource()`
+**inlines every dependency** (bslib CSS/JS, your styles) into the HTML,
+and plots travel as base64 data URIs. If your app stays inside that
+model, you never think about CSP.
+
+When you genuinely need external access — say an htmlwidget loading
+from a CDN, or client-side calls to an API — declare the domains so
+spec-compliant hosts can allow them:
+
+```{r}
+app <- mcp_app(
+  ui,
+  tools,
+  name = "my-app",
+  csp = list(
+    connect_domains = c("https://api.example.com"),
+    resource_domains = c("https://cdn.jsdelivr.net")
+  )
+)
+```
+
+These are published as `_meta.ui.csp` on the `ui://` resource. Hosts
+MUST NOT allow domains you didn't declare, so be complete. There are
+also `frame_domains` (nested iframes) and `base_uri_domains`.
+
+Related declarations:
+
+- `permissions = list(camera = list())` for iframe permissions.
+- `prefers_border = TRUE` to hint the host should draw a frame.
+
+## Tool visibility: app-only and model-only tools
+
+By default every tool is visible to both the model and the rendered
+UI. The spec's `_meta.ui.visibility` lets you scope that, and it maps
+naturally onto shinymcp's design where fine-grained recompute tools can
+clutter the model's tool list:
+
+```{r}
+app <- mcp_app(
+  ui,
+  tools,
+  name = "dashboard",
+  tool_visibility = list(
+    redraw_plot = "app",     # UI plumbing; hidden from the model
+    export_report = "model"  # model-driven; UI must not call it
+  )
+)
+```
+
+## The `window.shinymcp` API
+
+Inside your app's HTML you can script richer host interactions. The
+bridge exposes a small global:
+
+```js
+// Call a server tool and handle the result yourself
+window.shinymcp.callTool("get_data", { region: "EMEA" }).then(...)
+
+// Push state into the model's context for future turns
+window.shinymcp.updateModelContext({ selected_rows: [1, 5, 8] });
+
+// Ask the host to open a link, send a chat message, or go fullscreen
+window.shinymcp.openLink("https://example.com/docs");
+window.shinymcp.sendMessage("Please summarize the selected rows.");
+window.shinymcp.requestDisplayMode("fullscreen");
+
+// Logging and host info
+window.shinymcp.log("info", { event: "filter-applied" });
+window.shinymcp.getHostContext(); // { theme, locale, displayMode, ... }
+```
+
+All of these are spec methods (`tools/call`, `ui/update-model-context`,
+`ui/open-link`, `ui/message`, `ui/request-display-mode`,
+`notifications/message`); hosts that don't implement one simply return
+an error, which arrives as a rejected Promise.
+
+## Known deviations from the spec
+
+shinymcp aims for strict compliance, with these documented exceptions:
+
+1. **Private host extensions.** shinymcp's bundled Shiny host sends two
+   non-spec notifications to drive its Apply/Reset toolbar:
+   `ui/notifications/trigger-tool-call` and `ui/notifications/reset`.
+   The bridge also accepts `x-shinymcp/trigger-tool-call` and
+   `x-shinymcp/reset` spellings; a future release will migrate the
+   host to the `x-shinymcp/` namespace to vacate the spec-reserved
+   `ui/notifications/*` prefix. Standard hosts never send these, so
+   interop is unaffected.
+2. **Legacy `_meta["ui/resourceUri"]`.** Tools carry both the current
+   nested key and the deprecated flat key for compatibility with hosts
+   that haven't updated. The flat key will be dropped once it's removed
+   from the spec.
+3. **Shiny host sandboxing.** `mcp_embed()` / `mcp_host_server()`
+   render the app via `srcdoc` with
+   `sandbox="allow-scripts allow-same-origin"` on the *same origin* as
+   your Shiny app. This is appropriate for embedding **your own**
+   trusted apps; it is not a hardened boundary for third-party HTML.
+   The spec's sandbox-proxy pattern (separate origin) is out of scope
+   for the built-in host.
+4. **`initialArguments` in `hostContext`.** shinymcp's own hosts pass
+   initial tool arguments in `hostContext.initialArguments` *in
+   addition to* the spec's `ui/notifications/tool-input`, which the
+   bridge also handles. Standard hosts only use the latter; both work.
+
+## Debugging
+
+`preview_app(app)` runs a local reference host with a **protocol log
+panel** (bottom-right toggle) showing every JSON-RPC message in both
+directions — usually the fastest way to see what a real host will see.
+For failure modes and fixes, see `vignette("debugging-shinymcp")`.

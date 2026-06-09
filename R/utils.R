@@ -95,10 +95,114 @@ compact_list <- function(x) {
   x[!vapply(x, is.null, logical(1))]
 }
 
-#' MCP protocol version supported by shinymcp
+#' Core MCP protocol versions supported by the server transport, newest first
 #' @noRd
-SHINYMCP_PROTOCOL_VERSION <- "2025-06-18"
+SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS <- c(
+  "2025-11-25",
+  "2025-06-18",
+  "2025-03-26",
+  "2024-11-05"
+)
+
+#' Latest core MCP protocol version supported by shinymcp
+#' @noRd
+SHINYMCP_PROTOCOL_VERSION <- SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS[[1]]
+
+#' MCP Apps extension spec version implemented by the JS bridge and hosts
+#' @noRd
+SHINYMCP_APPS_PROTOCOL_VERSION <- "2026-01-26"
+
+#' Extension identifier clients use to advertise MCP Apps support
+#' @noRd
+SHINYMCP_UI_EXTENSION_ID <- "io.modelcontextprotocol/ui"
+
+#' Required MIME type for ui:// resources per the MCP Apps spec
+#' @noRd
+SHINYMCP_UI_MIME_TYPE <- "text/html;profile=mcp-app"
+
 SHINYMCP_SINGLE_RESULT_KEY <- "__shinymcp_result__"
+
+#' Negotiate the core MCP protocol version with a client
+#'
+#' Per the MCP spec: if the client requests a version the server supports,
+#' echo it back; otherwise respond with the server's latest supported version.
+#'
+#' @param requested The client's requested protocol version (or NULL).
+#' @noRd
+negotiate_protocol_version <- function(requested) {
+  if (
+    is.character(requested) &&
+      length(requested) == 1 &&
+      requested %in% SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS
+  ) {
+    return(requested)
+  }
+  SHINYMCP_PROTOCOL_VERSION
+}
+
+#' Check whether an initialize request advertises MCP Apps support
+#'
+#' Per the MCP Apps spec (2026-01-26), clients advertise support via
+#' `capabilities.extensions["io.modelcontextprotocol/ui"]` with a `mimeTypes`
+#' array. A missing `mimeTypes` field is treated leniently as supporting the
+#' default HTML profile.
+#'
+#' @param params The `params` of an `initialize` request.
+#' @return `TRUE` if the client supports MCP Apps UI rendering.
+#' @noRd
+client_supports_mcp_apps <- function(params) {
+  ui_cap <- params$capabilities$extensions[[SHINYMCP_UI_EXTENSION_ID]]
+  if (is.null(ui_cap)) {
+    return(FALSE)
+  }
+  mime_types <- unlist(ui_cap$mimeTypes, use.names = FALSE)
+  if (is.null(mime_types)) {
+    return(TRUE)
+  }
+  SHINYMCP_UI_MIME_TYPE %in% mime_types
+}
+
+#' Convert user-facing CSP declarations to spec _meta.ui.csp keys
+#'
+#' Accepts snake_case keys (`connect_domains`, `resource_domains`,
+#' `frame_domains`, `base_uri_domains`) or the spec's camelCase keys
+#' directly. Values are coerced to character vectors and always serialized
+#' as JSON arrays.
+#'
+#' @param csp A named list of CSP domain declarations, or NULL.
+#' @noRd
+csp_to_meta <- function(csp) {
+  if (is.null(csp)) {
+    return(NULL)
+  }
+  if (!is.list(csp) || is.null(names(csp)) || any(!nzchar(names(csp)))) {
+    rlang::abort(
+      "`csp` must be a fully named list of domain declarations.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  key_map <- c(
+    connect_domains = "connectDomains",
+    resource_domains = "resourceDomains",
+    frame_domains = "frameDomains",
+    base_uri_domains = "baseUriDomains"
+  )
+  allowed <- unique(c(names(key_map), unname(key_map)))
+  out <- list()
+  for (nm in names(csp)) {
+    if (!nm %in% allowed) {
+      rlang::abort(
+        cli::format_inline(
+          "Unknown {.arg csp} field {.val {nm}}. Allowed: {.val {allowed}}."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+    key <- if (nm %in% names(key_map)) key_map[[nm]] else nm
+    out[[key]] <- I(as.character(csp[[nm]]))
+  }
+  out
+}
 
 #' Format an R tool result into the MCP tool-result shape
 #'

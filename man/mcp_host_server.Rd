@@ -38,3 +38,9 @@ A small control API with \code{instance_id}, \code{execute()}, \code{reset()},
 \description{
 Host shell server for an embedded MCP app
 }
+\details{
+The embedded app is rendered via \code{srcdoc} in an iframe with
+\code{sandbox="allow-scripts allow-same-origin"}, i.e. on the same origin as
+the hosting Shiny app. This is appropriate for embedding apps you wrote
+and trust; it is not a hardened boundary for running third-party HTML.
+}
