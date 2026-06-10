@@ -163,7 +163,7 @@ test_that("tools/list omits _meta.ui for clients without the extension", {
   # The nested _meta.ui block is withheld, but the deprecated flat key is
   # kept so draft-era hosts (which never advertise the extension) still
   # find the UI resource.
-  expect_null(tool[["_meta"]]$ui)
+  expect_null(tool[["_meta"]][["ui"]])
   expect_equal(tool[["_meta"]][["ui/resourceUri"]], "ui://serve-test")
 })
 
@@ -595,8 +595,8 @@ test_that("HTTP sessions isolate capability negotiation per client", {
     )$body
   )
 
-  expect_false(is.null(tools_ui$result$tools[[1]][["_meta"]]$ui))
-  expect_null(tools_plain$result$tools[[1]][["_meta"]]$ui)
+  expect_false(is.null(tools_ui$result$tools[[1]][["_meta"]][["ui"]]))
+  expect_null(tools_plain$result$tools[[1]][["_meta"]][["ui"]])
   # Both keep the deprecated flat key for draft-era hosts
   expect_equal(
     tools_plain$result$tools[[1]][["_meta"]][["ui/resourceUri"]],
@@ -674,7 +674,7 @@ test_that("header-less clients keep their negotiated session via __default__", {
       sessions
     )$body
   )
-  expect_null(tools$result$tools[[1]][["_meta"]]$ui)
+  expect_null(tools$result$tools[[1]][["_meta"]][["ui"]])
 })
 
 test_that("prune_http_sessions caps the session store", {
