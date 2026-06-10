@@ -85,7 +85,7 @@ ResourceRegistry <- R6::R6Class(
         )
       }
 
-      content <- resource$content_fn()
+      content <- coerce_resource_text(resource$content_fn())
 
       compact_list(list(
         uri = resource$uri,

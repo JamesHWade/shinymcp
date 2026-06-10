@@ -144,6 +144,19 @@ McpApp <- R6::R6Class(
       private$.resources <- normalize_extra_resources(resources)
       private$.tool_outputs <- tool_outputs
 
+      # A tool_visibility/tool_outputs entry naming no actual tool is a
+      # silent no-op (no schema, no scoping), so surface likely typos.
+      known <- private$get_tool_names()
+      for (arg in c("tool_visibility", "tool_outputs")) {
+        declared <- names(get(arg) %||% list())
+        unknown <- setdiff(declared, known)
+        if (length(unknown) > 0) {
+          cli::cli_warn(
+            "{.arg {arg}} names {.val {unknown}} match no tool in this app (tools: {.val {known}})."
+          )
+        }
+      }
+
       invisible(self)
     },
 
@@ -225,12 +238,30 @@ McpApp <- R6::R6Class(
     },
 
     #' @description Get tools annotated with MCP metadata
-    #' Returns the tools list with _meta.ui.resourceUri added to each tool.
+    #' Returns the tools list with `_meta.ui` added to each plain-list tool,
+    #' excluding tools whose `visibility` does not include `"model"` (those
+    #' are app-only: callable from the rendered UI, hidden from the model).
+    #' Used by the shinychat/mcptools registration paths.
     mcp_tools = function() {
       uri <- self$resource_uri()
-      lapply(private$.tools, function(tool) {
-        if (is.list(tool)) {
-          tool[["_meta"]] <- list(ui = list(resourceUri = uri))
+      tools <- Filter(
+        function(tool) {
+          visibility <- private$tool_visibility_for(tool)
+          is.null(visibility) || "model" %in% visibility
+        },
+        private$.tools
+      )
+      lapply(tools, function(tool) {
+        if (is.list(tool) && !is_ellmer_tool(tool)) {
+          ui_meta <- list(resourceUri = uri)
+          visibility <- private$tool_visibility_for(tool)
+          if (!is.null(visibility)) {
+            ui_meta$visibility <- I(visibility)
+          }
+          tool[["_meta"]] <- list(
+            ui = ui_meta,
+            `ui/resourceUri` = uri
+          )
         }
         tool
       })
@@ -240,9 +271,12 @@ McpApp <- R6::R6Class(
     #' Returns a list of tool definition objects suitable for JSON-RPC.
     #' Each tool includes `_meta.ui.resourceUri` linking it to the app's
     #' UI resource, which tells MCP Apps-capable hosts to render the UI.
-    #' @param include_ui_meta Whether to attach `_meta.ui` to each tool.
-    #'   Set to `FALSE` for clients that did not advertise the MCP Apps
-    #'   extension capability, so tools degrade gracefully to text-only.
+    #' @param include_ui_meta Whether to attach the nested `_meta.ui` block
+    #'   to each tool. Set to `FALSE` for clients that did not advertise the
+    #'   MCP Apps extension capability. The deprecated flat
+    #'   `_meta["ui/resourceUri"]` key is kept in both cases so hosts that
+    #'   predate capability negotiation (SEP-1865 draft era) keep rendering;
+    #'   text-only clients ignore unknown `_meta` keys per the MCP spec.
     tool_definitions = function(include_ui_meta = TRUE) {
       uri <- self$resource_uri()
 
@@ -284,12 +318,15 @@ McpApp <- R6::R6Class(
         }
 
         if (!include_ui_meta) {
+          # Client did not advertise the MCP Apps extension. Withhold the
+          # nested _meta.ui block, but keep the deprecated flat key so
+          # draft-era hosts (which never advertise) keep finding the UI.
+          def[["_meta"]] <- list(`ui/resourceUri` = uri)
           return(def)
         }
 
         ui_meta <- list(resourceUri = uri)
-        visibility <- private$.tool_visibility[[def$name]] %||%
-          (if (!is_ellmer_tool(tool) && is.list(tool)) tool$visibility)
+        visibility <- private$tool_visibility_for(tool)
         if (!is.null(visibility)) {
           ui_meta$visibility <- I(visibility)
         }
@@ -329,7 +366,7 @@ McpApp <- R6::R6Class(
       compact_list(list(
         uri = spec$uri,
         mimeType = spec$mime_type,
-        text = spec$content_fn(),
+        text = coerce_resource_text(spec$content_fn()),
         `_meta` = spec$meta
       ))
     },
@@ -386,6 +423,17 @@ McpApp <- R6::R6Class(
       paste0("ui://", self$name)
     },
 
+    #' @description Get the app's declared interaction defaults
+    #' Returns a list with `trigger` and `debounce_ms` as declared at
+    #' construction (either may be `NULL` when unset). Hosts use this to
+    #' defer to the app's declaration when the embedder didn't specify.
+    interaction_defaults = function() {
+      list(
+        trigger = private$.trigger,
+        debounce_ms = private$.debounce_ms
+      )
+    },
+
     #' @description Print method
     #' @param ... Ignored.
     print = function(...) {
@@ -409,6 +457,13 @@ McpApp <- R6::R6Class(
     .resources = list(),
     .tool_outputs = NULL,
     .ui_outputs = NULL,
+
+    # Resolve a tool's visibility: app-level tool_visibility wins, then a
+    # plain-list tool's own `visibility` field. NULL means default (both).
+    tool_visibility_for = function(tool) {
+      private$.tool_visibility[[tool_name(tool)]] %||%
+        (if (!is_ellmer_tool(tool) && is.list(tool)) tool$visibility)
+    },
 
     # Scan the rendered UI for output elements and their declared types.
     # Returns a named character vector: output id -> type. Cached.

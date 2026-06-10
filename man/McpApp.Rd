@@ -34,6 +34,7 @@ annotated with resource URIs for MCP consumption.
 \item \href{#method-McpApp-resource_meta}{\code{McpApp$resource_meta()}}
 \item \href{#method-McpApp-call_tool}{\code{McpApp$call_tool()}}
 \item \href{#method-McpApp-resource_uri}{\code{McpApp$resource_uri()}}
+\item \href{#method-McpApp-interaction_defaults}{\code{McpApp$interaction_defaults()}}
 \item \href{#method-McpApp-print}{\code{McpApp$print()}}
 \item \href{#method-McpApp-clone}{\code{McpApp$clone()}}
 }
@@ -144,7 +145,10 @@ bslib or other htmltools-based packages are inlined automatically.
 \if{latex}{\out{\hypertarget{method-McpApp-mcp_tools}{}}}
 \subsection{Method \code{mcp_tools()}}{
 Get tools annotated with MCP metadata
-Returns the tools list with _meta.ui.resourceUri added to each tool.
+Returns the tools list with \verb{_meta.ui} added to each plain-list tool,
+excluding tools whose \code{visibility} does not include \code{"model"} (those
+are app-only: callable from the rendered UI, hidden from the model).
+Used by the shinychat/mcptools registration paths.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{McpApp$mcp_tools()}\if{html}{\out{</div>}}
 }
@@ -244,6 +248,19 @@ Call a tool by name
 Get the ui:// resource URI for this app
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{McpApp$resource_uri()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-interaction_defaults"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-interaction_defaults}{}}}
+\subsection{Method \code{interaction_defaults()}}{
+Get the app's declared interaction defaults
+Returns a list with \code{trigger} and \code{debounce_ms} as declared at
+construction (either may be \code{NULL} when unset). Hosts use this to
+defer to the app's declaration when the embedder didn't specify.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$interaction_defaults()}\if{html}{\out{</div>}}
 }
 
 }

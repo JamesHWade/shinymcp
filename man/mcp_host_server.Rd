@@ -7,8 +7,8 @@
 mcp_host_server(
   id,
   app,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto",
   initial_arguments = NULL,
   debug = FALSE
@@ -20,9 +20,11 @@ mcp_host_server(
 \item{app}{An \link{McpApp} object.}
 
 \item{trigger}{Interaction mode: \code{"change"}, \code{"debounce"}, \code{"submit"}, or
-\code{"manual"}.}
+\code{"manual"}. Defaults to the app's own declaration
+(\code{mcp_app(trigger = )}), falling back to \code{"debounce"}.}
 
-\item{debounce_ms}{Debounce interval in milliseconds.}
+\item{debounce_ms}{Debounce interval in milliseconds. Defaults to the
+app's own declaration, falling back to 250.}
 
 \item{height}{Preferred initial height for the host shell.}
 

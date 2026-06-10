@@ -44,6 +44,8 @@ preview_app <- function(app, port = NULL, launch = TRUE) {
 
   app <- coerce_preview_mcp_app(app)
 
+  warn_host_only_trigger(app, "preview_app()")
+
   host <- "127.0.0.1"
 
   # Pre-render the host HTML with the app name baked in

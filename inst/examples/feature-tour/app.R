@@ -182,11 +182,27 @@ tools <- list(
   # Model-facing analysis tool: plot + text keyed by output ids.
   ellmer::tool(
     fun = function(region = "North", metric = "units") {
+      # The model fills these slots with arbitrary strings; validate before
+      # opening a graphics device.
+      region <- match.arg(region, regions)
+      metric <- match.arg(metric, c("units", "revenue"))
       slice <- sales[sales$region == region, ]
       values <- slice[[metric]]
 
       tmp <- tempfile(fileext = ".png")
       grDevices::png(tmp, width = 800, height = 360)
+      # Error-path guard: close the device and drop the file if plotting
+      # fails. The success path closes the device explicitly below, before
+      # the file is read.
+      on.exit(
+        {
+          if (grDevices::dev.cur() > 1) {
+            grDevices::dev.off()
+          }
+          unlink(tmp)
+        },
+        add = TRUE
+      )
       par(mar = c(4, 4, 1, 1))
       plot(
         seq_along(values),
@@ -201,7 +217,6 @@ tools <- list(
       axis(1, at = seq_along(values), labels = month.abb)
       grid()
       grDevices::dev.off()
-      on.exit(unlink(tmp))
 
       list(
         trend = base64enc::base64encode(tmp),

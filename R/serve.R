@@ -24,6 +24,8 @@ serve <- function(app, type = c("stdio", "http"), port = 8080, ...) {
     )
   }
 
+  warn_host_only_trigger(app, "serve()")
+
   # Set up resource registry
   registry <- ResourceRegistry$new()
   registry$register(
@@ -179,6 +181,21 @@ handle_http_request <- function(req, app, registry, sessions) {
   message <- tryCatch(from_json(body), error = function(e) NULL)
   is_initialize <- !is.null(message) && identical(message$method, "initialize")
 
+  # Unknown session id on a non-initialize request: per the streamable-HTTP
+  # spec the server responds 404 so the client re-initializes. This also
+  # stops arbitrary header values from minting sessions.
+  if (
+    !is.null(client_sid) &&
+      !is_initialize &&
+      is.null(sessions[[client_sid]])
+  ) {
+    return(list(
+      status = 404L,
+      headers = list("Content-Type" = "application/json"),
+      body = to_json(jsonrpc_error(NULL, -32001, "Session not found"))
+    ))
+  }
+
   # Resolve the session: explicit header wins; initialize without a header
   # starts a fresh session and gets its id back in the response headers.
   sid <- client_sid %||%
@@ -187,6 +204,15 @@ handle_http_request <- function(req, app, registry, sessions) {
   if (is.null(session)) {
     session <- new_mcp_session()
     sessions[[sid]] <- session
+    prune_http_sessions(sessions)
+  }
+
+  # Header-less initialize: also alias this session as "__default__" so a
+  # client that never echoes the Mcp-Session-Id header still talks to the
+  # session that holds its negotiated capabilities (single-client case;
+  # concurrent header-less clients are inherently ambiguous).
+  if (is_initialize && is.null(client_sid)) {
+    sessions[["__default__"]] <- session
   }
 
   if (is.null(message)) {
@@ -237,7 +263,53 @@ new_mcp_session <- function() {
   # Lenient default: clients that skip initialize still get UI metadata.
   session$client_supports_ui <- TRUE
   session$protocol_version <- SHINYMCP_PROTOCOL_VERSION
+  session$created <- as.numeric(Sys.time())
   session
+}
+
+#' Maximum live HTTP sessions before the oldest are evicted
+#' @noRd
+SHINYMCP_MAX_HTTP_SESSIONS <- 64L
+
+#' Evict the oldest HTTP sessions beyond the cap
+#'
+#' Keeps the session store bounded on long-running HTTP servers. The
+#' `"__default__"` fallback session is never evicted.
+#'
+#' @param sessions Environment mapping session id -> session state.
+#' @param max_sessions Cap on non-default sessions.
+#' @noRd
+prune_http_sessions <- function(
+  sessions,
+  max_sessions = SHINYMCP_MAX_HTTP_SESSIONS
+) {
+  ids <- setdiff(ls(sessions), "__default__")
+  if (length(ids) <= max_sessions) {
+    return(invisible(NULL))
+  }
+  created <- vapply(ids, function(id) sessions[[id]]$created, numeric(1))
+  drop <- ids[order(created)][seq_len(length(ids) - max_sessions)]
+  rm(list = drop, envir = sessions)
+  invisible(NULL)
+}
+
+#' Warn when an app declares a host-only trigger mode
+#'
+#' `"submit"` and `"manual"` rely on the Apply button shinymcp's bundled
+#' Shiny host renders; in MCP clients and `preview_app()` nothing ever
+#' triggers the tools after the initial call, so outputs silently freeze.
+#'
+#' @param app An McpApp.
+#' @param where Label for the serving context, used in the message.
+#' @noRd
+warn_host_only_trigger <- function(app, where) {
+  trigger <- app$interaction_defaults()$trigger
+  if (isTRUE(trigger %in% c("submit", "manual"))) {
+    cli::cli_warn(c(
+      "This app declares {.code trigger = \"{trigger}\"}, which only works inside shinymcp's Shiny host (it provides the Apply/Run button).",
+      "i" = "In {where} outputs will populate once and then never update on input changes. Use {.val debounce} or {.val change} instead."
+    ))
+  }
 }
 
 #' Dispatch a JSON-RPC message to the appropriate handler

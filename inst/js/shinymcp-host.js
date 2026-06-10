@@ -456,7 +456,18 @@
         return;
       }
 
-      respond(message.id, {});
+      if (message.method === "ping") {
+        respond(message.id, {});
+        return;
+      }
+
+      // Unknown request: error per JSON-RPC so callers (window.shinymcp)
+      // get a rejection instead of a silent fake success.
+      respondError(
+        message.id,
+        -32601,
+        "Method not supported by this host: " + message.method
+      );
     }
 
     function handleNotification(message) {

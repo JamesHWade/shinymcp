@@ -154,7 +154,11 @@ test_that("tools/list omits _meta.ui for clients without the extension", {
   )
   tool <- response$result$tools[[1]]
   expect_equal(tool$name, "echo")
-  expect_null(tool[["_meta"]])
+  # The nested _meta.ui block is withheld, but the deprecated flat key is
+  # kept so draft-era hosts (which never advertise the extension) still
+  # find the UI resource.
+  expect_null(tool[["_meta"]]$ui)
+  expect_equal(tool[["_meta"]][["ui/resourceUri"]], "ui://serve-test")
 })
 
 test_that("tools/list includes _meta.ui by default and for capable clients", {
@@ -578,11 +582,16 @@ test_that("HTTP sessions isolate capability negotiation per client", {
     sessions
   )$body)
 
-  expect_false(is.null(tools_ui$result$tools[[1]][["_meta"]]))
-  expect_null(tools_plain$result$tools[[1]][["_meta"]])
+  expect_false(is.null(tools_ui$result$tools[[1]][["_meta"]]$ui))
+  expect_null(tools_plain$result$tools[[1]][["_meta"]]$ui)
+  # Both keep the deprecated flat key for draft-era hosts
+  expect_equal(
+    tools_plain$result$tools[[1]][["_meta"]][["ui/resourceUri"]],
+    "ui://serve-test"
+  )
 })
 
-test_that("DELETE terminates an HTTP session", {
+test_that("DELETE terminates an HTTP session and stale ids get 404", {
   app <- make_test_app()
   registry <- make_test_registry(app)
   sessions <- new.env(parent = emptyenv())
@@ -604,14 +613,72 @@ test_that("DELETE terminates an HTTP session", {
   expect_equal(deleted$status, 204L)
   expect_null(sessions[[sid]])
 
-  # A fresh session under the old id falls back to lenient defaults
-  tools <- from_json(handle_http_request(
+  # Requests on a terminated/unknown session id are rejected per the
+  # streamable-HTTP spec so the client re-initializes
+  stale <- handle_http_request(
     fake_http_req(tools_list_body(), session_id = sid),
     app,
     registry,
     sessions
+  )
+  expect_equal(stale$status, 404L)
+})
+
+test_that("unknown session ids do not mint sessions", {
+  app <- make_test_app()
+  registry <- make_test_registry(app)
+  sessions <- new.env(parent = emptyenv())
+
+  response <- handle_http_request(
+    fake_http_req(tools_list_body(), session_id = "made-up-id"),
+    app,
+    registry,
+    sessions
+  )
+  expect_equal(response$status, 404L)
+  expect_length(ls(sessions), 0)
+})
+
+test_that("header-less clients keep their negotiated session via __default__", {
+  app <- make_test_app()
+  registry <- make_test_registry(app)
+  sessions <- new.env(parent = emptyenv())
+
+  # Initialize without a header, declaring NO UI support
+  handle_http_request(
+    fake_http_req(init_body(with_ui = FALSE)),
+    app,
+    registry,
+    sessions
+  )
+
+  # Follow-up without echoing the header still reflects that negotiation
+  tools <- from_json(handle_http_request(
+    fake_http_req(tools_list_body()),
+    app,
+    registry,
+    sessions
   )$body)
-  expect_false(is.null(tools$result$tools[[1]][["_meta"]]))
+  expect_null(tools$result$tools[[1]][["_meta"]]$ui)
+})
+
+test_that("prune_http_sessions caps the session store", {
+  sessions <- new.env(parent = emptyenv())
+  for (i in 1:5) {
+    session <- new_mcp_session()
+    session$created <- i
+    sessions[[paste0("sid-", i)]] <- session
+  }
+  sessions[["__default__"]] <- new_mcp_session()
+
+  prune_http_sessions(sessions, max_sessions = 3)
+
+  remaining <- ls(sessions)
+  expect_true("__default__" %in% remaining)
+  expect_setequal(
+    setdiff(remaining, "__default__"),
+    c("sid-3", "sid-4", "sid-5")
+  )
 })
 
 test_that("non-POST methods other than DELETE are rejected", {
@@ -647,4 +714,94 @@ test_that("mcp_host_read_resource serves the app and extra resources", {
     mcp_host_read_resource(state, "ui://other"),
     class = "shinymcp_error_resource"
   )
+})
+
+# ---- Review follow-ups ----
+
+test_that("mcp_tools excludes app-only tools and carries visibility", {
+  app <- McpApp$new(
+    ui = htmltools::tags$div("Test"),
+    tools = list(
+      list(name = "for_model", description = "", fun = function() "ok"),
+      list(name = "ui_only", description = "", fun = function() "ok")
+    ),
+    name = "vis-filter",
+    tool_visibility = list(ui_only = "app", for_model = c("model", "app"))
+  )
+
+  tools <- app$mcp_tools()
+  expect_length(tools, 1)
+  expect_equal(tools[[1]]$name, "for_model")
+  expect_equal(tools[[1]][["_meta"]]$ui$resourceUri, "ui://vis-filter")
+  expect_equal(
+    as.character(tools[[1]][["_meta"]]$ui$visibility),
+    c("model", "app")
+  )
+  expect_equal(tools[[1]][["_meta"]][["ui/resourceUri"]], "ui://vis-filter")
+})
+
+test_that("tool_visibility/tool_outputs names are checked against tools", {
+  expect_warning(
+    make_test_app(tool_visibility = list(echoo = "app")),
+    "match no tool"
+  )
+  expect_warning(
+    make_test_app(tool_outputs = list(wrong_name = "out")),
+    "match no tool"
+  )
+  expect_no_warning(make_test_app(tool_outputs = list(echo = "out")))
+})
+
+test_that("resource text is coerced to a plain string (json class, vectors)", {
+  app <- make_test_app(
+    resources = list(
+      "ui://serve-test/json" = function() {
+        jsonlite::toJSON(list(a = 1), auto_unbox = TRUE)
+      },
+      "ui://serve-test/lines" = function() c("line 1", "line 2")
+    )
+  )
+  registry <- make_test_registry(app)
+
+  json_entry <- app$read_extra_resource("ui://serve-test/json")
+  expect_identical(class(json_entry$text), "character")
+  expect_equal(as.character(json_entry$text), "{\"a\":1}")
+
+  via_registry <- registry$read_resource("ui://serve-test/json")
+  expect_identical(class(via_registry$text), "character")
+
+  lines_entry <- app$read_extra_resource("ui://serve-test/lines")
+  expect_equal(lines_entry$text, "line 1\nline 2")
+})
+
+test_that("resolve_host_interaction defers to the app's declaration", {
+  declared <- make_test_app(trigger = "change", debounce_ms = 50)
+  undeclared <- make_test_app()
+
+  # Host didn't specify: app's declaration wins
+  expect_equal(
+    resolve_host_interaction(declared, NULL, NULL),
+    list(trigger = "change", debounce_ms = 50)
+  )
+  # Host specified: host wins
+  expect_equal(
+    resolve_host_interaction(declared, "submit", 500),
+    list(trigger = "submit", debounce_ms = 500)
+  )
+  # Nothing declared anywhere: package defaults
+  expect_equal(
+    resolve_host_interaction(undeclared, NULL, NULL),
+    list(trigger = "debounce", debounce_ms = 250)
+  )
+})
+
+test_that("warn_host_only_trigger flags submit/manual apps", {
+  expect_warning(
+    warn_host_only_trigger(make_test_app(trigger = "submit"), "serve()"),
+    "only works inside"
+  )
+  expect_no_warning(
+    warn_host_only_trigger(make_test_app(trigger = "change"), "serve()")
+  )
+  expect_no_warning(warn_host_only_trigger(make_test_app(), "serve()"))
 })

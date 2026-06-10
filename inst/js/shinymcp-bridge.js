@@ -290,6 +290,17 @@
     return promise;
   }
 
+  // Debounce model-context updates so rapid input events (one per keystroke
+  // on text inputs) collapse into one trailing request per quiet period.
+  var modelContextTimer = null;
+  function scheduleModelContextUpdate() {
+    if (modelContextTimer) clearTimeout(modelContextTimer);
+    modelContextTimer = setTimeout(function () {
+      modelContextTimer = null;
+      updateModelContext(collectAllInputs());
+    }, currentDebounceMs());
+  }
+
   // ---------------------------------------------------------------------------
   // Host context (theme, locale, styles)
   // ---------------------------------------------------------------------------
@@ -466,8 +477,8 @@
 
     var inputs = collectAllInputs();
 
-    // Update model context with current input values
-    updateModelContext(inputs);
+    // Update model context with current input values (debounced)
+    scheduleModelContextUpdate();
 
     // Accumulate changed input names across debounce intervals so rapid
     // changes to inputs in different tool groups all trigger their tools.
@@ -749,6 +760,21 @@
     }
     inputListeners = [];
 
+    if (callToolTimer) clearTimeout(callToolTimer);
+    if (modelContextTimer) clearTimeout(modelContextTimer);
+    callToolTimer = null;
+    modelContextTimer = null;
+
+    // Settle anything still waiting on the host so callers don't hang.
+    var pendingIds = Object.keys(pendingRequests);
+    for (var j = 0; j < pendingIds.length; j++) {
+      var pending = pendingRequests[pendingIds[j]];
+      if (pending && pending.reject) {
+        pending.reject(new Error("shinymcp bridge was torn down"));
+      }
+    }
+    pendingRequests = {};
+
     if (messageHandler) {
       window.removeEventListener("message", messageHandler);
       messageHandler = null;
@@ -826,10 +852,21 @@
   // ---------------------------------------------------------------------------
   // Public API: host interaction helpers for app authors
   // ---------------------------------------------------------------------------
+
+  // sendRequest returns null when there is no host (standalone page) or
+  // after teardown; the public API must always hand back a Promise so
+  // documented .then/.catch chains never throw on null.
+  function requestOrReject(method, params) {
+    return (
+      sendRequest(method, params) ||
+      Promise.reject(new Error("shinymcp bridge is not connected to a host"))
+    );
+  }
+
   window.shinymcp = {
     // Call a server tool through the host. Returns a Promise of the result.
     callTool: function (name, args) {
-      return sendRequest("tools/call", {
+      return requestOrReject("tools/call", {
         name: name,
         arguments: args || {},
       });
@@ -840,22 +877,22 @@
     // resources/read result: { contents: [{ uri, mimeType, text }] }.
     // Useful for lazy-loading data declared via mcp_app(resources = ).
     readResource: function (uri) {
-      return sendRequest("resources/read", { uri: uri });
+      return requestOrReject("resources/read", { uri: uri });
     },
     // Ask the host to open an external URL.
     openLink: function (url) {
-      return sendRequest("ui/open-link", { url: url });
+      return requestOrReject("ui/open-link", { url: url });
     },
     // Send a message into the host conversation on the user's behalf.
     sendMessage: function (text) {
-      return sendRequest("ui/message", {
+      return requestOrReject("ui/message", {
         role: "user",
         content: { type: "text", text: text },
       });
     },
     // Request a display mode change: "inline", "fullscreen", or "pip".
     requestDisplayMode: function (mode) {
-      return sendRequest("ui/request-display-mode", { mode: mode });
+      return requestOrReject("ui/request-display-mode", { mode: mode });
     },
     // Send a log message to the host.
     log: function (level, data) {

@@ -128,12 +128,17 @@ register_shiny_host_instance <- function(
   session,
   app,
   instance_id = unique_id("shinymcp-instance"),
-  trigger = "debounce",
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto",
   initial_arguments = NULL,
   debug = FALSE
 ) {
+  app <- as_mcp_app(app)
+  interaction <- resolve_host_interaction(app, trigger, debounce_ms)
+  trigger <- interaction$trigger
+  debounce_ms <- interaction$debounce_ms
+
   registry <- ensure_shiny_host_registry(session)
   state <- new_mcp_host_state(
     app = app,
@@ -325,8 +330,10 @@ mcp_host_ui <- function(id) {
 #' @param id Shiny module id.
 #' @param app An [McpApp] object.
 #' @param trigger Interaction mode: `"change"`, `"debounce"`, `"submit"`, or
-#'   `"manual"`.
-#' @param debounce_ms Debounce interval in milliseconds.
+#'   `"manual"`. Defaults to the app's own declaration
+#'   (`mcp_app(trigger = )`), falling back to `"debounce"`.
+#' @param debounce_ms Debounce interval in milliseconds. Defaults to the
+#'   app's own declaration, falling back to 250.
 #' @param height Preferred initial height for the host shell.
 #' @param initial_arguments Optional named list of initial tool arguments.
 #' @param debug Whether to enable debug affordances in the host shell.
@@ -339,14 +346,12 @@ mcp_host_ui <- function(id) {
 mcp_host_server <- function(
   id,
   app,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto",
   initial_arguments = NULL,
   debug = FALSE
 ) {
-  trigger <- match.arg(trigger)
-
   shiny::moduleServer(id, function(input, output, session) {
     app <- as_mcp_app(app)
     registered <- register_shiny_host_instance(
@@ -437,18 +442,19 @@ mcp_host_server <- function(
 #' @param app An [McpApp] object.
 #' @param id Optional DOM or module id.
 #' @param trigger Interaction mode: `"debounce"`, `"change"`, `"submit"`, or
-#'   `"manual"`.
-#' @param debounce_ms Debounce interval in milliseconds.
+#'   `"manual"`. Defaults to the app's own declaration
+#'   (`mcp_app(trigger = )`), falling back to `"debounce"`.
+#' @param debounce_ms Debounce interval in milliseconds. Defaults to the
+#'   app's own declaration, falling back to 250.
 #' @param height Preferred initial height.
 #' @export
 mcp_embed <- function(
   app,
   id = NULL,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto"
 ) {
-  trigger <- match.arg(trigger)
   app <- as_mcp_app(app)
   session <- active_shiny_session()
 

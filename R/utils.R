@@ -275,6 +275,24 @@ normalize_extra_resources <- function(resources) {
   out
 }
 
+#' Coerce resource content to a plain character scalar
+#'
+#' Content functions commonly return `jsonlite::toJSON()` output, which is a
+#' `json`-classed object that downstream serializers (jsonlite, Shiny's
+#' custom messages) inline as raw JSON instead of a string — breaking
+#' `JSON.parse(contents[0].text)` in the app. Strip classes and collapse
+#' multi-line character vectors so `text` is always a single string.
+#'
+#' @param content The value returned by a resource content function.
+#' @noRd
+coerce_resource_text <- function(content) {
+  content <- as.character(content)
+  if (length(content) != 1) {
+    content <- paste(content, collapse = "\n")
+  }
+  content
+}
+
 #' Build an outputSchema from declared output ids and scanned UI types
 #'
 #' All shinymcp structured outputs travel as strings (text, HTML fragments,

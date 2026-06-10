@@ -70,6 +70,37 @@ shinymcp now targets the stable MCP Apps specification (2026-01-26,
   requests reject their Promise (and log to the console) instead of
   leaving the UI silently stuck. (Previously error responses were dropped
   and pending requests never settled.)
+* Clients that don't advertise the MCP Apps extension still receive the
+  deprecated flat `_meta["ui/resourceUri"]` key, so draft-era hosts keep
+  rendering the UI while the nested `_meta.ui` block remains gated on the
+  negotiated capability.
+* HTTP transport hardening: unknown `Mcp-Session-Id` values get a 404
+  instead of minting sessions, header-less clients keep their negotiated
+  capabilities via a `"__default__"` alias, and the session store is
+  capped with oldest-first eviction.
+* `ui/update-model-context` is debounced (one request per quiet period
+  instead of one per keystroke), and the bridge settles all pending
+  requests on teardown.
+* The `window.shinymcp` API always returns a Promise; without a host (or
+  after teardown) calls reject instead of returning `null`.
+* The bundled Shiny host answers unimplemented request methods with a
+  JSON-RPC `-32601` error instead of a fake `{}` success, so
+  `window.shinymcp.sendMessage()` and friends reject honestly where
+  unsupported.
+* `mcp_tools()` (the shinychat/mcptools path) now honors
+  `tool_visibility`: app-only tools are excluded from model registration,
+  and plain-list tools carry the same `_meta.ui` as `tools/list`.
+* `mcp_app(trigger = , debounce_ms = )` now takes effect in embedded
+  hosts: `mcp_host_server()`/`mcp_embed()` default to the app's
+  declaration instead of silently overriding it, and `serve()`/
+  `preview_app()` warn when an app declares the host-only
+  `"submit"`/`"manual"` modes.
+* Resource content is coerced to a plain string, so
+  `content = function() jsonlite::toJSON(...)` works as documented (the
+  `json` class previously leaked into the wire format and broke
+  `JSON.parse` in the app).
+* `tool_visibility`/`tool_outputs` entries naming a nonexistent tool now
+  warn instead of being silently ignored.
 
 ## Documentation
 

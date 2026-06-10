@@ -118,11 +118,12 @@ Two messages in that flow matter most:
 MCP Apps is an *optional, negotiated* extension. Clients advertise
 support in `initialize` under
 `capabilities.extensions["io.modelcontextprotocol/ui"]`. When a client
-does **not** advertise it, shinymcp still serves all tools and omits
-the `_meta.ui` annotations. Your tools keep working as ordinary text
-tools in any MCP client; the interactive UI appears only in hosts that
-support the extension. You don't need to do anything to get this
-behavior.
+does **not** advertise it, shinymcp still serves all tools and withholds
+the nested `_meta.ui` block. The deprecated flat `_meta["ui/resourceUri"]`
+key is kept in both cases, so hosts that predate capability negotiation
+(SEP-1865 draft era) keep finding the UI resource, while text-only clients
+ignore the unknown key per the MCP spec. You don't need to do anything to
+get this behavior.
 
 ## Theming: matching the host's light/dark mode
 
