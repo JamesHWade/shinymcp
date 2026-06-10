@@ -46,6 +46,8 @@ navbar:
           href: articles/use-shinymcp-with-shinychat.html
         - text: Compatibility Matrix
           href: articles/compatibility-matrix.html
+        - text: MCP Apps Protocol
+          href: articles/mcp-apps-protocol.html
         - text: Debugging shinymcp
           href: articles/debugging-shinymcp.html
 

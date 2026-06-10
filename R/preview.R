@@ -44,6 +44,8 @@ preview_app <- function(app, port = NULL, launch = TRUE) {
 
   app <- coerce_preview_mcp_app(app)
 
+  warn_host_only_trigger(app, "preview_app()")
+
   host <- "127.0.0.1"
 
   # Pre-render the host HTML with the app name baked in
@@ -194,6 +196,10 @@ preview_route <- function(req, app, host_html, app_html) {
     return(preview_handle_tool(req, app))
   }
 
+  if (path == "/resource" && identical(req$REQUEST_METHOD, "POST")) {
+    return(preview_handle_resource(req, app, app_html))
+  }
+
   list(
     status = 404L,
     headers = list(`Content-Type` = "text/plain"),
@@ -230,6 +236,55 @@ preview_handle_tool <- function(req, app) {
 
   list(
     status = 200L,
+    headers = list(`Content-Type` = "application/json"),
+    body = to_json(result)
+  )
+}
+
+
+#' Handle a resources/read from the preview host page
+#'
+#' @param req A Rook request object (POST to /resource).
+#' @param app The McpApp.
+#' @param app_html Pre-rendered app HTML for the app's own ui:// resource.
+#' @return A Rook response with a JSON `contents` payload, or an `error`.
+#' @noRd
+preview_handle_resource <- function(req, app, app_html) {
+  body <- rawToChar(req$rook.input$read())
+  params <- tryCatch(from_json(body), error = function(e) NULL)
+  uri <- params$uri
+
+  if (is.null(uri)) {
+    return(list(
+      status = 400L,
+      headers = list(`Content-Type` = "application/json"),
+      body = to_json(list(error = "Missing required parameter: uri"))
+    ))
+  }
+
+  result <- tryCatch(
+    {
+      if (identical(uri, app$resource_uri())) {
+        list(
+          contents = list(compact_list(list(
+            uri = uri,
+            mimeType = SHINYMCP_UI_MIME_TYPE,
+            text = app_html,
+            `_meta` = app$resource_meta()
+          )))
+        )
+      } else {
+        list(contents = list(app$read_extra_resource(uri)))
+      }
+    },
+    error = function(e) {
+      list(error = conditionMessage(e))
+    }
+  )
+
+  status <- if (is.null(result$error)) 200L else 404L
+  list(
+    status = status,
     headers = list(`Content-Type` = "application/json"),
     body = to_json(result)
   )

@@ -1,7 +1,19 @@
 (function () {
   "use strict";
 
-  var PROTOCOL_VERSION = "2025-06-18";
+  var PROTOCOL_VERSION = "2026-01-26";
+
+  function detectTheme() {
+    var explicit = document.documentElement.getAttribute("data-bs-theme");
+    if (explicit === "dark" || explicit === "light") return explicit;
+    if (
+      window.matchMedia &&
+      window.matchMedia("(prefers-color-scheme: dark)").matches
+    ) {
+      return "dark";
+    }
+    return "light";
+  }
   var BUS_INPUT_ID = "shinymcp_host_event";
   var hosts = {};
   var pendingToolCalls = {};
@@ -203,6 +215,7 @@
       fullscreenFallback = true;
       container.setAttribute("data-shinymcp-fullscreen", "true");
       updateFullscreenButton();
+      notifyDisplayMode();
     }
 
     function exitFallbackFullscreen() {
@@ -210,6 +223,7 @@
       container.removeAttribute("data-shinymcp-fullscreen");
       updateFullscreenButton();
       unbindFullscreenListeners();
+      notifyDisplayMode();
     }
 
     function enterFullscreen() {
@@ -246,6 +260,7 @@
         unbindFullscreenListeners();
       }
       updateFullscreenButton();
+      notifyDisplayMode();
     }
 
     function onKeydown(event) {
@@ -264,6 +279,14 @@
         jsonrpc: "2.0",
         id: id,
         result: result || {},
+      });
+    }
+
+    function respondError(id, code, message) {
+      postToIframe({
+        jsonrpc: "2.0",
+        id: id,
+        error: { code: code, message: message },
       });
     }
 
@@ -301,8 +324,79 @@
       };
     }
 
+    // Shared by the request path (spec: ui/update-model-context is a
+    // request) and the notification path (legacy bridges).
+    function handleModelContextUpdate(params) {
+      if (config.trigger === "submit" || config.trigger === "manual") {
+        setHostStatus("dirty", "changes pending");
+      }
+      if (typeof options.onNotification === "function") {
+        options.onNotification("ui/update-model-context", params || {}, host);
+      }
+    }
+
+    function notifyDisplayMode() {
+      notify("ui/notifications/host-context-changed", {
+        displayMode: isFullscreen() ? "fullscreen" : "inline",
+      });
+    }
+
     function handleRequest(message) {
       var params = message.params || {};
+
+      if (message.method === "ui/update-model-context") {
+        respond(message.id, {});
+        handleModelContextUpdate(params);
+        return;
+      }
+
+      if (message.method === "ui/open-link") {
+        if (params.url && typeof params.url === "string") {
+          window.open(params.url, "_blank", "noopener");
+        }
+        respond(message.id, {});
+        return;
+      }
+
+      if (message.method === "ui/request-display-mode") {
+        if (params.mode === "fullscreen" && !isFullscreen()) {
+          enterFullscreen();
+        } else if (params.mode === "inline" && isFullscreen()) {
+          exitFullscreen();
+        }
+        respond(message.id, {
+          mode: isFullscreen() ? "fullscreen" : "inline",
+        });
+        return;
+      }
+
+      if (message.method === "resources/read") {
+        if (typeof options.readResource !== "function") {
+          respondError(
+            message.id,
+            -32601,
+            "resources/read is not supported by this host"
+          );
+          return;
+        }
+        Promise.resolve(
+          options.readResource(
+            { requestId: message.id, uri: params.uri },
+            host
+          )
+        )
+          .then(function (result) {
+            respond(message.id, result);
+          })
+          ["catch"](function (err) {
+            respondError(
+              message.id,
+              -32002,
+              err && err.message ? err.message : String(err)
+            );
+          });
+        return;
+      }
 
       if (message.method === "ui/initialize") {
         Promise.resolve(getInitializeResult())
@@ -362,7 +456,18 @@
         return;
       }
 
-      respond(message.id, {});
+      if (message.method === "ping") {
+        respond(message.id, {});
+        return;
+      }
+
+      // Unknown request: error per JSON-RPC so callers (window.shinymcp)
+      // get a rejection instead of a silent fake success.
+      respondError(
+        message.id,
+        -32601,
+        "Method not supported by this host: " + message.method
+      );
     }
 
     function handleNotification(message) {
@@ -436,6 +541,10 @@
         if (disposed) return;
         disposed = true;
         window.removeEventListener("message", onMessage);
+        if (themeObserver) {
+          themeObserver.disconnect();
+          themeObserver = null;
+        }
         if (isFullscreen()) {
           exitFullscreen();
         } else {
@@ -468,6 +577,22 @@
     }
 
     window.addEventListener("message", onMessage);
+
+    // Propagate host page theme changes (e.g. a bslib light switch flipping
+    // data-bs-theme) into the embedded app.
+    var themeObserver = null;
+    if (typeof MutationObserver !== "undefined") {
+      themeObserver = new MutationObserver(function () {
+        notify("ui/notifications/host-context-changed", {
+          theme: detectTheme(),
+        });
+      });
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ["data-bs-theme"],
+      });
+    }
+
     updateFullscreenButton();
     var previousHost = hosts[config.instanceId];
     hosts[config.instanceId] = host;
@@ -499,6 +624,25 @@
     });
   }
 
+  function readResourceViaShiny(request, host) {
+    return new Promise(function (resolve, reject) {
+      if (!hasShiny()) {
+        reject(new Error("Shiny is not available for shinymcp host transport"));
+        return;
+      }
+
+      var key = hostKey(host.config.instanceId, request.requestId);
+      pendingToolCalls[key] = { resolve: resolve, reject: reject };
+
+      sendHostEvent({
+        instanceId: host.config.instanceId,
+        method: "resources/read",
+        requestId: request.requestId,
+        params: { uri: request.uri },
+      });
+    });
+  }
+
   function initContainer(container) {
     if (!container) return;
 
@@ -526,6 +670,8 @@
       hostContext: {
         instanceId: config.instanceId,
         initialArguments: config.initialArguments || null,
+        theme: detectTheme(),
+        displayMode: "inline",
       },
       initialize: function () {
         return {
@@ -538,10 +684,13 @@
           hostContext: {
             instanceId: config.instanceId,
             initialArguments: config.initialArguments || null,
+            theme: detectTheme(),
+            displayMode: "inline",
           },
         };
       },
       callTool: callToolViaShiny,
+      readResource: readResourceViaShiny,
       onNotification: function (method, params) {
         sendHostEvent({
           instanceId: config.instanceId,
@@ -657,6 +806,10 @@
       var pending = pendingToolCalls[key];
       if (!pending) return;
       delete pendingToolCalls[key];
+      if (msg.error) {
+        pending.reject(new Error(msg.error));
+        return;
+      }
       pending.resolve(msg.result || {});
     });
 

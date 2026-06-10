@@ -26,12 +26,25 @@ ResourceRegistry <- R6::R6Class(
     #' @param description Description of the resource
     #' @param mime_type MIME type of the resource content
     #' @param content_fn Function that returns the content string
-    register = function(uri, name, description, mime_type, content_fn) {
+    #' @param meta Optional `_meta` list attached to the resource declaration
+    #'   and its contents (e.g. `list(ui = list(csp = ..., prefersBorder = TRUE))`
+    #'   per the MCP Apps spec)
+    register = function(
+      uri,
+      name,
+      description,
+      mime_type,
+      content_fn,
+      meta = NULL
+    ) {
       if (!is.character(uri) || length(uri) != 1) {
         cli::cli_abort("{.arg uri} must be a single string.")
       }
       if (!is.function(content_fn)) {
         cli::cli_abort("{.arg content_fn} must be a function.")
+      }
+      if (!is.null(meta) && (!is.list(meta) || is.null(names(meta)))) {
+        cli::cli_abort("{.arg meta} must be a named list or NULL.")
       }
 
       private$.resources[[uri]] <- list(
@@ -39,7 +52,8 @@ ResourceRegistry <- R6::R6Class(
         name = name,
         description = description,
         mimeType = mime_type,
-        content_fn = content_fn
+        content_fn = content_fn,
+        meta = meta
       )
 
       invisible(self)
@@ -49,18 +63,19 @@ ResourceRegistry <- R6::R6Class(
     #' @return A list of resource declarations (without content functions)
     list_resources = function() {
       unname(lapply(private$.resources, function(r) {
-        list(
+        compact_list(list(
           uri = r$uri,
           name = r$name,
           description = r$description,
-          mimeType = r$mimeType
-        )
+          mimeType = r$mimeType,
+          `_meta` = r$meta
+        ))
       }))
     },
 
     #' @description Read a resource by URI
     #' @param uri The resource URI to read
-    #' @return A list with uri, mimeType, and text content
+    #' @return A list with uri, mimeType, text content, and optional `_meta`
     read_resource = function(uri) {
       resource <- private$.resources[[uri]]
       if (is.null(resource)) {
@@ -70,13 +85,14 @@ ResourceRegistry <- R6::R6Class(
         )
       }
 
-      content <- resource$content_fn()
+      content <- coerce_resource_text(resource$content_fn())
 
-      list(
+      compact_list(list(
         uri = resource$uri,
         mimeType = resource$mimeType,
-        text = content
-      )
+        text = content,
+        `_meta` = resource$meta
+      ))
     }
   ),
   private = list(

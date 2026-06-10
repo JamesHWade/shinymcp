@@ -6,8 +6,9 @@
 
 - **Audience:** R users in pharma/clinical research — statisticians, statistical programmers, data scientists, Shiny developers, and platform/governance people. They are validation-minded, practical, and skeptical of vendor lock-in.
 - **Length:** 50 minutes including a ~10-minute live demo and meaningful Q&A.
-- **Core message:** shinymcp lets reviewed R/Shiny tools become MCP Apps that Claude and other MCP clients can call. Shiny remains the local review path; deterministic R remains the computation layer.
+- **Core message:** shinymcp lets reviewed R/Shiny tools become MCP Apps that Claude and other MCP clients can call. Shiny remains the local review path; deterministic R remains the computation layer. The MCP Apps spec is now stable (2026-01-26, co-maintained by Anthropic and OpenAI), and the loop runs both ways: the model's tool calls drive the card, and the user's card interactions land back in the model's context as typed data.
 - **The one thing they should remember:** the client changes, but the R function and typed contract do not.
+- **The second thing they should remember:** they can build one this week — the closing slide is a complete 25-line app.
 - **Everything runs on synthetic data.** Say so early and often.
 
 ## Timing table (fills the 50-minute slot — the final close + Q&A block flexes to use the remaining time)
@@ -16,15 +17,15 @@
 |---|---:|---:|---|
 | 1. Claude, meet your R tools | 00:00 | 5 | Reframe from "chatbot in a dashboard" to "R tools exposed through MCP" |
 | 2. Why MCP | 05:00 | 6 | Explain MCP clients, servers, tools, resources, and why pharma should care |
-| 3. What MCP Apps add | 11:00 | 6 | Show the callable tool + interactive UI + typed result model |
-| 4. Why shinymcp | 17:00 | 6 | Make the audience-specific value proposition explicit |
-| 5. Claude and other clients | 23:00 | 6 | Show the R-backed MCP server path and client portability |
-| 6. Code contract + Shiny integration | 29:00 | 7 | Show the R tool, `model_value`, and Shiny as the review path |
-| 7. **LIVE DEMO: Oncology Signal Room** | 36:00 | 10 | Verify client paths, typed handoff, and app-level replacement |
-| 8. Review boundaries + scale + limits | 46:00 | 3 | Name the constraints before Q&A |
-| 9. Close + Q&A | 49:00 | 1+ | Clear next step, then use remaining/session time for questions |
+| 3. What MCP Apps add | 11:00 | 7 | Callable tool + UI + typed result, **and the model-context loop** |
+| 4. Why shinymcp | 18:00 | 5 | Make the audience-specific value proposition explicit |
+| 5. Claude and other clients | 23:00 | 6 | R-backed MCP server path, **negotiated capability / graceful degradation**, portability |
+| 6. Code contract + Shiny integration | 29:00 | 8 | The R tool, `model_value`, **visibility + outputSchema scoping**, Shiny as review path |
+| 7. **LIVE DEMO: Oncology Signal Room** | 37:00 | 9 | Verify client paths, declared result schema, typed handoff, app swap |
+| 8. Review boundaries + scale + limits | 46:00 | 2 | Name the constraints before Q&A |
+| 9. Close: build-one recipe + Q&A | 48:00 | 2+ | Leave them with the complete 25-line app, then questions |
 
-> If you fall behind, cut the conversion-pipeline detail first, then compress the Shiny integration code slide. **Never cut:** MCP in one slide, What Claude sees, Code 3 (`model_value`), and the live round trip.
+> If you fall behind, cut the conversion-pipeline detail first, then compress the before/after and Why-shinymcp card grids. **Never cut:** MCP in one slide, "The loop closes" (model context), What Claude sees, "Negotiated, not bolted on", Code 3 (`model_value`), the live round trip, and the build-one closing recipe.
 
 ---
 
@@ -34,19 +35,19 @@
 
 **2. Why MCP (05:00-11:00).** Explain MCP as the standard connection between MCP-capable clients and external processes. Use pharma language: MCP exposes approved analytical tools through a reviewable protocol. Contrast protocol calls with screen reading. The client calls a named tool with typed arguments; the R server computes and returns structured data.
 
-**3. What MCP Apps add (11:00-17:00).** A plain MCP tool is a callable function. An MCP App adds an interactive UI resource tied to the same tool. Show the app contract: schema, `ui://` resource, structured result. The visible card is for the human; `model_value` is for the client/log.
+**3. What MCP Apps add (11:00-18:00).** A plain MCP tool is a callable function. An MCP App adds an interactive UI resource tied to the same tool. Show the app contract: schema, `ui://` resource, structured result. Then slow down on "The loop closes": the user adjusts the card and the model's next turn starts from those values via `ui/update-model-context`. If the audience takes one protocol detail home, make it this one. The interaction record is loggable data, which matters to the governance people in the room.
 
 **4. Why shinymcp (17:00-23:00).** Speak to each group in the room. Stat programmers keep deterministic R. Shiny teams reuse familiar UI patterns. Data scientists get callable approved tools. Governance gets a smaller contract to review than a prompt plus screenshot behavior. Platform teams get an open-standard integration path.
 
-**5. Claude and other clients (23:00-29:00).** Show `mcp_app()` + `serve(app)` and the Claude Desktop-style config. Say carefully: Claude can connect to an R-backed MCP server and call the tools; interactive rendering depends on client/connector support, but the typed tool contract is the stable part. Then show the multi-client diagram. Land: *"The client changes. The R function and contract do not."*
+**5. Claude and other clients (23:00-29:00).** Show `mcp_app()` + `serve(app)` and the Claude Desktop-style config. Then "Negotiated, not bolted on": the apps extension went stable in January 2026 with Anthropic and OpenAI co-maintaining it, clients opt in during `initialize`, and shinymcp checks — so a client without support still gets the same tools text-only. Frame it as risk asymmetry: the worst case of adopting this is a working MCP integration without the card. Then the multi-client diagram. Land: *"The client changes. The R function and contract do not."*
 
-**6. Code contract + Shiny integration (29:00-36:00).** Move briskly through real code. Code 1: IDs map to arguments/outputs. Code 2: deterministic R tool body and schema. Code 3: `model_value` is the main contract. Then position Shiny as the local review path where teams can inspect the same MCP App inside a familiar dashboard.
+**6. Code contract + Shiny integration (29:00-37:00).** Move briskly through real code. Code 1: IDs map to arguments/outputs. Code 2: deterministic R tool body and schema. Code 3: `model_value` is the main contract. Code 4 is the governance-in-code slide — give it a full minute: `tool_visibility` keeps the row-level detail tool off the model's tool list entirely, `tool_outputs` declares the result shape (the contract covers what comes back, not just what goes in), and deny-by-default CSP means an undeclared card cannot phone home. Code 5: one definition, multiple homes. Then position Shiny as the local review path.
 
 **7. Live demo (36:00-46:00).** Prime three checks: client paths, typed result, tool swap. Keep the right-hand Contract inspector visible. Do not spend time on dashboard features that do not support those checks.
 
 **8. Reviewability + scale + limits (46:00-49:00).** Name the review points quickly: deterministic R, declared schemas, aggregate boundary, typed handoff, human decision. Say the sandbox caveat plainly: it is one layer, not the whole data-control story. On scale, `convert_app()` scaffolds; it does not validate arbitrary clinical logic.
 
-**9. Close + Q&A (49:00+).** Close with: *"Expose one reviewed R/Shiny function through MCP, then embed the same MCP App back in Shiny for review."* Open Q&A immediately.
+**9. Close + Q&A (48:00+).** Put the build-one slide up and walk it: complete 25-line app, input id = argument name, result key = output id, `preview_app()` first (local reference host with a protocol log), then the Claude config. Say: *"If you can write a function and label two ids, you can ship one of these by Friday."* Leave the example ladder + `vignette("mcp-apps-protocol")` pointers on screen during Q&A.
 
 ---
 
@@ -68,7 +69,7 @@ Target **8-9 min** for the click-path, ~1 min for recap.
 
 1. **Defaults.** Cohort = All cohorts, AE lens = Neutropenia, skill = Safety Signal Scout. Point at the dashboard: *"This is the Shiny review view."* Say **synthetic**.
 2. **Integration strip.** Scroll to the MCP widget bay and point at `mcp_host_server`, `as_shinychat_tool`, and the `ui://` URI. *"Same R-backed tool, multiple client paths."*
-3. **Contract inspector.** Point right before touching the card: `screen_safety_signal`, `ui://` URI, and argument schema. *"This is what Claude or another MCP client can call."*
+3. **Contract inspector.** Point right before touching the card: `screen_safety_signal`, `ui://` URI, argument schema, AND the declared-result table (memo / evidence / risk_plot / audit with types). *"This is what Claude can call, and what it gets back — both declared before anything runs."*
 4. **Inside Safety Signal Scout:** Cohort = Lung, AE term = Neutropenia, Min grade = 3, RR watch limit = 1.8 → press **Apply**. Read the memo, evidence table, event-rate plot, and audit block.
 5. **The round trip.** Point right: Last widget handoff + Meeting-note handoff. *"The parent app did not scrape the screen. It received this typed object."*
 6. **Determinism.** Lower RR watch limit to ~1.2 → **Apply** again. Decision changes through deterministic R logic; handoff recomputes with the same schema.
@@ -81,6 +82,7 @@ Check off the new story:
 - MCP made the R function callable from another client.
 - MCP Apps associated that callable function with an interactive UI resource.
 - shinymcp supplied the MCP App wrapper for R/Shiny.
+- The contract declared both directions: input schema and result schema, visible before any call.
 - The Shiny dashboard showed the same contract in a familiar review view.
 - The review point was the typed, aggregate, deterministic contract.
 
@@ -97,7 +99,10 @@ Trigger is `"submit"` — if any panel reads "Waiting for Apply" or "Run a widge
 3. *"Is the model ever computing the numbers?"* — No. The client selects the tool and fills declared arguments. The deterministic R function computes.
 4. *"What about patient data?"* — shinymcp gives the contract; the tool author controls what crosses it. For clinical use, return aggregate evidence and audit metadata, not subject-level rows.
 5. *"How would you validate this?"* — Unit-test the R tools, inspect the JS bridge, assert the tool schema, and assert `model_value` payloads. Treat the typed handoff as the testable contract.
-6. *"What about the sandbox?"* — It is one layer. Do not sell it as the whole data-control story. The real boundary is the client/tool permission model plus what the R tool returns.
+6. *"What about the sandbox?"* — It is one layer. Do not sell it as the whole data-control story. The real boundary is the client/tool permission model plus what the R tool returns. One concrete positive: hosts enforce deny-by-default CSP, so a card that declares no domains cannot make any network request.
+7. *"How does the model know what the user did in the card?"* — The bridge reports card state through `ui/update-model-context` as typed data. The model's next turn starts from the user's actual parameters; nothing is inferred from pixels, and the interaction record is loggable.
+8. *"What if our client doesn't support MCP Apps?"* — Support is negotiated per connection. shinymcp checks the client's capability during `initialize`; clients without it get the identical tools text-only. The spec went stable in January 2026 with Anthropic and OpenAI co-maintaining it.
+9. *"Can we keep some tools away from the model?"* — Yes: `tool_visibility = list(x = "app")` hides a tool from the model's list while the card can still call it. Useful for row-level detail views that should stay human-only.
 
 ## Top objections → one-line rebuttals
 
@@ -110,7 +115,8 @@ Trigger is `"submit"` — if any panel reads "Waiting for Apply" or "Run a widge
 ## Install / read / fork
 
 - `pak::pak("JamesHWade/shinymcp")` (GitHub; experimental)
-- Start with the demo: `inst/examples/rpharma-hangout/app.R`
-- Read the bridge: `inst/js/shinymcp-bridge.js` (~300 lines, vanilla ES5)
-- Try a minimal Claude path: `mcp_app()` + `serve(app)` in an `app.R`
+- Climb the example ladder: `hello-mcp` -> `penguins` -> `feature-tour` -> this demo (`vignette("use-cases")` is the guided tour)
+- Read the protocol: `vignette("mcp-apps-protocol")` — spec version, compliance table, security model; this is the document to send reviewers
+- Read the bridge: `inst/js/shinymcp-bridge.js` (vanilla ES5, dependency-free)
+- Try a minimal Claude path: the closing build-one slide is complete and runs as-is
 - Docs: <https://jameshwade.github.io/shinymcp>

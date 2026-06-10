@@ -29,8 +29,12 @@ annotated with resource URIs for MCP consumption.
 \item \href{#method-McpApp-html_resource}{\code{McpApp$html_resource()}}
 \item \href{#method-McpApp-mcp_tools}{\code{McpApp$mcp_tools()}}
 \item \href{#method-McpApp-tool_definitions}{\code{McpApp$tool_definitions()}}
+\item \href{#method-McpApp-extra_resources}{\code{McpApp$extra_resources()}}
+\item \href{#method-McpApp-read_extra_resource}{\code{McpApp$read_extra_resource()}}
+\item \href{#method-McpApp-resource_meta}{\code{McpApp$resource_meta()}}
 \item \href{#method-McpApp-call_tool}{\code{McpApp$call_tool()}}
 \item \href{#method-McpApp-resource_uri}{\code{McpApp$resource_uri()}}
+\item \href{#method-McpApp-interaction_defaults}{\code{McpApp$interaction_defaults()}}
 \item \href{#method-McpApp-print}{\code{McpApp$print()}}
 \item \href{#method-McpApp-clone}{\code{McpApp$clone()}}
 }
@@ -46,7 +50,15 @@ Create a new McpApp
   tools = list(),
   name = "shinymcp-app",
   version = "0.1.0",
-  theme = NULL
+  theme = NULL,
+  csp = NULL,
+  permissions = NULL,
+  prefers_border = NULL,
+  tool_visibility = NULL,
+  trigger = NULL,
+  debounce_ms = NULL,
+  resources = NULL,
+  tool_outputs = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -65,6 +77,44 @@ tagList of shinymcp components, or a full \code{\link[bslib:page]{bslib::page()}
 \item{\code{theme}}{Optional bslib theme (a \code{\link[bslib:bs_theme]{bslib::bs_theme()}} object). If
 provided, the UI will be wrapped in a themed page. Not needed if \code{ui}
 is already a \code{\link[bslib:page]{bslib::page()}}.}
+
+\item{\code{csp}}{Optional named list of Content Security Policy domain
+declarations for the app's \verb{ui://} resource, per the MCP Apps spec.
+Hosts block undeclared external domains. Fields: \code{connect_domains}
+(fetch/XHR/WebSocket origins), \code{resource_domains} (scripts, styles,
+images, fonts), \code{frame_domains} (nested iframes), \code{base_uri_domains}.
+Apps with fully inlined assets (the shinymcp default) don't need this.}
+
+\item{\code{permissions}}{Optional named list of sandbox permissions the app
+needs (e.g. \code{list(camera = list())}). Most apps don't need this.}
+
+\item{\code{prefers_border}}{Optional logical; hint that the host should draw
+a border around the embedded app.}
+
+\item{\code{tool_visibility}}{Optional named list mapping tool names to
+visibility scopes per the MCP Apps spec. Each entry is a character
+vector drawn from \code{c("model", "app")}. Use \code{"app"} for tools only the
+UI should call (hidden from the model), \code{"model"} for tools the UI
+should not call. Default (unset) is both.}
+
+\item{\code{trigger}}{When the UI calls tools as inputs change: \code{"debounce"}
+(default, batches rapid changes) or \code{"change"} (immediate). The
+\code{"submit"} and \code{"manual"} modes only apply inside shinymcp's own
+Shiny host, which provides Apply/Run buttons.}
+
+\item{\code{debounce_ms}}{Debounce interval in milliseconds (default 250).}
+
+\item{\code{resources}}{Optional named list of extra resources served
+alongside the app. Names are URIs; values are a string (static
+content), a function returning a string (evaluated on each read,
+useful for lazy-loading data into the UI via
+\code{window.shinymcp.readResource()}), or a list with fields \code{content}
+(string or function), \code{mime_type}, \code{name}, \code{description}, \code{meta}.}
+
+\item{\code{tool_outputs}}{Optional named list mapping tool names to the
+output ids they return (e.g. \code{list(explore = c("scatter", "stats"))}).
+Used to generate an \code{outputSchema} for each tool. Only declare this
+for tools that return a named list keyed by those output ids.}
 }
 \if{html}{\out{</div>}}
 }
@@ -95,7 +145,10 @@ bslib or other htmltools-based packages are inlined automatically.
 \if{latex}{\out{\hypertarget{method-McpApp-mcp_tools}{}}}
 \subsection{Method \code{mcp_tools()}}{
 Get tools annotated with MCP metadata
-Returns the tools list with _meta.ui.resourceUri added to each tool.
+Returns the tools list with \verb{_meta.ui} added to each plain-list tool,
+excluding tools whose \code{visibility} does not include \code{"model"} (those
+are app-only: callable from the rendered UI, hidden from the model).
+Used by the shinychat/mcptools registration paths.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{McpApp$mcp_tools()}\if{html}{\out{</div>}}
 }
@@ -110,7 +163,62 @@ Returns a list of tool definition objects suitable for JSON-RPC.
 Each tool includes \verb{_meta.ui.resourceUri} linking it to the app's
 UI resource, which tells MCP Apps-capable hosts to render the UI.
 \subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$tool_definitions()}\if{html}{\out{</div>}}
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$tool_definitions(include_ui_meta = TRUE)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{include_ui_meta}}{Whether to attach \verb{_meta.ui} to each tool.
+Set to \code{FALSE} for clients that did not advertise the MCP Apps
+extension capability, so tools degrade gracefully to text-only.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-extra_resources"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-extra_resources}{}}}
+\subsection{Method \code{extra_resources()}}{
+Get the extra resources declared for this app
+Returns a named list (URI -> normalized spec with \code{uri}, \code{name},
+\code{description}, \code{mime_type}, \code{content_fn}, \code{meta}) for registration
+alongside the app's main ui:// resource.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$extra_resources()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-read_extra_resource"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-read_extra_resource}{}}}
+\subsection{Method \code{read_extra_resource()}}{
+Read one extra resource by URI
+Returns a \code{resources/read} contents entry (\code{uri}, \code{mimeType}, \code{text},
+optional \verb{_meta}). Errors with class \code{shinymcp_error_resource} when
+the URI is not a declared extra resource.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$read_extra_resource(uri)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{uri}}{The resource URI to read}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-resource_meta"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-resource_meta}{}}}
+\subsection{Method \code{resource_meta()}}{
+Get the \verb{_meta} for this app's ui:// resource
+Returns the \verb{_meta} list (CSP domains, permissions, prefersBorder)
+to attach to the resource in \code{resources/list} and \code{resources/read}
+responses, or \code{NULL} when nothing was declared.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$resource_meta()}\if{html}{\out{</div>}}
 }
 
 }
@@ -140,6 +248,19 @@ Call a tool by name
 Get the ui:// resource URI for this app
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{McpApp$resource_uri()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-interaction_defaults"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-interaction_defaults}{}}}
+\subsection{Method \code{interaction_defaults()}}{
+Get the app's declared interaction defaults
+Returns a list with \code{trigger} and \code{debounce_ms} as declared at
+construction (either may be \code{NULL} when unset). Hosts use this to
+defer to the app's declaration when the embedder didn't specify.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$interaction_defaults()}\if{html}{\out{</div>}}
 }
 
 }
