@@ -203,6 +203,32 @@ Explain the mechanism plainly. A normal MCP tool is a callable function. An MCP 
 This is the core model. The app is not a web page the model reads from pixels. It is a contract: schema, UI resource, and structured result. The human gets a card; the model gets typed data.
 :::
 
+## The loop closes: the model sees what the user did
+
+- The user adjusts the card → the bridge reports state via `ui/update-model-context`
+- The model's **next turn starts from the user's actual parameters** — typed context, not screenshots
+- The reverse flow exists too: when the model calls the tool, its arguments stream **into** the card (`tool-input`), so the controls match what was asked
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-flow">
+    <div class="dgm-node"><span class="k">HUMAN</span><span class="t">Adjusts the card</span><span class="s">RR limit 1.8 → 1.2</span></div>
+    <div class="dgm-arr green"><span class="lab">ui/update-model-context</span><span class="ln"></span></div>
+    <div class="dgm-node is-blue"><span class="k">MCP CLIENT</span><span class="t">Model context</span><span class="s">typed state</span></div>
+    <div class="dgm-arr"><span class="lab">next turn: tools/call</span><span class="ln"></span></div>
+    <div class="dgm-node is-green"><span class="k">R TOOL</span><span class="t">Computes from those values</span></div>
+  </div>
+</div>
+```
+
+. . .
+
+[The interaction record is data. Both directions are typed and loggable.]{.takeaway}
+
+::: {.notes}
+This is the substance beyond window dressing, and it is worth slowing down for. Without this, an embedded UI is decoration: the user fiddles with a dropdown and the model has no idea. With MCP Apps, every interaction lands in the model's context as a typed object. Concretely: the reviewer drops the RR watch limit in the card, then asks "draft the safety memo" — the assistant drafts it for the parameters the reviewer actually chose, because it can read them. For this audience the second-order point matters just as much: the user-model interaction is a typed, loggable record. That is something a process owner can review. A screenshot conversation is not.
+:::
+
 ## No Shiny.js, no server: names matching ids
 
 - Inside an MCP client there is **no Shiny server and no Shiny.js**
@@ -308,6 +334,21 @@ serve(app)  # stdio MCP server by default
 Claude does not need a Python rewrite. It launches an MCP server command. That command can be Rscript. The R process exposes tools and resources. Be precise: the tool contract is the stable cross-client piece; interactive UI rendering depends on the client and connector mode. Claude Desktop supports local MCP servers; Claude custom connectors support remote MCP servers.
 :::
 
+## Negotiated, not bolted on
+
+- MCP Apps is now a **stable spec** (`2026-01-26`), co-maintained by **Anthropic and OpenAI** — shinymcp tracks it
+- Clients **opt in** during `initialize` (`io.modelcontextprotocol/ui`); the shinymcp server checks before attaching UI metadata
+- A client without support gets the **same tools, text-only** — no orphaned format, no broken integration
+- Adoption risk is asymmetric: build the contract once; the UI lights up as client support lands
+
+. . .
+
+[Worst case: a working text tool. Best case: a working text tool with a UI.]{.takeaway}
+
+::: {.notes}
+This slide answers the procurement question hiding in the room: "what if we build on this and the format dies or our client doesn't support it?" Two facts. First, the apps extension went stable in January 2026 with Anthropic and OpenAI co-maintaining it — this is not a single-vendor embed format. Second, support is negotiated per-connection: clients advertise the extension capability during initialize, and shinymcp checks it. A client that never heard of MCP Apps still lists and calls the same tools as plain text tools. So the downside of adopting this is a working MCP integration without the card. That changes the risk calculus for piloting it.
+:::
+
 ## One R tool, multiple clients
 
 ```{=html}
@@ -401,6 +442,33 @@ list(
 Each result carries the rendered display the user sees and an optional model_value: the typed object the client receives separately. Note small_cell in the payload: the statistician-review flag is computed in R and travels as data. The client does not scrape the memo; it reads this list. Also note what is not here: patient-level rows. The boundary is a property of what this function returns.
 :::
 
+## Code 4 — scope the contract: visibility + declared results
+
+```r
+app <- mcp_app(
+  ui = ui, tools = list(tool, detail_tool),
+  name = "rpharma-safety-signal",
+
+  # The model NEVER sees this tool; only the rendered card can call it.
+  # Row-level views stay a human affordance, off the model's tool list.
+  tool_visibility = list(fetch_detail_rows = "app"),
+
+  # Declared result shape -> outputSchema. Reviewers see what comes BACK,
+  # not just what goes in. The demo's contract inspector renders this.
+  tool_outputs = list(
+    screen_safety_signal = c("memo", "evidence", "risk_plot", "audit")
+  ),
+
+  # Deny-by-default networking: hosts block any domain not declared here.
+  # Omit it (the default) and the card cannot phone home at all.
+  csp = NULL
+)
+```
+
+::: {.notes}
+This is the governance slide in code form, and it is new spec surface — visibility scoping and output schemas are part of the stable MCP Apps spec. Three boundaries, all declared rather than implied. Visibility: a tool marked "app" is callable from the card's own UI but hidden from the model — the model literally cannot reach for the row-level detail view. tool_outputs: the contract now declares the result shape, so a reviewer reads what the tool returns before anything runs; per spec, a declared schema obligates the tool to conform. CSP: MCP hosts enforce deny-by-default networking on the card; any external domain must be declared in the resource metadata, so "does this widget exfiltrate?" is answerable by reading one argument. None of these are prose promises. They are fields in a reviewable contract.
+:::
+
 # Shiny integration {.section-divider background-color="#1b2f44"}
 
 ## Why Shiny remains useful
@@ -417,7 +485,7 @@ Each result carries the rendered display the user sees and an optional model_val
 Position Shiny precisely. It is the local review and adoption path. You can show the card inside the dashboard, inspect the handoff, and let teams use a familiar app while the same contract can be served to Claude or another MCP client.
 :::
 
-## Code 4 — one definition, multiple homes
+## Code 5 — one definition, multiple homes
 
 ```r
 app <- mcp_app(ui = ui, tools = list(tool), name = "rpharma-safety-signal")
@@ -448,7 +516,7 @@ App: **Oncology Signal Room** — a normal Shiny clinical dashboard + an MCP wid
 **CHECK 1 · CLIENT PATHS** — integration strip shows Shiny, shinychat, and MCP resource targets
 :::
 ::: {.fragment}
-**CHECK 2 · TYPED RESULT** — press Apply → the right-hand panel gets a **typed object**, no screen scraping
+**CHECK 2 · TYPED RESULT** — press Apply → the right-hand panel gets a **typed object**, no screen scraping; the contract inspector shows the **declared result schema** before anything runs
 :::
 ::: {.fragment}
 **CHECK 3 · TOOL SWAP** — one dropdown replaces the MCP App, including UI, schema, outputs, and contract
@@ -480,7 +548,7 @@ CLICK-PATH:
 2. Sidebar: Cohort -> Lung. Watch the metric boxes + study plot redraw — ordinary Shiny reactivity, the host, not the widget.
 3. Scroll to the MCP widget bay; point at the integration strip (mcp_host_server / as_shinychat_tool / ui:// URI): "this is the same R-backed tool exposed to multiple clients."
 4. Inside Safety Signal Scout set Cohort=Lung, AE term=Neutropenia, Min grade=3, RR watch limit=1.8 -> press APPLY. Read the memo, evidence table, event-rate plot, and especially the audit block.
-5. Point right: Contract inspector (screen_safety_signal, ui:// URI, arg schema) + "Last widget handoff" table + green Meeting-note now populated. "The parent app did not scrape the screen; it received this typed object."
+5. Point right: Contract inspector (screen_safety_signal, ui:// URI, arg schema, AND the declared-result table — memo/evidence/risk_plot/audit with types, visible before any call) + "Last widget handoff" table + green Meeting-note now populated. "The parent app did not scrape the screen; it received this typed object — and the contract declared its shape up front."
 6. Lower RR watch limit to ~1.2 -> APPLY again. Decision flips toward "Open a focused safety review" / "Monitor and request QC"; handoff table + meeting note recompute deterministically.
 7. Sidebar: switch Approved MCP skill -> Enrollment Rescue Simulator. The whole MCP App swaps (UI + schema + outputs); Contract inspector now shows simulate_enrollment_rescue. Set monthly_randomized=20 -> APPLY; status moves to watch/rescue, path stretches past the orange target line, meeting note routes to data management. Restore defaults to land clean.
 
@@ -556,13 +624,14 @@ The same tool result yields a human-facing card and a machine-facing typed objec
 
 ## The sandbox is not the whole data boundary
 
-- MCP Apps are rendered as isolated app views in supporting clients
-- Host and app communicate through a defined protocol conversation
+- MCP Apps render as isolated, sandboxed views in supporting clients
+- **Deny-by-default networking:** hosts block every domain the resource didn't declare — an undeclared card cannot phone home
+- Host and app communicate through a defined, inspectable protocol conversation
 - The data boundary still comes from **what your tool returns**
 - Treat sandboxing as one layer, not a compliance certificate
 
 ::: {.notes}
-This is the security caveat slide. Do not overclaim the iframe. In local Shiny preview the iframe uses allow-scripts allow-same-origin, and different MCP clients make different rendering choices. The data boundary is the aggregate-only return contract plus the client's tool approval and logging model.
+This is the security caveat slide, now with one strong positive: the spec requires hosts to build the iframe's Content Security Policy from the resource's declared domains, defaulting to no network access at all. shinymcp inlines everything by default, so a standard shinymcp card declares nothing and can reach nothing. That is a reviewable property. Then the caveats, stated plainly: in local Shiny preview the iframe uses allow-scripts allow-same-origin (trusted-own-apps posture, documented), clients make different rendering choices, and the real data boundary remains the aggregate-only return contract plus the client's tool approval and logging model.
 :::
 
 # Conversion at scale {.section-divider background-color="#1b2f44"}
@@ -611,19 +680,19 @@ Address "how do I do this for my 40 existing apps?" Be direct. convert_app() map
 
 - An **experimental** package for exposing R/Shiny tools through MCP
 - Lifecycle: **experimental** — install from GitHub via `pak`
-- Emits both `_meta.ui.resourceUri` and legacy `ui/resourceUri` for client compatibility
+- Tracking the **stable MCP Apps spec (2026-01-26)**: capability negotiation, visibility scoping, output schemas, CSP metadata — with a published compliance table
 :::
 ::: {.column width="50%"}
 **IS NOT**
 
 - A GxP-qualified, GA, validated product — validation is still a **process you own**
 - Not on CRAN yet
-- A guarantee that every client will render every interactive UI the same way
+- A guarantee that every client renders every UI affordance today — the spec is stable; client rollout is still uneven
 :::
 :::
 
 ::: {.notes}
-Say it straight: experimental, not GA, not validated out of the box. The privacy and reproducibility properties come from how you write the function plus your validation process. Client support varies, especially for interactive rendering. The portable core is the typed tool contract and the R-backed computation.
+Say it straight: experimental, not GA, not validated out of the box. The privacy and reproducibility properties come from how you write the function plus your validation process. One thing has improved since this work started: the MCP Apps spec itself went stable in January 2026, and shinymcp documents exactly which parts it implements in vignette("mcp-apps-protocol") — point reviewers there instead of asking them to trust a slide. Client support still varies for rendering; the portable core remains the typed tool contract and the R-backed computation.
 :::
 
 # Objections {.section-divider background-color="#1b2f44"}
@@ -634,9 +703,10 @@ Say it straight: experimental, not GA, not validated out of the box. The privacy
 |---|---|
 | "Why not just build a Claude tool?" | Because MCP gives you an open contract you can reuse across clients |
 | "LLMs can't be validated" | The LLM doesn't compute; the **deterministic R tool** does |
-| "Will this leak patient data?" | Only return aggregate evidence; the boundary is in the tool contract |
-| "Does every client render the UI?" | Tool calls are the stable part; interactive UI support is client-dependent |
-| "What's the validation focus?" | Unit-test the R tools; inspect the JS bridge; assert the typed `model_value` |
+| "Will this leak patient data?" | Aggregate-only returns + deny-by-default CSP; both are declared, reviewable boundaries |
+| "How does the model know what the user changed?" | The card reports state as typed context (`ui/update-model-context`) — data, not screenshots |
+| "Does every client render the UI?" | No — and that's fine: clients without the apps extension get the **same tools, text-only** |
+| "What's the validation focus?" | Unit-test the R tools; assert the schemas (inputs **and** declared outputs); assert the typed `model_value` |
 
 ::: {.notes}
 Pre-empt the room's real objections in their language so Q&A can go deeper. The point is not Claude-only integration; it is keeping R tools portable across MCP clients. Then return to the same validation spine: deterministic R computes, the tool returns aggregate data, and a human remains accountable.
@@ -644,11 +714,44 @@ Pre-empt the room's real objections in their language so Q&A can go deeper. The 
 
 # Close {.section-divider background-color="#1b2f44"}
 
+## Build one this week — a complete app, no placeholders
+
+```r
+# app.R — everything an MCP App needs
+library(shinymcp)
+
+ui <- bslib::page_fillable(
+  shiny::selectInput("dataset", "Dataset", c("mtcars", "iris", "pressure")),
+  mcp_text("summary")
+)
+
+tools <- list(ellmer::tool(
+  fun = function(dataset = "mtcars") {
+    data <- get(dataset, envir = asNamespace("datasets"))
+    list(summary = paste(capture.output(summary(data)), collapse = "\n"))
+  },
+  name = "summarize_dataset",
+  description = "Summary statistics for a built-in dataset",
+  arguments = list(dataset = ellmer::type_string("Dataset name"))
+))
+
+app <- mcp_app(ui, tools, name = "my-first-mcp-app",
+               tool_outputs = list(summarize_dataset = "summary"))
+
+preview_app(app)  # 1. local reference host + protocol log — see every message
+# serve(app)      # 2. then point Claude Desktop's config at this file
+```
+
+::: {.notes}
+This slide is the take-home. Twenty-five lines, nothing elided, runs as-is. Walk the three contracts one last time on real code: the input id "dataset" is the tool argument; the result key "summary" is the output id; tool_outputs declares that shape to the client. Then the two-step adoption path: preview_app() first — it is a local reference host with a protocol log, so you watch ui/initialize, tools/call, and update-model-context flow before any client is involved. When it works there, the Claude Desktop config from earlier is the only remaining step. Tell them: if you can write a function and label two ids, you can ship one of these by Friday.
+:::
+
 ## Serve R tools to MCP clients
 
 ::: {style="color:#39729e; font-weight:700; font-size:1.15em;"}
 - Your validated R function becomes the tool body
 - Claude or another MCP client can call it through a typed contract
+- The card reports user interactions back into the model's context — the loop is data, not pixels
 - The same MCP App can still run inside Shiny for adoption and review
 - The handoff is typed, logged, and aggregate by design
 - No rewrite of the clinical logic into a client-specific stack
@@ -665,19 +768,19 @@ Land on the concrete claim. R/Shiny tools can be served to MCP clients without m
 ## Try it / read it / fork it — and Q&A
 
 - **Install:** `pak::pak("JamesHWade/shinymcp")` (GitHub; experimental)
-- **Start with the demo you just saw:** `inst/examples/rpharma-hangout/app.R`
-- **Read the bridge:** `inst/js/shinymcp-bridge.js` (~300 lines, vanilla ES5 — inspect it)
+- **Climb the example ladder:** `hello-mcp` → `penguins` → `feature-tour` → this demo (`vignette("use-cases")` is the guided tour)
+- **Read the protocol:** `vignette("mcp-apps-protocol")` — message walkthrough, compliance table, security model
+- **Read the bridge:** `inst/js/shinymcp-bridge.js` (vanilla ES5, dependency-free — inspect it)
 - **Docs:** [jameshwade.github.io/shinymcp](https://jameshwade.github.io/shinymcp)
-- **Try the Claude path:** create a small `app.R` with `mcp_app()` + `serve(app)`
 
 . . .
 
 ::: {style="color:#ff7518; font-weight:700; font-size:1.2em; margin-top:1rem;"}
 Expose one reviewed Shiny workflow through MCP.
 
-Wrap one function. Serve it over MCP. Then embed it back in Shiny.
+Wrap one function. Preview it. Serve it. Then embed it back in Shiny.
 :::
 
 ::: {.notes}
-Clear next step: take one reviewed Shiny/R function and expose it as an MCP App. Point them at the exact demo file, then at the minimal Claude Desktop pattern in the docs. Encourage them to read the bridge because it is small enough to inspect. Anticipated deep cuts: remote versus local MCP, client support variance for UI rendering, validation packaging, statelessness, sandbox posture, and the manual-fill step in convert_app().
+Clear next step: take one reviewed Shiny/R function and expose it as an MCP App — the previous slide is the complete recipe. The example ladder is the self-serve path after the talk: hello-mcp shows the contract in 30 lines, penguins adds a real dashboard, feature-tour demonstrates every protocol feature (app-only tools, lazy resources, theme syncing, the window.shinymcp API) with a protocol log open, and this demo shows the governance wrapper. For reviewers and skeptics, vignette("mcp-apps-protocol") is the document to send: it states the spec version, what is implemented, what is not, and the documented deviations. Anticipated deep cuts: remote versus local MCP, client rollout variance, validation packaging, statelessness, sandbox posture, and the manual-fill step in convert_app().
 :::

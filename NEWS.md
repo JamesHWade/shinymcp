@@ -76,6 +76,18 @@ shinymcp now targets the stable MCP Apps specification (2026-01-26,
 * New `vignette("mcp-apps-protocol")`: a message-level walkthrough of the
   protocol, a spec compliance table, documented deviations, and guidance
   on CSP, theming, and tool visibility.
+* The examples are now organized as a ladder of gradually increasing
+  complexity (`vignette("use-cases")` is the guided tour), with a new
+  `feature-tour` example demonstrating app-only tools, lazy-loaded
+  resources, declared output schemas, theme syncing, and the
+  `window.shinymcp` host-interaction API in one annotated app. The
+  penguins, use-case gallery, and R/Pharma demo apps now declare
+  `tool_outputs` (and the R/Pharma contract inspector renders the
+  resulting `outputSchema`).
+* The R/Pharma genAI Day talk materials (slides, run-of-show, demo README)
+  now cover the model-context loop, capability negotiation and graceful
+  degradation, visibility/output-schema contract scoping, deny-by-default
+  CSP, and a complete build-one-this-week closing recipe.
 * README gains "Where MCP Apps run" (host support and graceful
   degradation) and "External assets and CSP" sections.
 * `vignette("debugging-shinymcp")` covers the most common failure modes:

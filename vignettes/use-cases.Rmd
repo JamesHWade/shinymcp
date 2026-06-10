@@ -18,10 +18,71 @@ knitr::opts_chunk$set(
 `shinymcp` is strongest when an AI assistant needs to do more than print a
 number. The assistant can call a tool, receive structured data for reasoning,
 and show the user an interactive card with controls, tables, plots, and
-formatted output.
+formatted output — and because the card reports the user's interactions back
+into the model's context, the assistant can act on what the user did in its
+next turn.
 
-The package includes a use-case gallery with three small but realistic MCP
-Apps:
+## The example ladder
+
+The bundled examples are ordered so each one adds a single new idea. Work
+through them in order and you'll have touched every major feature of the
+package. Each lives at
+`system.file("examples", "<name>", "app.R", package = "shinymcp")`, and each
+runs in `preview_app()` — a local reference host with a protocol log — or as
+a stdio MCP server via `Rscript app.R`.
+
+| Level | Example | The one new idea |
+|---|---|---|
+| 1 | `hello-mcp` | The whole contract: one input, one tool, one output, ~30 lines |
+| 2 | `bslib-inputs` | Native shiny/bslib inputs auto-detected by id — no wrappers |
+| 3 | `penguins` | A real dashboard: ggplot2, multiple outputs, a declared `outputSchema` |
+| 4 | `feature-tour` | The protocol features: app-only tools, lazy resources, theme syncing, `window.shinymcp` |
+| 5 | `multi-tool` | One app, several tools — connected reactive groups become separate contracts |
+| 6 | `use-cases` gallery | Realistic chat cards with typed `model_value` handoffs (this article) |
+| 7 | `shinychat-card` + `rpharma-hangout` | Embedding: the same `McpApp` inside Shiny dashboards and shinychat |
+
+Three ideas carry the whole ladder:
+
+1. **Names are the contract.** Tool argument names match input ids; result
+   keys match output ids. That's the entire binding model.
+2. **One result, two consumers.** The human gets the rendered card; the model
+   gets structured values it can reason over without scraping the display.
+3. **One definition, many homes.** The same `McpApp` serves to Claude over
+   MCP, embeds in a Shiny app, and wraps as a shinychat tool card.
+
+## Level 4 in detail: the feature tour
+
+`feature-tour` packs the MCP Apps protocol features into one annotated app.
+Open it in `preview_app()` with the protocol log visible and you can watch
+each one on the wire:
+
+```{r}
+source(system.file("examples", "feature-tour", "app.R", package = "shinymcp"))
+```
+
+What to look for:
+
+- **App-only tools** (`tool_visibility`): the `fetch_region_detail` tool is
+  callable from the card's "Load region detail" button but carries
+  `_meta.ui.visibility = ["app"]`, so the model never sees it. Use this to
+  keep UI plumbing — or human-only detail views — out of the model's tool
+  list.
+- **Lazy resources** (`resources` + `window.shinymcp.readResource()`): the
+  region catalog isn't inlined into the HTML; the card fetches it through
+  the host at startup. This is the pattern for shipping large datasets
+  without bloating the `ui://` resource.
+- **Declared result shapes** (`tool_outputs`): the analysis tool publishes
+  an `outputSchema`, so hosts and models know it returns a base64 plot named
+  `trend` and a text summary named `summary` before ever calling it.
+- **Theme syncing**: flip your OS or host theme and the card follows —
+  the bridge maps the host's theme onto Bootstrap's `data-bs-theme`.
+- **Host interactions** (`window.shinymcp`): buttons that send a message
+  into the conversation, open a link, and request fullscreen — all spec
+  methods, all degrading gracefully when a host doesn't support them.
+
+## The use-case gallery
+
+The gallery contains three small but realistic MCP Apps:
 
 | Use case | What it demonstrates |
 |---|---|
@@ -31,9 +92,11 @@ Apps:
 
 The apps are intentionally card-sized: controls fit in a compact grid, the
 primary answer is immediately visible, and secondary tables stay available
-without taking over the chat transcript.
+without taking over the chat transcript. Each declares `tool_outputs` (so
+its result shape is part of the published contract) and `prefers_border`
+(a rendering hint for the host).
 
-## Run a use case as an MCP App
+### Run a use case as an MCP App
 
 The gallery entrypoint serves one use case at a time. Set
 `SHINYMCP_USE_CASE` to `revenue`, `experiment`, or `incident`.
@@ -47,7 +110,7 @@ For Claude Desktop or another MCP host, point the server command at that same
 `app.R` file and set the environment variable for the use case you want to
 show.
 
-## Revenue scenario board
+### Revenue scenario board
 
 This card turns go-to-market assumptions into a twelve-month forecast. The
 assistant can reason over the structured result while the user sees the ARR
@@ -66,7 +129,7 @@ app$call_tool("forecast_revenue", list(
 ))
 ```
 
-## Experiment planner
+### Experiment planner
 
 This card helps an assistant move from "can we detect a 15% lift?" to a
 specific sample size and runtime. The plot gives the human reviewer a quick
@@ -83,7 +146,7 @@ app$call_tool("plan_experiment", list(
 ))
 ```
 
-## Incident triage console
+### Incident triage console
 
 This card is useful for support, SRE, and operations chats. The assistant can
 collect facts conversationally, call the tool, and return a priority, briefing,
@@ -120,14 +183,22 @@ The Shiny session is still the runtime for those cards: it registers the
 The iframe itself remains a portable MCP App surface instead of a nested Shiny
 app, which keeps each chat card small and reusable outside Shiny.
 
+For the full embedding-and-governance story — contract inspectors, typed
+meeting-note handoffs, approved skill registries — see the R/Pharma demo at
+`system.file("examples", "rpharma-hangout", package = "shinymcp")`.
+
 ## Why these examples matter
 
 These examples cover the surfaces most teams need before adopting MCP Apps:
 
 - Rich UI for people: inputs, tables, plots, and formatted HTML.
 - Structured values for the model: the assistant can reason over numbers
-  without scraping the display.
-- Portable deployment: the same `McpApp` can be served to an MCP host, embedded
-  in Shiny, or wrapped as a shinychat tool card.
-- Small cards over giant dashboards: each card has one job and maps cleanly to
-  one tool call.
+  without scraping the display — and `ui/update-model-context` keeps it
+  aware of what the user changed in the card.
+- Declared contracts: input schemas, output schemas, visibility scoping,
+  and resource metadata that a reviewer can inspect before anything runs.
+- Portable deployment: the same `McpApp` can be served to an MCP host,
+  embedded in Shiny, or wrapped as a shinychat tool card — and in hosts
+  without MCP Apps support, the tools still work as plain text tools.
+- Small cards over giant dashboards: each card has one job and maps cleanly
+  to one tool call.

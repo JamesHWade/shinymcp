@@ -1063,7 +1063,17 @@ safety_signal_app <- function(data = trial_data) {
     )
   )
 
-  mcp_app(ui = ui, tools = list(tool), name = "rpharma-safety-signal")
+  mcp_app(
+    ui = ui,
+    tools = list(tool),
+    name = "rpharma-safety-signal",
+    # Declared result shape: the contract now covers outputs, not just
+    # inputs. The contract inspector renders this schema.
+    tool_outputs = list(
+      screen_safety_signal = c("memo", "evidence", "risk_plot", "audit")
+    ),
+    prefers_border = TRUE
+  )
 }
 
 enrollment_rescue_app <- function(data = trial_data) {
@@ -1239,7 +1249,15 @@ enrollment_rescue_app <- function(data = trial_data) {
     )
   )
 
-  mcp_app(ui = ui, tools = list(tool), name = "rpharma-enrollment-rescue")
+  mcp_app(
+    ui = ui,
+    tools = list(tool),
+    name = "rpharma-enrollment-rescue",
+    tool_outputs = list(
+      simulate_enrollment_rescue = c("brief", "timeline_plot", "actions")
+    ),
+    prefers_border = TRUE
+  )
 }
 
 metric_box <- function(label, value, note) {
@@ -1603,6 +1621,43 @@ contract_view <- function(app) {
     check.names = FALSE
   )
 
+  schema_table <- function(rows, key_header) {
+    tags$table(
+      tags$thead(
+        tags$tr(
+          tags$th(key_header),
+          tags$th("type"),
+          tags$th("description")
+        )
+      ),
+      tags$tbody(lapply(seq_len(nrow(rows)), function(i) {
+        tags$tr(
+          tags$td(rows[[1]][[i]]),
+          tags$td(rows$type[[i]]),
+          tags$td(rows$description[[i]])
+        )
+      }))
+    )
+  }
+
+  # The declared result shape (outputSchema): the contract covers what the
+  # tool returns, not just what the client may send.
+  output_properties <- definition$outputSchema$properties %||% list()
+  result_fields <- data.frame(
+    `result key` = names(output_properties),
+    type = vapply(
+      output_properties,
+      function(prop) prop$type %||% "string",
+      character(1)
+    ),
+    description = vapply(
+      output_properties,
+      function(prop) prop$description %||% "",
+      character(1)
+    ),
+    check.names = FALSE
+  )
+
   tags$div(
     class = "rp-contract",
     tags$div(
@@ -1611,22 +1666,17 @@ contract_view <- function(app) {
       tags$code(class = "rp-code", app$resource_uri())
     ),
     tags$div(definition$description),
-    tags$table(
-      tags$thead(
-        tags$tr(
-          tags$th("argument"),
-          tags$th("type"),
-          tags$th("description")
-        )
-      ),
-      tags$tbody(lapply(seq_len(nrow(fields)), function(i) {
-        tags$tr(
-          tags$td(fields$argument[[i]]),
-          tags$td(fields$type[[i]]),
-          tags$td(fields$description[[i]])
-        )
-      }))
-    )
+    schema_table(fields, "argument"),
+    if (nrow(result_fields) > 0) {
+      tagList(
+        tags$div(
+          class = "rp-contract-title",
+          style = "margin-top: 0.6rem;",
+          "Declared result (outputSchema)"
+        ),
+        schema_table(result_fields, "result key")
+      )
+    }
   )
 }
 

@@ -272,27 +272,36 @@ See `vignette("mcp-apps-protocol")` for the full story.
 
 ## Examples
 
-shinymcp ships with example apps:
+shinymcp ships an example ladder — each app adds one new idea, so you can
+work up from a 30-line hello-world to a full embedded-governance demo:
+
 ```{r examples, eval = FALSE}
-# Minimal: mcp_select() + text output
+# 1. The whole contract in ~30 lines: one input, one tool, one output
 system.file("examples", "hello-mcp", "app.R", package = "shinymcp")
 
-# Native shiny/bslib inputs with auto-detection + mcp_input()/mcp_output()
+# 2. Native shiny/bslib inputs, auto-detected by id — no wrappers
 system.file("examples", "bslib-inputs", "app.R", package = "shinymcp")
 
-# Full dashboard: Palmer Penguins with native shiny inputs, ggplot2, and
-# summary statistics
+# 3. A real dashboard: Palmer Penguins with ggplot2, multiple outputs,
+#    and a declared outputSchema
 system.file("examples", "penguins", "app.R", package = "shinymcp")
 
-# Use-case gallery: revenue planning, experiment design, incident triage,
-# plus a shinychat app that registers each MCP App as a rich tool card
+# 4. Protocol feature tour: app-only tools, lazy-loaded resources, theme
+#    syncing, and the window.shinymcp host-interaction API
+system.file("examples", "feature-tour", "app.R", package = "shinymcp")
+
+# 5. Several tools in one app — reactive groups become separate contracts
+system.file("examples", "multi-tool", "app.R", package = "shinymcp")
+
+# 6. Realistic chat cards: revenue planning, experiment design, incident
+#    triage, plus a shinychat app that hosts them as rich tool cards
 system.file("examples", "use-cases", "app.R", package = "shinymcp")
 system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp")
 ```
 
-For realistic demo scripts and shinychat integration, see
-`vignette("use-cases")` and
-`vignette("use-shinymcp-with-shinychat")`.
+Every example runs in `preview_app()` (a local reference host with a
+protocol log) or as an MCP server via `Rscript app.R`. The guided tour with
+what-to-look-for notes is in `vignette("use-cases")`.
 
 ## How it works
 

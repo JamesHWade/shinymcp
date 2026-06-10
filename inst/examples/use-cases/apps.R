@@ -401,7 +401,13 @@ shinymcp_revenue_forecaster <- function() {
     )
   )
 
-  mcp_app(ui, list(tool), name = "revenue-scenario-board")
+  mcp_app(
+    ui,
+    list(tool),
+    name = "revenue-scenario-board",
+    tool_outputs = list(forecast_revenue = c("summary", "forecast", "arr_plot")),
+    prefers_border = TRUE
+  )
 }
 
 shinymcp_experiment_planner <- function() {
@@ -576,7 +582,13 @@ shinymcp_experiment_planner <- function() {
     )
   )
 
-  mcp_app(ui, list(tool), name = "experiment-planner")
+  mcp_app(
+    ui,
+    list(tool),
+    name = "experiment-planner",
+    tool_outputs = list(plan_experiment = c("summary", "design", "power_plot")),
+    prefers_border = TRUE
+  )
 }
 
 shinymcp_incident_triage <- function() {
@@ -745,7 +757,13 @@ shinymcp_incident_triage <- function() {
     )
   )
 
-  mcp_app(ui, list(tool), name = "incident-triage-console")
+  mcp_app(
+    ui,
+    list(tool),
+    name = "incident-triage-console",
+    tool_outputs = list(triage_incident = c("status", "briefing", "runbook")),
+    prefers_border = TRUE
+  )
 }
 
 shinymcp_use_cases <- function() {

@@ -24,7 +24,19 @@ The main teaching points are:
   tools only, visible arguments, and a clear auto-update vs Apply distinction.
 - Cards in shinychat can auto-update on input changes; the dashboard uses Apply
   because its embedded host is configured in submit mode.
-- Each card has an inspectable tool contract rather than only a human UI.
+- Each card has an inspectable tool contract rather than only a human UI —
+  including a declared result schema (`tool_outputs` → `outputSchema`), so
+  reviewers see what comes back before anything runs.
 - Tool results include human-facing plots/tables and structured model handoff.
 - The parent Shiny app can react to the widget output without scraping the UI.
+- The loop runs both ways: model tool calls drive the card, and user card
+  interactions land back in the model's context as typed data
+  (`ui/update-model-context`) — an interaction record you can log and review.
+- MCP Apps support is negotiated per connection: clients without the apps
+  extension get the identical tools text-only, so adopting the contract is
+  low-risk.
+- Tools can be scoped with `tool_visibility`: app-only tools stay callable
+  from the card but never appear in the model's tool list.
+- Hosts enforce deny-by-default networking (CSP) on cards; a card that
+  declares no domains cannot phone home.
 - Aggregate-return boundaries and audit text can be built into each clinical skill.
