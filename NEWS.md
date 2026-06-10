@@ -21,6 +21,24 @@ shinymcp now targets the stable MCP Apps specification (2026-01-26,
 
 ## New features
 
+* `mcp_app()` gains `resources`: declare extra resources (static strings or
+  lazily-evaluated functions) served alongside the app and readable from
+  the UI via the new `window.shinymcp.readResource(uri)` — the spec's
+  view-side `resources/read`. This enables lazy-loading large datasets
+  instead of inlining them into the app HTML. Supported by real chat
+  hosts, the bundled Shiny host, and `preview_app()`.
+* `mcp_app()` gains `tool_outputs`: declare which output ids each tool
+  returns and shinymcp generates a spec-compliant `outputSchema` per tool,
+  with property descriptions derived from the matching UI output types.
+  `convert_app()` scaffolds emit the suggested mapping (commented out
+  until the placeholder tool bodies are completed).
+* The HTTP transport now implements basic streamable-HTTP session
+  management: an `Mcp-Session-Id` is assigned on `initialize`, per-client
+  session state (protocol version, UI capability) is keyed by that header,
+  and `DELETE` terminates a session. Previously concurrent HTTP clients
+  shared one session and could clobber each other's capability
+  negotiation.
+
 * `mcp_app()` gains `csp`, `permissions`, and `prefers_border` arguments.
   These publish `_meta.ui` metadata (CSP domain declarations, iframe
   permissions, border hint) on the app's `ui://` resource in

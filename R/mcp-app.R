@@ -46,6 +46,16 @@ McpApp <- R6::R6Class(
     #'   `"submit"` and `"manual"` modes only apply inside shinymcp's own
     #'   Shiny host, which provides Apply/Run buttons.
     #' @param debounce_ms Debounce interval in milliseconds (default 250).
+    #' @param resources Optional named list of extra resources served
+    #'   alongside the app. Names are URIs; values are a string (static
+    #'   content), a function returning a string (evaluated on each read,
+    #'   useful for lazy-loading data into the UI via
+    #'   `window.shinymcp.readResource()`), or a list with fields `content`
+    #'   (string or function), `mime_type`, `name`, `description`, `meta`.
+    #' @param tool_outputs Optional named list mapping tool names to the
+    #'   output ids they return (e.g. `list(explore = c("scatter", "stats"))`).
+    #'   Used to generate an `outputSchema` for each tool. Only declare this
+    #'   for tools that return a named list keyed by those output ids.
     initialize = function(
       ui,
       tools = list(),
@@ -57,7 +67,9 @@ McpApp <- R6::R6Class(
       prefers_border = NULL,
       tool_visibility = NULL,
       trigger = NULL,
-      debounce_ms = NULL
+      debounce_ms = NULL,
+      resources = NULL,
+      tool_outputs = NULL
     ) {
       if (!inherits(ui, c("shiny.tag", "shiny.tag.list"))) {
         rlang::abort(
@@ -106,6 +118,19 @@ McpApp <- R6::R6Class(
         }
       }
 
+      if (!is.null(tool_outputs)) {
+        if (
+          !is.list(tool_outputs) ||
+            is.null(names(tool_outputs)) ||
+            !all(vapply(tool_outputs, is.character, logical(1)))
+        ) {
+          rlang::abort(
+            "`tool_outputs` must be a named list of character vectors (tool name -> output ids).",
+            class = "shinymcp_error_validation"
+          )
+        }
+      }
+
       self$name <- name
       self$version <- version
       private$.ui <- ui
@@ -116,6 +141,8 @@ McpApp <- R6::R6Class(
       private$.tool_visibility <- tool_visibility
       private$.trigger <- trigger
       private$.debounce_ms <- debounce_ms
+      private$.resources <- normalize_extra_resources(resources)
+      private$.tool_outputs <- tool_outputs
 
       invisible(self)
     },
@@ -242,6 +269,20 @@ McpApp <- R6::R6Class(
           )
         }
 
+        # Generate an outputSchema from declared tool_outputs. Only declared
+        # tools get one: per the MCP spec a tool with an outputSchema MUST
+        # return conforming structuredContent, and we can't verify that for
+        # arbitrary tools (e.g. ones returning bare strings).
+        if (is.null(def$outputSchema)) {
+          declared_outputs <- private$.tool_outputs[[def$name]]
+          if (!is.null(declared_outputs)) {
+            def$outputSchema <- build_output_schema(
+              declared_outputs,
+              private$scan_ui_outputs()
+            )
+          }
+        }
+
         if (!include_ui_meta) {
           return(def)
         }
@@ -262,6 +303,35 @@ McpApp <- R6::R6Class(
         )
         def
       })
+    },
+
+    #' @description Get the extra resources declared for this app
+    #' Returns a named list (URI -> normalized spec with `uri`, `name`,
+    #' `description`, `mime_type`, `content_fn`, `meta`) for registration
+    #' alongside the app's main ui:// resource.
+    extra_resources = function() {
+      private$.resources
+    },
+
+    #' @description Read one extra resource by URI
+    #' Returns a `resources/read` contents entry (`uri`, `mimeType`, `text`,
+    #' optional `_meta`). Errors with class `shinymcp_error_resource` when
+    #' the URI is not a declared extra resource.
+    #' @param uri The resource URI to read
+    read_extra_resource = function(uri) {
+      spec <- private$.resources[[uri]]
+      if (is.null(spec)) {
+        shinymcp_error_resource(
+          cli::format_inline("Resource not found: {.val {uri}}"),
+          uri = uri
+        )
+      }
+      compact_list(list(
+        uri = spec$uri,
+        mimeType = spec$mime_type,
+        text = spec$content_fn(),
+        `_meta` = spec$meta
+      ))
     },
 
     #' @description Get the `_meta` for this app's ui:// resource
@@ -336,6 +406,41 @@ McpApp <- R6::R6Class(
     .tool_visibility = NULL,
     .trigger = NULL,
     .debounce_ms = NULL,
+    .resources = list(),
+    .tool_outputs = NULL,
+    .ui_outputs = NULL,
+
+    # Scan the rendered UI for output elements and their declared types.
+    # Returns a named character vector: output id -> type. Cached.
+    scan_ui_outputs = function() {
+      if (!is.null(private$.ui_outputs)) {
+        return(private$.ui_outputs)
+      }
+      html <- htmltools::renderTags(private$.ui)$html
+      result <- character(0)
+      # Match each element carrying data-shinymcp-output, then pull the
+      # type attribute out of the same tag.
+      starts <- gregexpr("<[^>]*data-shinymcp-output=\"[^\"]*\"[^>]*>", html)[[1]]
+      if (starts[1] != -1) {
+        lengths <- attr(starts, "match.length")
+        for (i in seq_along(starts)) {
+          tag <- substr(html, starts[i], starts[i] + lengths[i] - 1)
+          id <- sub(
+            '.*data-shinymcp-output="([^"]*)".*',
+            "\\1",
+            tag
+          )
+          type <- if (grepl('data-shinymcp-output-type="', tag, fixed = TRUE)) {
+            sub('.*data-shinymcp-output-type="([^"]*)".*', "\\1", tag)
+          } else {
+            "text"
+          }
+          result[[id]] <- type
+        }
+      }
+      private$.ui_outputs <- result
+      result
+    },
 
     # Inline HTML dependencies as <style> and <script> tags.
     inline_dependencies = function(deps) {
@@ -508,6 +613,19 @@ McpApp <- R6::R6Class(
 #'   (default) or `"change"`. `"submit"`/`"manual"` only apply inside
 #'   shinymcp's own Shiny host.
 #' @param debounce_ms Debounce interval in milliseconds (default 250).
+#' @param resources Optional named list of extra resources served alongside
+#'   the app, readable from the UI via `window.shinymcp.readResource(uri)`.
+#'   Names are URIs; values are a string (static content), a function
+#'   returning a string (evaluated on each read --- useful for lazy-loading
+#'   data instead of inlining it into the app HTML), or a list with fields
+#'   `content`, `mime_type` (default `"text/plain"`), `name`, `description`,
+#'   and `meta`. For example:
+#'   `resources = list("ui://my-app/data" = list(content = function() jsonlite::toJSON(mtcars), mime_type = "application/json"))`
+#' @param tool_outputs Optional named list mapping tool names to the output
+#'   ids they return, e.g. `list(explore = c("scatter", "stats"))`. Declared
+#'   tools get an auto-generated `outputSchema` (all properties are strings,
+#'   with descriptions derived from the matching UI output types). Only
+#'   declare tools that return a named list keyed by those output ids.
 #' @param ... Additional arguments passed to `McpApp$new()`
 #' @return An [McpApp] object
 #' @export
@@ -523,6 +641,8 @@ mcp_app <- function(
   tool_visibility = NULL,
   trigger = NULL,
   debounce_ms = NULL,
+  resources = NULL,
+  tool_outputs = NULL,
   ...
 ) {
   McpApp$new(
@@ -537,6 +657,8 @@ mcp_app <- function(
     tool_visibility = tool_visibility,
     trigger = trigger,
     debounce_ms = debounce_ms,
+    resources = resources,
+    tool_outputs = tool_outputs,
     ...
   )
 }

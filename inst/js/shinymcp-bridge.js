@@ -836,6 +836,12 @@
     },
     // Push structured content into the model's context for future turns.
     updateModelContext: updateModelContext,
+    // Read a server resource through the host. Resolves with the
+    // resources/read result: { contents: [{ uri, mimeType, text }] }.
+    // Useful for lazy-loading data declared via mcp_app(resources = ).
+    readResource: function (uri) {
+      return sendRequest("resources/read", { uri: uri });
+    },
     // Ask the host to open an external URL.
     openLink: function (url) {
       return sendRequest("ui/open-link", { url: url });

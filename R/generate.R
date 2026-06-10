@@ -28,7 +28,7 @@ generate_mcp_app <- function(analysis, ir, output_dir) {
   writeLines(server_code, file.path(output_dir, "server.R"))
 
   # Generate app.R that ties it together
-  app_code <- generate_app_entry(ir)
+  app_code <- generate_app_entry(ir, analysis)
   writeLines(app_code, file.path(output_dir, "app.R"))
 
   # Write conversion notes for complex apps
@@ -335,10 +335,48 @@ generate_server <- function(tool_groups) {
 #' Generate app.R that ties everything together
 #'
 #' @param ir The ShinyAppIR object
+#' @param analysis Optional ReactiveAnalysis; when provided, a commented
+#'   `tool_outputs` mapping is emitted for the user to enable once the
+#'   placeholder tool bodies return named lists keyed by output ids.
 #' @return Character string of R code
 #' @noRd
-generate_app_entry <- function(ir) {
+generate_app_entry <- function(ir, analysis = NULL) {
   app_name <- basename(ir$path)
+
+  # Suggested tool_outputs mapping (commented out: the scaffolded tool
+  # bodies return placeholder strings, and declaring an outputSchema is only
+  # valid once tools return named lists keyed by these output ids).
+  tool_output_lines <- character()
+  if (!is.null(analysis)) {
+    mappings <- character()
+    for (group in analysis$tool_groups) {
+      output_ids <- vapply(
+        group$output_targets,
+        function(o) o$id,
+        character(1)
+      )
+      if (length(output_ids) > 0) {
+        mappings <- c(
+          mappings,
+          sprintf(
+            "#     %s = c(%s)",
+            group$name,
+            paste0('"', output_ids, '"', collapse = ", ")
+          )
+        )
+      }
+    }
+    if (length(mappings) > 0) {
+      mappings <- paste0(mappings, c(rep(",", length(mappings) - 1), ""))
+      tool_output_lines <- c(
+        "  # Once each tool returns a named list keyed by these output ids,",
+        "  # uncomment tool_outputs to publish an outputSchema per tool:",
+        "  # , tool_outputs = list(",
+        paste0("  ", mappings),
+        "  #   )"
+      )
+    }
+  }
 
   lines <- c(
     "# Generated MCP App",
@@ -353,7 +391,12 @@ generate_app_entry <- function(ir) {
     'source("ui.R", local = TRUE)',
     "",
     "# Create MCP App",
-    sprintf('app <- mcp_app(ui = ui, tools = tools, name = "%s")', app_name),
+    "app <- mcp_app(",
+    "  ui = ui,",
+    "  tools = tools,",
+    sprintf('  name = "%s"', app_name),
+    tool_output_lines,
+    ")",
     "",
     "serve(app)"
   )

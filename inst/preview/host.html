@@ -215,6 +215,22 @@ iframe {
         return result;
       });
     },
+    readResource: function (request) {
+      log("in", "resources/read", request.uri);
+      return fetch("/resource", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uri: request.uri })
+      }).then(function (res) {
+        return res.json();
+      }).then(function (result) {
+        if (result && result.error) {
+          throw new Error(result.error);
+        }
+        log("out", "resources/read", request.uri);
+        return result;
+      });
+    },
     onNotification: function (method, params) {
       log("in", method, "notification");
       if (

@@ -35,6 +35,18 @@ serve <- function(app, type = c("stdio", "http"), port = 8080, ...) {
     meta = app$resource_meta()
   )
 
+  # Register any extra resources declared via mcp_app(resources = )
+  for (res in app$extra_resources()) {
+    registry$register(
+      uri = res$uri,
+      name = res$name,
+      description = res$description,
+      mime_type = res$mime_type,
+      content_fn = res$content_fn,
+      meta = res$meta
+    )
+  }
+
   switch(
     type,
     stdio = serve_stdio(app, registry),
@@ -115,53 +127,98 @@ serve_http <- function(app, registry, port) {
 
   cli::cli_inform("shinymcp: serving over HTTP on port {port}")
 
-  session <- new_mcp_session()
+  sessions <- new.env(parent = emptyenv())
 
   httpuv::runServer(
     host = "127.0.0.1",
     port = port,
     app = list(
       call = function(req) {
-        # Only accept POST requests
-        if (!identical(req$REQUEST_METHOD, "POST")) {
-          return(list(
-            status = 405L,
-            headers = list("Content-Type" = "application/json"),
-            body = to_json(jsonrpc_error(NULL, -32600, "Only POST allowed"))
-          ))
-        }
+        handle_http_request(req, app, registry, sessions)
+      }
+    )
+  )
+}
 
-        body <- paste(req$rook.input$read_lines(), collapse = "\n")
+#' Handle a single MCP-over-HTTP request
+#'
+#' Implements basic streamable-HTTP session management: the server assigns
+#' an `Mcp-Session-Id` on `initialize` and keys per-client session state
+#' (protocol version, UI capability) by that header on subsequent requests,
+#' so multiple clients don't clobber each other's capability negotiation.
+#' Clients that never send the header share a fallback session, preserving
+#' the old single-client behavior. `DELETE` terminates a session.
+#'
+#' @param req A Rook request object.
+#' @param app McpApp object
+#' @param registry ResourceRegistry object
+#' @param sessions Environment mapping session id -> session state
+#' @return A Rook response list.
+#' @noRd
+handle_http_request <- function(req, app, registry, sessions) {
+  http_method <- req$REQUEST_METHOD
+  client_sid <- req$HTTP_MCP_SESSION_ID
 
-        message <- tryCatch(from_json(body), error = function(e) NULL)
-        if (is.null(message)) {
-          response <- jsonrpc_error(NULL, -32700, "Parse error: invalid JSON")
-        } else {
-          response <- tryCatch(
-            dispatch_message(message, app, registry, session),
-            error = function(e) {
-              cli::cli_alert_danger("Internal error: {e$message}")
-              jsonrpc_error(
-                message$id,
-                -32603,
-                paste("Internal error:", e$message)
-              )
-            }
-          )
-        }
+  if (identical(http_method, "DELETE")) {
+    if (!is.null(client_sid) && !is.null(sessions[[client_sid]])) {
+      rm(list = client_sid, envir = sessions)
+    }
+    return(list(status = 204L, headers = list(), body = ""))
+  }
 
-        # Notifications return 204
-        if (is.null(response)) {
-          return(list(status = 204L, headers = list(), body = ""))
-        }
+  if (!identical(http_method, "POST")) {
+    return(list(
+      status = 405L,
+      headers = list("Content-Type" = "application/json"),
+      body = to_json(jsonrpc_error(NULL, -32600, "Only POST allowed"))
+    ))
+  }
 
-        list(
-          status = 200L,
-          headers = list("Content-Type" = "application/json"),
-          body = to_json(response)
+  body <- paste(req$rook.input$read_lines(), collapse = "\n")
+
+  message <- tryCatch(from_json(body), error = function(e) NULL)
+  is_initialize <- !is.null(message) && identical(message$method, "initialize")
+
+  # Resolve the session: explicit header wins; initialize without a header
+  # starts a fresh session and gets its id back in the response headers.
+  sid <- client_sid %||%
+    (if (is_initialize) unique_id("mcp-session") else "__default__")
+  session <- sessions[[sid]]
+  if (is.null(session)) {
+    session <- new_mcp_session()
+    sessions[[sid]] <- session
+  }
+
+  if (is.null(message)) {
+    response <- jsonrpc_error(NULL, -32700, "Parse error: invalid JSON")
+  } else {
+    response <- tryCatch(
+      dispatch_message(message, app, registry, session),
+      error = function(e) {
+        cli::cli_alert_danger("Internal error: {e$message}")
+        jsonrpc_error(
+          message$id,
+          -32603,
+          paste("Internal error:", e$message)
         )
       }
     )
+  }
+
+  # Notifications return 204
+  if (is.null(response)) {
+    return(list(status = 204L, headers = list(), body = ""))
+  }
+
+  headers <- list("Content-Type" = "application/json")
+  if (is_initialize) {
+    headers[["Mcp-Session-Id"]] <- sid
+  }
+
+  list(
+    status = 200L,
+    headers = headers,
+    body = to_json(response)
   )
 }
 

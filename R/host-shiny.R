@@ -205,6 +205,19 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
             )
           )
         }
+        if (identical(event$method, "resources/read")) {
+          session$sendCustomMessage(
+            "shinymcp-host-response",
+            list(
+              instanceId = instance_id,
+              requestId = event$requestId,
+              error = paste(
+                "No active shinymcp host instance found for",
+                instance_id
+              )
+            )
+          )
+        }
         return()
       }
 
@@ -233,6 +246,21 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
             instanceId = instance_id,
             requestId = event$requestId,
             result = result
+          )
+        )
+        return()
+      }
+
+      if (identical(method, "resources/read")) {
+        response <- tryCatch(
+          list(result = mcp_host_read_resource(state, params$uri)),
+          error = function(e) list(error = conditionMessage(e))
+        )
+        session$sendCustomMessage(
+          "shinymcp-host-response",
+          c(
+            list(instanceId = instance_id, requestId = event$requestId),
+            response
           )
         )
         return()

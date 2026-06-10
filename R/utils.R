@@ -204,6 +204,121 @@ csp_to_meta <- function(csp) {
   out
 }
 
+#' Normalize user-supplied extra resources for an McpApp
+#'
+#' Accepts a named list (URI -> spec) where each spec is a string (static
+#' content), a function returning a string, or a list with `content`,
+#' `mime_type`, `name`, `description`, and `meta` fields. Returns a named
+#' list of normalized specs with `uri`, `name`, `description`, `mime_type`,
+#' `content_fn`, and `meta`.
+#'
+#' @param resources Named list of resource specs, or NULL.
+#' @noRd
+normalize_extra_resources <- function(resources) {
+  if (is.null(resources)) {
+    return(list())
+  }
+  if (
+    !is.list(resources) ||
+      is.null(names(resources)) ||
+      any(!nzchar(names(resources)))
+  ) {
+    rlang::abort(
+      "`resources` must be a fully named list (URI -> content).",
+      class = "shinymcp_error_validation"
+    )
+  }
+
+  out <- list()
+  for (uri in names(resources)) {
+    spec <- resources[[uri]]
+
+    if (is.function(spec)) {
+      spec <- list(content = spec)
+    } else if (is.character(spec) && length(spec) == 1) {
+      spec <- list(content = spec)
+    } else if (!is.list(spec)) {
+      rlang::abort(
+        cli::format_inline(
+          "Resource {.val {uri}} must be a string, a function, or a list with a {.field content} field."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+
+    content <- spec$content
+    content_fn <- if (is.function(content)) {
+      content
+    } else if (is.character(content) && length(content) == 1) {
+      local({
+        static <- content
+        function() static
+      })
+    } else {
+      rlang::abort(
+        cli::format_inline(
+          "Resource {.val {uri}} needs {.field content} as a single string or a function returning one."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+
+    out[[uri]] <- list(
+      uri = uri,
+      name = spec$name %||% uri,
+      description = spec$description %||% "",
+      mime_type = spec$mime_type %||% "text/plain",
+      content_fn = content_fn,
+      meta = spec$meta
+    )
+  }
+  out
+}
+
+#' Build an outputSchema from declared output ids and scanned UI types
+#'
+#' All shinymcp structured outputs travel as strings (text, HTML fragments,
+#' base64 PNGs), so every property is `type: "string"` with a description
+#' derived from the output's UI type.
+#'
+#' @param output_ids Character vector of output ids the tool returns.
+#' @param ui_output_types Named character vector mapping output id -> UI type
+#'   (`"text"`, `"plot"`, `"table"`, `"html"`), as scanned from the UI.
+#' @noRd
+build_output_schema <- function(output_ids, ui_output_types = character(0)) {
+  if (length(output_ids) == 0) {
+    return(NULL)
+  }
+  descriptions <- c(
+    text = "Text content for output '%s'",
+    plot = "Base64-encoded PNG image for output '%s'",
+    table = "HTML table markup for output '%s'",
+    html = "HTML markup for output '%s'"
+  )
+  properties <- list()
+  for (id in output_ids) {
+    type <- if (id %in% names(ui_output_types)) {
+      ui_output_types[[id]]
+    } else {
+      NA_character_
+    }
+    template <- if (!is.na(type) && type %in% names(descriptions)) {
+      descriptions[[type]]
+    } else {
+      "Value for output '%s'"
+    }
+    properties[[id]] <- list(
+      type = "string",
+      description = sprintf(template, id)
+    )
+  }
+  list(
+    type = "object",
+    properties = properties,
+    required = as.list(output_ids)
+  )
+}
+
 #' Format an R tool result into the MCP tool-result shape
 #'
 #' Used by both the MCP server (`serve.R`) and the preview host (`preview.R`)

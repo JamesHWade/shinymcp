@@ -127,15 +127,28 @@ mcp_host_call_tool <- function(state, tool_name, arguments = list()) {
 
 #' Read a resource through a host state
 #'
+#' Returns a spec-shaped `resources/read` result (`contents` array) for the
+#' app's own ui:// resource or any extra resource declared via
+#' `mcp_app(resources = )`.
+#'
 #' @param state A host state environment.
 #' @param uri Resource URI.
-#' @return The resource payload.
+#' @return A list with a `contents` entry.
 #' @noRd
 mcp_host_read_resource <- function(state, uri) {
-  if (!identical(uri, state$app$resource_uri())) {
-    shinymcp_error_resource("Unknown resource URI", uri = uri)
+  if (identical(uri, state$app$resource_uri())) {
+    return(list(
+      contents = list(compact_list(list(
+        uri = uri,
+        mimeType = SHINYMCP_UI_MIME_TYPE,
+        text = state$app$html_resource(
+          bridge_config = mcp_host_bridge_config(state)
+        ),
+        `_meta` = state$app$resource_meta()
+      )))
+    ))
   }
-  state$app$html_resource(bridge_config = mcp_host_bridge_config(state))
+  list(contents = list(state$app$read_extra_resource(uri)))
 }
 
 #' Update the most recent model context seen by a host instance

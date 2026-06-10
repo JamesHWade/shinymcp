@@ -282,6 +282,14 @@
       });
     }
 
+    function respondError(id, code, message) {
+      postToIframe({
+        jsonrpc: "2.0",
+        id: id,
+        error: { code: code, message: message },
+      });
+    }
+
     function notify(method, params) {
       var message = {
         jsonrpc: "2.0",
@@ -359,6 +367,34 @@
         respond(message.id, {
           mode: isFullscreen() ? "fullscreen" : "inline",
         });
+        return;
+      }
+
+      if (message.method === "resources/read") {
+        if (typeof options.readResource !== "function") {
+          respondError(
+            message.id,
+            -32601,
+            "resources/read is not supported by this host"
+          );
+          return;
+        }
+        Promise.resolve(
+          options.readResource(
+            { requestId: message.id, uri: params.uri },
+            host
+          )
+        )
+          .then(function (result) {
+            respond(message.id, result);
+          })
+          ["catch"](function (err) {
+            respondError(
+              message.id,
+              -32002,
+              err && err.message ? err.message : String(err)
+            );
+          });
         return;
       }
 
@@ -577,6 +613,25 @@
     });
   }
 
+  function readResourceViaShiny(request, host) {
+    return new Promise(function (resolve, reject) {
+      if (!hasShiny()) {
+        reject(new Error("Shiny is not available for shinymcp host transport"));
+        return;
+      }
+
+      var key = hostKey(host.config.instanceId, request.requestId);
+      pendingToolCalls[key] = { resolve: resolve, reject: reject };
+
+      sendHostEvent({
+        instanceId: host.config.instanceId,
+        method: "resources/read",
+        requestId: request.requestId,
+        params: { uri: request.uri },
+      });
+    });
+  }
+
   function initContainer(container) {
     if (!container) return;
 
@@ -624,6 +679,7 @@
         };
       },
       callTool: callToolViaShiny,
+      readResource: readResourceViaShiny,
       onNotification: function (method, params) {
         sendHostEvent({
           instanceId: config.instanceId,
@@ -739,6 +795,10 @@
       var pending = pendingToolCalls[key];
       if (!pending) return;
       delete pendingToolCalls[key];
+      if (msg.error) {
+        pending.reject(new Error(msg.error));
+        return;
+      }
       pending.resolve(msg.result || {});
     });
 

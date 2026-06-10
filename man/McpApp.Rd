@@ -29,6 +29,8 @@ annotated with resource URIs for MCP consumption.
 \item \href{#method-McpApp-html_resource}{\code{McpApp$html_resource()}}
 \item \href{#method-McpApp-mcp_tools}{\code{McpApp$mcp_tools()}}
 \item \href{#method-McpApp-tool_definitions}{\code{McpApp$tool_definitions()}}
+\item \href{#method-McpApp-extra_resources}{\code{McpApp$extra_resources()}}
+\item \href{#method-McpApp-read_extra_resource}{\code{McpApp$read_extra_resource()}}
 \item \href{#method-McpApp-resource_meta}{\code{McpApp$resource_meta()}}
 \item \href{#method-McpApp-call_tool}{\code{McpApp$call_tool()}}
 \item \href{#method-McpApp-resource_uri}{\code{McpApp$resource_uri()}}
@@ -53,7 +55,9 @@ Create a new McpApp
   prefers_border = NULL,
   tool_visibility = NULL,
   trigger = NULL,
-  debounce_ms = NULL
+  debounce_ms = NULL,
+  resources = NULL,
+  tool_outputs = NULL
 )}\if{html}{\out{</div>}}
 }
 
@@ -98,6 +102,18 @@ should not call. Default (unset) is both.}
 Shiny host, which provides Apply/Run buttons.}
 
 \item{\code{debounce_ms}}{Debounce interval in milliseconds (default 250).}
+
+\item{\code{resources}}{Optional named list of extra resources served
+alongside the app. Names are URIs; values are a string (static
+content), a function returning a string (evaluated on each read,
+useful for lazy-loading data into the UI via
+\code{window.shinymcp.readResource()}), or a list with fields \code{content}
+(string or function), \code{mime_type}, \code{name}, \code{description}, \code{meta}.}
+
+\item{\code{tool_outputs}}{Optional named list mapping tool names to the
+output ids they return (e.g. \code{list(explore = c("scatter", "stats"))}).
+Used to generate an \code{outputSchema} for each tool. Only declare this
+for tools that return a named list keyed by those output ids.}
 }
 \if{html}{\out{</div>}}
 }
@@ -152,6 +168,39 @@ UI resource, which tells MCP Apps-capable hosts to render the UI.
 \item{\code{include_ui_meta}}{Whether to attach \verb{_meta.ui} to each tool.
 Set to \code{FALSE} for clients that did not advertise the MCP Apps
 extension capability, so tools degrade gracefully to text-only.}
+}
+\if{html}{\out{</div>}}
+}
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-extra_resources"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-extra_resources}{}}}
+\subsection{Method \code{extra_resources()}}{
+Get the extra resources declared for this app
+Returns a named list (URI -> normalized spec with \code{uri}, \code{name},
+\code{description}, \code{mime_type}, \code{content_fn}, \code{meta}) for registration
+alongside the app's main ui:// resource.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$extra_resources()}\if{html}{\out{</div>}}
+}
+
+}
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-read_extra_resource"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-read_extra_resource}{}}}
+\subsection{Method \code{read_extra_resource()}}{
+Read one extra resource by URI
+Returns a \code{resources/read} contents entry (\code{uri}, \code{mimeType}, \code{text},
+optional \verb{_meta}). Errors with class \code{shinymcp_error_resource} when
+the URI is not a declared extra resource.
+\subsection{Usage}{
+\if{html}{\out{<div class="r">}}\preformatted{McpApp$read_extra_resource(uri)}\if{html}{\out{</div>}}
+}
+
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{uri}}{The resource URI to read}
 }
 \if{html}{\out{</div>}}
 }

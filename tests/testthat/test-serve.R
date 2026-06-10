@@ -27,6 +27,16 @@ make_test_registry <- function(app) {
     content_fn = function() app$html_resource(),
     meta = app$resource_meta()
   )
+  for (res in app$extra_resources()) {
+    registry$register(
+      uri = res$uri,
+      name = res$name,
+      description = res$description,
+      mime_type = res$mime_type,
+      content_fn = res$content_fn,
+      meta = res$meta
+    )
+  }
   registry
 }
 
@@ -326,4 +336,315 @@ test_that("trigger and debounce_ms flow into the embedded bridge config", {
 
 test_that("invalid trigger is rejected", {
   expect_error(make_test_app(trigger = "sometimes"))
+})
+
+# ---- Extra resources ----
+
+test_that("extra resources are listed and readable", {
+  app <- make_test_app(
+    resources = list(
+      "ui://serve-test/data" = list(
+        content = function() '{"a":1}',
+        mime_type = "application/json",
+        description = "Lazy data"
+      ),
+      "ui://serve-test/readme" = "hello"
+    )
+  )
+  registry <- make_test_registry(app)
+
+  listed <- dispatch_message(
+    list(jsonrpc = "2.0", id = 1, method = "resources/list"),
+    app,
+    registry
+  )
+  uris <- vapply(listed$result$resources, function(r) r$uri, character(1))
+  expect_setequal(
+    uris,
+    c("ui://serve-test", "ui://serve-test/data", "ui://serve-test/readme")
+  )
+
+  read <- dispatch_message(
+    list(
+      jsonrpc = "2.0",
+      id = 2,
+      method = "resources/read",
+      params = list(uri = "ui://serve-test/data")
+    ),
+    app,
+    registry
+  )
+  contents <- read$result$contents[[1]]
+  expect_equal(contents$mimeType, "application/json")
+  expect_equal(contents$text, '{"a":1}')
+
+  # Static string shorthand defaults to text/plain
+  static <- app$read_extra_resource("ui://serve-test/readme")
+  expect_equal(static$mimeType, "text/plain")
+  expect_equal(static$text, "hello")
+})
+
+test_that("read_extra_resource errors for unknown URIs", {
+  app <- make_test_app()
+  expect_error(
+    app$read_extra_resource("ui://serve-test/nope"),
+    class = "shinymcp_error_resource"
+  )
+})
+
+test_that("invalid resources specs are rejected", {
+  expect_error(
+    make_test_app(resources = list("ui://x" = 42)),
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    make_test_app(resources = list(list(content = "x"))),
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    make_test_app(resources = list("ui://x" = list(content = 1:3))),
+    class = "shinymcp_error_validation"
+  )
+})
+
+test_that("function resources are evaluated lazily on each read", {
+  counter <- 0
+  app <- make_test_app(
+    resources = list(
+      "ui://serve-test/count" = function() {
+        counter <<- counter + 1
+        as.character(counter)
+      }
+    )
+  )
+  expect_equal(counter, 0)
+  expect_equal(app$read_extra_resource("ui://serve-test/count")$text, "1")
+  expect_equal(app$read_extra_resource("ui://serve-test/count")$text, "2")
+})
+
+# ---- outputSchema generation ----
+
+test_that("tool_outputs generates an outputSchema with UI-derived descriptions", {
+  app <- McpApp$new(
+    ui = htmltools::tagList(
+      mcp_plot("scatter"),
+      mcp_text("stats")
+    ),
+    tools = list(
+      list(
+        name = "explore",
+        description = "Explore",
+        inputSchema = list(
+          type = "object",
+          properties = list(species = list(type = "string"))
+        ),
+        fun = function(species) list(scatter = "...", stats = "...")
+      )
+    ),
+    name = "schema-test",
+    tool_outputs = list(explore = c("scatter", "stats"))
+  )
+
+  defs <- app$tool_definitions()
+  schema <- defs[[1]]$outputSchema
+  expect_equal(schema$type, "object")
+  expect_equal(schema$properties$scatter$type, "string")
+  expect_match(schema$properties$scatter$description, "Base64-encoded PNG")
+  expect_match(schema$properties$stats$description, "Text content")
+  expect_setequal(unlist(schema$required), c("scatter", "stats"))
+})
+
+test_that("tools without tool_outputs get no outputSchema", {
+  app <- make_test_app()
+  defs <- app$tool_definitions()
+  expect_null(defs[[1]]$outputSchema)
+})
+
+test_that("build_output_schema falls back for outputs not in the UI", {
+  schema <- build_output_schema("mystery", c(known = "text"))
+  expect_match(schema$properties$mystery$description, "Value for output")
+  expect_null(build_output_schema(character(0)))
+})
+
+test_that("invalid tool_outputs is rejected", {
+  expect_error(
+    make_test_app(tool_outputs = list(echo = 1:3)),
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    make_test_app(tool_outputs = c("out")),
+    class = "shinymcp_error_validation"
+  )
+})
+
+# ---- HTTP session management ----
+
+fake_http_req <- function(body = NULL, method = "POST", session_id = NULL) {
+  req <- list(
+    REQUEST_METHOD = method,
+    HTTP_MCP_SESSION_ID = session_id,
+    rook.input = list(
+      read_lines = function() if (is.null(body)) character(0) else body
+    )
+  )
+  req
+}
+
+init_body <- function(with_ui = FALSE) {
+  capabilities <- if (with_ui) {
+    list(
+      extensions = list(
+        "io.modelcontextprotocol/ui" = list(
+          mimeTypes = list("text/html;profile=mcp-app")
+        )
+      )
+    )
+  } else {
+    list()
+  }
+  as.character(to_json(list(
+    jsonrpc = "2.0",
+    id = 1,
+    method = "initialize",
+    params = list(
+      protocolVersion = "2025-06-18",
+      capabilities = capabilities
+    )
+  )))
+}
+
+tools_list_body <- function() {
+  as.character(to_json(list(jsonrpc = "2.0", id = 2, method = "tools/list")))
+}
+
+test_that("initialize assigns an Mcp-Session-Id header", {
+  app <- make_test_app()
+  registry <- make_test_registry(app)
+  sessions <- new.env(parent = emptyenv())
+
+  response <- handle_http_request(
+    fake_http_req(init_body()),
+    app,
+    registry,
+    sessions
+  )
+  expect_equal(response$status, 200L)
+  sid <- response$headers[["Mcp-Session-Id"]]
+  expect_true(is.character(sid) && nzchar(sid))
+  expect_false(is.null(sessions[[sid]]))
+
+  # Non-initialize responses don't carry the header
+  follow_up <- handle_http_request(
+    fake_http_req(tools_list_body(), session_id = sid),
+    app,
+    registry,
+    sessions
+  )
+  expect_null(follow_up$headers[["Mcp-Session-Id"]])
+})
+
+test_that("HTTP sessions isolate capability negotiation per client", {
+  app <- make_test_app()
+  registry <- make_test_registry(app)
+  sessions <- new.env(parent = emptyenv())
+
+  resp_ui <- handle_http_request(
+    fake_http_req(init_body(with_ui = TRUE)),
+    app,
+    registry,
+    sessions
+  )
+  sid_ui <- resp_ui$headers[["Mcp-Session-Id"]]
+
+  resp_plain <- handle_http_request(
+    fake_http_req(init_body(with_ui = FALSE)),
+    app,
+    registry,
+    sessions
+  )
+  sid_plain <- resp_plain$headers[["Mcp-Session-Id"]]
+  expect_false(identical(sid_ui, sid_plain))
+
+  tools_ui <- from_json(handle_http_request(
+    fake_http_req(tools_list_body(), session_id = sid_ui),
+    app,
+    registry,
+    sessions
+  )$body)
+  tools_plain <- from_json(handle_http_request(
+    fake_http_req(tools_list_body(), session_id = sid_plain),
+    app,
+    registry,
+    sessions
+  )$body)
+
+  expect_false(is.null(tools_ui$result$tools[[1]][["_meta"]]))
+  expect_null(tools_plain$result$tools[[1]][["_meta"]])
+})
+
+test_that("DELETE terminates an HTTP session", {
+  app <- make_test_app()
+  registry <- make_test_registry(app)
+  sessions <- new.env(parent = emptyenv())
+
+  sid <- handle_http_request(
+    fake_http_req(init_body(with_ui = FALSE)),
+    app,
+    registry,
+    sessions
+  )$headers[["Mcp-Session-Id"]]
+  expect_false(is.null(sessions[[sid]]))
+
+  deleted <- handle_http_request(
+    fake_http_req(method = "DELETE", session_id = sid),
+    app,
+    registry,
+    sessions
+  )
+  expect_equal(deleted$status, 204L)
+  expect_null(sessions[[sid]])
+
+  # A fresh session under the old id falls back to lenient defaults
+  tools <- from_json(handle_http_request(
+    fake_http_req(tools_list_body(), session_id = sid),
+    app,
+    registry,
+    sessions
+  )$body)
+  expect_false(is.null(tools$result$tools[[1]][["_meta"]]))
+})
+
+test_that("non-POST methods other than DELETE are rejected", {
+  app <- make_test_app()
+  registry <- make_test_registry(app)
+  sessions <- new.env(parent = emptyenv())
+
+  response <- handle_http_request(
+    fake_http_req(method = "GET"),
+    app,
+    registry,
+    sessions
+  )
+  expect_equal(response$status, 405L)
+})
+
+# ---- Host-side resources/read ----
+
+test_that("mcp_host_read_resource serves the app and extra resources", {
+  app <- make_test_app(
+    resources = list("ui://serve-test/data" = "payload")
+  )
+  state <- new_mcp_host_state(app, instance_id = "test-instance")
+
+  own <- mcp_host_read_resource(state, "ui://serve-test")
+  expect_equal(own$contents[[1]]$mimeType, SHINYMCP_UI_MIME_TYPE)
+  expect_match(own$contents[[1]]$text, "<!DOCTYPE html>")
+
+  extra <- mcp_host_read_resource(state, "ui://serve-test/data")
+  expect_equal(extra$contents[[1]]$text, "payload")
+
+  expect_error(
+    mcp_host_read_resource(state, "ui://other"),
+    class = "shinymcp_error_resource"
+  )
 })

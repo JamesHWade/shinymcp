@@ -16,6 +16,8 @@ mcp_app(
   tool_visibility = NULL,
   trigger = NULL,
   debounce_ms = NULL,
+  resources = NULL,
+  tool_outputs = NULL,
   ...
 )
 }
@@ -65,6 +67,21 @@ tools are visible to both.}
 shinymcp's own Shiny host.}
 
 \item{debounce_ms}{Debounce interval in milliseconds (default 250).}
+
+\item{resources}{Optional named list of extra resources served alongside
+the app, readable from the UI via \code{window.shinymcp.readResource(uri)}.
+Names are URIs; values are a string (static content), a function
+returning a string (evaluated on each read --- useful for lazy-loading
+data instead of inlining it into the app HTML), or a list with fields
+\code{content}, \code{mime_type} (default \code{"text/plain"}), \code{name}, \code{description},
+and \code{meta}. For example:
+\code{resources = list("ui://my-app/data" = list(content = function() jsonlite::toJSON(mtcars), mime_type = "application/json"))}}
+
+\item{tool_outputs}{Optional named list mapping tool names to the output
+ids they return, e.g. \code{list(explore = c("scatter", "stats"))}. Declared
+tools get an auto-generated \code{outputSchema} (all properties are strings,
+with descriptions derived from the matching UI output types). Only
+declare tools that return a named list keyed by those output ids.}
 
 \item{...}{Additional arguments passed to \code{McpApp$new()}}
 }

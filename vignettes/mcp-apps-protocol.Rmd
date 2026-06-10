@@ -92,7 +92,9 @@ Two messages in that flow do the heavy lifting for the AI experience:
 | Tool `_meta.ui.resourceUri` | ✅ (plus deprecated flat `ui/resourceUri` alias) |
 | Tool `_meta.ui.visibility` (`"model"` / `"app"` scoping) | ✅ via `mcp_app(tool_visibility = )` |
 | Resource `_meta.ui.csp` / `permissions` / `prefersBorder` | ✅ via `mcp_app(csp = , permissions = , prefers_border = )` |
-| `tools` `outputSchema` | ✅ pass-through for plain-list tools |
+| `tools` `outputSchema` | ✅ generated via `mcp_app(tool_outputs = )`, or pass-through for plain-list tools |
+| Extra (non-UI) resources | ✅ via `mcp_app(resources = )` |
+| Streamable HTTP session management (`Mcp-Session-Id`) | ✅ assigned on `initialize`, `DELETE` terminates |
 | List pagination (`cursor`) | ❌ not needed for single-app servers |
 | `resources/subscribe`, `listChanged` notifications | ❌ |
 
@@ -109,7 +111,7 @@ Two messages in that flow do the heavy lifting for the AI experience:
 | JSON-RPC error responses surfaced to callers | ✅ |
 | Host context: `theme` → `data-bs-theme`, `locale`, `styles.variables` | ✅ applied automatically |
 | `ui/open-link`, `ui/message`, `ui/request-display-mode`, `notifications/message` | ✅ exposed via `window.shinymcp` (below) |
-| `resources/read` from the view | ❌ not yet |
+| `resources/read` from the view | ✅ `window.shinymcp.readResource(uri)` |
 
 ### Graceful degradation
 
@@ -178,6 +180,62 @@ Related declarations:
 - `permissions = list(camera = list())` for iframe permissions.
 - `prefers_border = TRUE` to hint the host should draw a frame.
 
+## Lazy-loading data with extra resources
+
+Inlining keeps apps CSP-proof, but it also means every byte ships in the
+initial HTML resource. For large datasets, declare them as **extra
+resources** and fetch them on demand from the iframe — the request flows
+through the host to your R process, so no CSP declaration is needed:
+
+```{r}
+app <- mcp_app(
+  ui,
+  tools,
+  name = "my-app",
+  resources = list(
+    "ui://my-app/data" = list(
+      content = function() jsonlite::toJSON(big_dataset),
+      mime_type = "application/json",
+      description = "Full dataset for client-side filtering"
+    )
+  )
+)
+```
+
+Function content is evaluated on every read (so it can reflect current
+state); plain strings are served as-is. In the app's JS:
+
+```js
+window.shinymcp.readResource("ui://my-app/data").then(function (result) {
+  var rows = JSON.parse(result.contents[0].text);
+  // render client-side
+});
+```
+
+This works in real chat hosts (which proxy `resources/read` natively), in
+shinymcp's Shiny host, and in `preview_app()`.
+
+## Tool output schemas
+
+Tools that return a named list keyed by output ids can publish an
+`outputSchema` so hosts and models know the result shape. Declare the
+mapping and shinymcp generates the schema, deriving property descriptions
+from the matching UI output types (plot outputs are documented as base64
+PNGs, tables as HTML markup, and so on):
+
+```{r}
+app <- mcp_app(
+  ui,
+  tools,
+  name = "my-app",
+  tool_outputs = list(explore = c("scatter", "stats"))
+)
+```
+
+Only declare tools whose results really match: per the MCP spec, a tool
+with an `outputSchema` MUST return conforming `structuredContent`, so
+shinymcp never guesses — undeclared tools simply omit the schema.
+
 ## Tool visibility: app-only and model-only tools
 
 By default every tool is visible to both the model and the rendered
@@ -205,6 +263,11 @@ bridge exposes a small global:
 ```js
 // Call a server tool and handle the result yourself
 window.shinymcp.callTool("get_data", { region: "EMEA" }).then(...)
+
+// Read a server resource (see "Lazy-loading data" below)
+window.shinymcp.readResource("ui://my-app/data").then(function (result) {
+  var data = JSON.parse(result.contents[0].text);
+});
 
 // Push state into the model's context for future turns
 window.shinymcp.updateModelContext({ selected_rows: [1, 5, 8] });
