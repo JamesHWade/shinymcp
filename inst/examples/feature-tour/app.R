@@ -25,7 +25,11 @@ library(htmltools)
 
 set.seed(42)
 regions <- c("North", "South", "East", "West")
-sales <- expand.grid(region = regions, month = month.abb, stringsAsFactors = FALSE)
+sales <- expand.grid(
+  region = regions,
+  month = month.abb,
+  stringsAsFactors = FALSE
+)
 sales$units <- round(runif(nrow(sales), 80, 240))
 sales$revenue <- round(sales$units * runif(nrow(sales), 90, 140))
 
@@ -258,12 +262,14 @@ tools <- list(
       rows <- apply(slice, 1, function(r) {
         sprintf("<tr><td>%s</td><td>%s</td><td>%s</td></tr>", r[1], r[2], r[3])
       })
-      list(detail = paste0(
-        "<table class='table table-sm'><thead><tr>",
-        "<th>Month</th><th>Units</th><th>Revenue</th></tr></thead><tbody>",
-        paste(rows, collapse = ""),
-        "</tbody></table>"
-      ))
+      list(
+        detail = paste0(
+          "<table class='table table-sm'><thead><tr>",
+          "<th>Month</th><th>Units</th><th>Revenue</th></tr></thead><tbody>",
+          paste(rows, collapse = ""),
+          "</tbody></table>"
+        )
+      )
     }
   )
 )

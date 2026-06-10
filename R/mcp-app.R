@@ -475,7 +475,11 @@ McpApp <- R6::R6Class(
       result <- character(0)
       # Match each element carrying data-shinymcp-output, then pull the
       # type attribute out of the same tag.
-      starts <- gregexpr("<[^>]*data-shinymcp-output=\"[^\"]*\"[^>]*>", html)[[1]]
+      matches <- gregexpr(
+        "<[^>]*data-shinymcp-output=\"[^\"]*\"[^>]*>",
+        html
+      )
+      starts <- matches[[1]]
       if (starts[1] != -1) {
         lengths <- attr(starts, "match.length")
         for (i in seq_along(starts)) {

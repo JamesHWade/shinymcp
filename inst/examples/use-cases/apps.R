@@ -405,7 +405,9 @@ shinymcp_revenue_forecaster <- function() {
     ui,
     list(tool),
     name = "revenue-scenario-board",
-    tool_outputs = list(forecast_revenue = c("summary", "forecast", "arr_plot")),
+    tool_outputs = list(
+      forecast_revenue = c("summary", "forecast", "arr_plot")
+    ),
     prefers_border = TRUE
   )
 }

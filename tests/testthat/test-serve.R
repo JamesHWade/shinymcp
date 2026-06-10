@@ -49,8 +49,14 @@ test_that("negotiate_protocol_version echoes supported client versions", {
 })
 
 test_that("negotiate_protocol_version falls back to latest for unknown versions", {
-  expect_equal(negotiate_protocol_version("1999-01-01"), SHINYMCP_PROTOCOL_VERSION)
-  expect_equal(negotiate_protocol_version("2099-01-01"), SHINYMCP_PROTOCOL_VERSION)
+  expect_equal(
+    negotiate_protocol_version("1999-01-01"),
+    SHINYMCP_PROTOCOL_VERSION
+  )
+  expect_equal(
+    negotiate_protocol_version("2099-01-01"),
+    SHINYMCP_PROTOCOL_VERSION
+  )
   expect_equal(negotiate_protocol_version(NULL), SHINYMCP_PROTOCOL_VERSION)
   expect_equal(negotiate_protocol_version(list()), SHINYMCP_PROTOCOL_VERSION)
 })
@@ -250,7 +256,10 @@ test_that("csp_to_meta converts snake_case keys and keeps arrays", {
     connect_domains = c("https://a.com", "https://b.com"),
     resource_domains = "https://cdn.com"
   ))
-  expect_equal(as.character(meta$connectDomains), c("https://a.com", "https://b.com"))
+  expect_equal(
+    as.character(meta$connectDomains),
+    c("https://a.com", "https://b.com")
+  )
   expect_equal(as.character(meta$resourceDomains), "https://cdn.com")
 
   # Arrays survive JSON serialization as arrays even when length 1
@@ -569,18 +578,22 @@ test_that("HTTP sessions isolate capability negotiation per client", {
   sid_plain <- resp_plain$headers[["Mcp-Session-Id"]]
   expect_false(identical(sid_ui, sid_plain))
 
-  tools_ui <- from_json(handle_http_request(
-    fake_http_req(tools_list_body(), session_id = sid_ui),
-    app,
-    registry,
-    sessions
-  )$body)
-  tools_plain <- from_json(handle_http_request(
-    fake_http_req(tools_list_body(), session_id = sid_plain),
-    app,
-    registry,
-    sessions
-  )$body)
+  tools_ui <- from_json(
+    handle_http_request(
+      fake_http_req(tools_list_body(), session_id = sid_ui),
+      app,
+      registry,
+      sessions
+    )$body
+  )
+  tools_plain <- from_json(
+    handle_http_request(
+      fake_http_req(tools_list_body(), session_id = sid_plain),
+      app,
+      registry,
+      sessions
+    )$body
+  )
 
   expect_false(is.null(tools_ui$result$tools[[1]][["_meta"]]$ui))
   expect_null(tools_plain$result$tools[[1]][["_meta"]]$ui)
@@ -653,12 +666,14 @@ test_that("header-less clients keep their negotiated session via __default__", {
   )
 
   # Follow-up without echoing the header still reflects that negotiation
-  tools <- from_json(handle_http_request(
-    fake_http_req(tools_list_body()),
-    app,
-    registry,
-    sessions
-  )$body)
+  tools <- from_json(
+    handle_http_request(
+      fake_http_req(tools_list_body()),
+      app,
+      registry,
+      sessions
+    )$body
+  )
   expect_null(tools$result$tools[[1]][["_meta"]]$ui)
 })
 
