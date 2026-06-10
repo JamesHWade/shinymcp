@@ -69,7 +69,7 @@ Host  -> View     ui/resource-teardown (before removing the iframe)
 View  <- Host     response, then cleanup
 ```
 
-Two messages in that flow do the heavy lifting for the AI experience:
+Two messages in that flow matter most:
 
 - **`ui/update-model-context`** pushes the UI's current state into the
   model's context. This is why the model "knows" what the user selected
@@ -118,10 +118,10 @@ Two messages in that flow do the heavy lifting for the AI experience:
 MCP Apps is an *optional, negotiated* extension. Clients advertise
 support in `initialize` under
 `capabilities.extensions["io.modelcontextprotocol/ui"]`. When a client
-does **not** advertise it, shinymcp still serves all tools — it just
-omits the `_meta.ui` annotations. Your tools keep working as ordinary
-text tools in any MCP client; the interactive UI lights up only where
-the host supports it. You don't need to do anything to get this
+does **not** advertise it, shinymcp still serves all tools and omits
+the `_meta.ui` annotations. Your tools keep working as ordinary text
+tools in any MCP client; the interactive UI appears only in hosts that
+support the extension. You don't need to do anything to get this
 behavior.
 
 ## Theming: matching the host's light/dark mode
@@ -141,14 +141,15 @@ applied to `:root`, so hosts that publish design tokens flow through.
 
 ## CSP: why external assets fail, and how to declare them
 
-This is the most common production footgun. **Hosts apply a restrictive
-Content Security Policy to the iframe** — by default roughly
+This is the most common way a working app breaks in a real host.
+**Hosts apply a restrictive
+Content Security Policy to the iframe**, by default roughly
 `default-src 'none'; script-src 'self' 'unsafe-inline'; connect-src 'none'`.
 That means:
 
 - No `fetch()`/XHR/WebSocket to any external service.
 - No scripts, stylesheets, fonts, or images loaded from CDNs.
-- Failures are *silent* — assets just don't load.
+- Failures are *silent*: assets don't load and nothing is reported.
 
 shinymcp's default posture avoids all of this: `html_resource()`
 **inlines every dependency** (bslib CSS/JS, your styles) into the HTML,
@@ -184,7 +185,7 @@ Related declarations:
 
 Inlining keeps apps CSP-proof, but it also means every byte ships in the
 initial HTML resource. For large datasets, declare them as **extra
-resources** and fetch them on demand from the iframe — the request flows
+resources** and fetch them on demand from the iframe. The request flows
 through the host to your R process, so no CSP declaration is needed:
 
 ```{r}
@@ -234,7 +235,7 @@ app <- mcp_app(
 
 Only declare tools whose results really match: per the MCP spec, a tool
 with an `outputSchema` MUST return conforming `structuredContent`, so
-shinymcp never guesses — undeclared tools simply omit the schema.
+shinymcp never guesses; undeclared tools omit the schema.
 
 ## Tool visibility: app-only and model-only tools
 
@@ -284,7 +285,7 @@ window.shinymcp.getHostContext(); // { theme, locale, displayMode, ... }
 
 All of these are spec methods (`tools/call`, `ui/update-model-context`,
 `ui/open-link`, `ui/message`, `ui/request-display-mode`,
-`notifications/message`); hosts that don't implement one simply return
+`notifications/message`); hosts that don't implement one return
 an error, which arrives as a rejected Promise.
 
 ## Known deviations from the spec
@@ -319,5 +320,5 @@ shinymcp aims for strict compliance, with these documented exceptions:
 
 `preview_app(app)` runs a local reference host with a **protocol log
 panel** (bottom-right toggle) showing every JSON-RPC message in both
-directions — usually the fastest way to see what a real host will see.
+directions. It is usually the fastest way to see what a real host sees.
 For failure modes and fixes, see `vignette("debugging-shinymcp")`.

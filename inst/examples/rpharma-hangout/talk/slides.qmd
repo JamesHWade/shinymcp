@@ -226,7 +226,7 @@ This is the core model. The app is not a web page the model reads from pixels. I
 [The interaction record is data. Both directions are typed and loggable.]{.takeaway}
 
 ::: {.notes}
-This is the substance beyond window dressing, and it is worth slowing down for. Without this, an embedded UI is decoration: the user fiddles with a dropdown and the model has no idea. With MCP Apps, every interaction lands in the model's context as a typed object. Concretely: the reviewer drops the RR watch limit in the card, then asks "draft the safety memo" — the assistant drafts it for the parameters the reviewer actually chose, because it can read them. For this audience the second-order point matters just as much: the user-model interaction is a typed, loggable record. That is something a process owner can review. A screenshot conversation is not.
+This is the slide to slow down for. Without this, an embedded UI is decoration: the user fiddles with a dropdown and the model has no idea. With MCP Apps, every interaction lands in the model's context as a typed object. Concretely: the reviewer drops the RR watch limit in the card, then asks "draft the safety memo" — the assistant drafts it for the parameters the reviewer actually chose, because it can read them. For this audience the second-order point matters just as much: the user-model interaction is a typed, loggable record. That is something a process owner can review. A screenshot conversation is not.
 :::
 
 ## No Shiny.js, no server: names matching ids
@@ -339,7 +339,7 @@ Claude does not need a Python rewrite. It launches an MCP server command. That c
 - MCP Apps is now a **stable spec** (`2026-01-26`), co-maintained by **Anthropic and OpenAI** — shinymcp tracks it
 - Clients **opt in** during `initialize` (`io.modelcontextprotocol/ui`); the shinymcp server checks before attaching UI metadata
 - A client without support gets the **same tools, text-only** — no orphaned format, no broken integration
-- Adoption risk is asymmetric: build the contract once; the UI lights up as client support lands
+- Adoption risk is asymmetric: build the contract once; the UI follows as client support lands
 
 . . .
 
@@ -450,7 +450,7 @@ app <- mcp_app(
   name = "rpharma-safety-signal",
 
   # The model NEVER sees this tool; only the rendered card can call it.
-  # Row-level views stay a human affordance, off the model's tool list.
+  # Row-level views stay human-only, off the model's tool list.
   tool_visibility = list(fetch_detail_rows = "app"),
 
   # Declared result shape -> outputSchema. Reviewers see what comes BACK,
@@ -704,7 +704,7 @@ Say it straight: experimental, not GA, not validated out of the box. The privacy
 | "Why not just build a Claude tool?" | Because MCP gives you an open contract you can reuse across clients |
 | "LLMs can't be validated" | The LLM doesn't compute; the **deterministic R tool** does |
 | "Will this leak patient data?" | Aggregate-only returns + deny-by-default CSP; both are declared, reviewable boundaries |
-| "How does the model know what the user changed?" | The card reports state as typed context (`ui/update-model-context`) — data, not screenshots |
+| "How does the model know what the user changed?" | The card reports its state through `ui/update-model-context`; the model reads the values directly |
 | "Does every client render the UI?" | No — and that's fine: clients without the apps extension get the **same tools, text-only** |
 | "What's the validation focus?" | Unit-test the R tools; assert the schemas (inputs **and** declared outputs); assert the typed `model_value` |
 
@@ -751,7 +751,7 @@ This slide is the take-home. Twenty-five lines, nothing elided, runs as-is. Walk
 ::: {style="color:#39729e; font-weight:700; font-size:1.15em;"}
 - Your validated R function becomes the tool body
 - Claude or another MCP client can call it through a typed contract
-- The card reports user interactions back into the model's context — the loop is data, not pixels
+- User interactions in the card flow back into the model's context as typed values
 - The same MCP App can still run inside Shiny for adoption and review
 - The handoff is typed, logged, and aggregate by design
 - No rewrite of the clinical logic into a client-specific stack

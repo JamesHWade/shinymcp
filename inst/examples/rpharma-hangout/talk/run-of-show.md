@@ -35,7 +35,7 @@
 
 **2. Why MCP (05:00-11:00).** Explain MCP as the standard connection between MCP-capable clients and external processes. Use pharma language: MCP exposes approved analytical tools through a reviewable protocol. Contrast protocol calls with screen reading. The client calls a named tool with typed arguments; the R server computes and returns structured data.
 
-**3. What MCP Apps add (11:00-18:00).** A plain MCP tool is a callable function. An MCP App adds an interactive UI resource tied to the same tool. Show the app contract: schema, `ui://` resource, structured result. Then slow down on "The loop closes": the user adjusts the card and the model's next turn starts from those values via `ui/update-model-context` — typed context, not screenshots. This is the substance-beyond-window-dressing beat; if the audience takes one protocol detail home, make it this one. The interaction record is loggable data, which is a sentence governance people remember.
+**3. What MCP Apps add (11:00-18:00).** A plain MCP tool is a callable function. An MCP App adds an interactive UI resource tied to the same tool. Show the app contract: schema, `ui://` resource, structured result. Then slow down on "The loop closes": the user adjusts the card and the model's next turn starts from those values via `ui/update-model-context`. If the audience takes one protocol detail home, make it this one. The interaction record is loggable data, which matters to the governance people in the room.
 
 **4. Why shinymcp (17:00-23:00).** Speak to each group in the room. Stat programmers keep deterministic R. Shiny teams reuse familiar UI patterns. Data scientists get callable approved tools. Governance gets a smaller contract to review than a prompt plus screenshot behavior. Platform teams get an open-standard integration path.
 
@@ -69,7 +69,7 @@ Target **8-9 min** for the click-path, ~1 min for recap.
 
 1. **Defaults.** Cohort = All cohorts, AE lens = Neutropenia, skill = Safety Signal Scout. Point at the dashboard: *"This is the Shiny review view."* Say **synthetic**.
 2. **Integration strip.** Scroll to the MCP widget bay and point at `mcp_host_server`, `as_shinychat_tool`, and the `ui://` URI. *"Same R-backed tool, multiple client paths."*
-3. **Contract inspector.** Point right before touching the card: `screen_safety_signal`, `ui://` URI, argument schema, AND the declared-result table (memo / evidence / risk_plot / audit with types). *"This is what Claude can call — and what it is promised back. Both directions, declared before anything runs."*
+3. **Contract inspector.** Point right before touching the card: `screen_safety_signal`, `ui://` URI, argument schema, AND the declared-result table (memo / evidence / risk_plot / audit with types). *"This is what Claude can call, and what it gets back — both declared before anything runs."*
 4. **Inside Safety Signal Scout:** Cohort = Lung, AE term = Neutropenia, Min grade = 3, RR watch limit = 1.8 → press **Apply**. Read the memo, evidence table, event-rate plot, and audit block.
 5. **The round trip.** Point right: Last widget handoff + Meeting-note handoff. *"The parent app did not scrape the screen. It received this typed object."*
 6. **Determinism.** Lower RR watch limit to ~1.2 → **Apply** again. Decision changes through deterministic R logic; handoff recomputes with the same schema.
@@ -102,7 +102,7 @@ Trigger is `"submit"` — if any panel reads "Waiting for Apply" or "Run a widge
 6. *"What about the sandbox?"* — It is one layer. Do not sell it as the whole data-control story. The real boundary is the client/tool permission model plus what the R tool returns. One concrete positive: hosts enforce deny-by-default CSP, so a card that declares no domains cannot make any network request.
 7. *"How does the model know what the user did in the card?"* — The bridge reports card state through `ui/update-model-context` as typed data. The model's next turn starts from the user's actual parameters; nothing is inferred from pixels, and the interaction record is loggable.
 8. *"What if our client doesn't support MCP Apps?"* — Support is negotiated per connection. shinymcp checks the client's capability during `initialize`; clients without it get the identical tools text-only. The spec went stable in January 2026 with Anthropic and OpenAI co-maintaining it.
-9. *"Can we keep some tools away from the model?"* — Yes: `tool_visibility = list(x = "app")` hides a tool from the model's list while the card can still call it. Useful for row-level detail views that should stay a human affordance.
+9. *"Can we keep some tools away from the model?"* — Yes: `tool_visibility = list(x = "app")` hides a tool from the model's list while the card can still call it. Useful for row-level detail views that should stay human-only.
 
 ## Top objections → one-line rebuttals
 

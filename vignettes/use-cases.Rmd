@@ -18,8 +18,8 @@ knitr::opts_chunk$set(
 `shinymcp` is strongest when an AI assistant needs to do more than print a
 number. The assistant can call a tool, receive structured data for reasoning,
 and show the user an interactive card with controls, tables, plots, and
-formatted output — and because the card reports the user's interactions back
-into the model's context, the assistant can act on what the user did in its
+formatted output. The card also reports the user's interactions back into
+the model's context, so the assistant can act on what the user did in its
 next turn.
 
 ## The example ladder
@@ -41,10 +41,10 @@ a stdio MCP server via `Rscript app.R`.
 | 6 | `use-cases` gallery | Realistic chat cards with typed `model_value` handoffs (this article) |
 | 7 | `shinychat-card` + `rpharma-hangout` | Embedding: the same `McpApp` inside Shiny dashboards and shinychat |
 
-Three ideas carry the whole ladder:
+Every level builds on the same three ideas:
 
 1. **Names are the contract.** Tool argument names match input ids; result
-   keys match output ids. That's the entire binding model.
+   keys match output ids. There is no other binding mechanism.
 2. **One result, two consumers.** The human gets the rendered card; the model
    gets structured values it can reason over without scraping the display.
 3. **One definition, many homes.** The same `McpApp` serves to Claude over
@@ -74,11 +74,11 @@ What to look for:
 - **Declared result shapes** (`tool_outputs`): the analysis tool publishes
   an `outputSchema`, so hosts and models know it returns a base64 plot named
   `trend` and a text summary named `summary` before ever calling it.
-- **Theme syncing**: flip your OS or host theme and the card follows —
-  the bridge maps the host's theme onto Bootstrap's `data-bs-theme`.
+- **Theme syncing**: flip your OS or host theme and the card follows.
+  The bridge maps the host's theme onto Bootstrap's `data-bs-theme`.
 - **Host interactions** (`window.shinymcp`): buttons that send a message
-  into the conversation, open a link, and request fullscreen — all spec
-  methods, all degrading gracefully when a host doesn't support them.
+  into the conversation, open a link, and request fullscreen. These are
+  spec methods; a host that doesn't support one rejects the call.
 
 ## The use-case gallery
 
@@ -187,18 +187,18 @@ For the full embedding-and-governance story — contract inspectors, typed
 meeting-note handoffs, approved skill registries — see the R/Pharma demo at
 `system.file("examples", "rpharma-hangout", package = "shinymcp")`.
 
-## Why these examples matter
+## What the examples cover
 
 These examples cover the surfaces most teams need before adopting MCP Apps:
 
 - Rich UI for people: inputs, tables, plots, and formatted HTML.
 - Structured values for the model: the assistant can reason over numbers
-  without scraping the display — and `ui/update-model-context` keeps it
+  without scraping the display, and `ui/update-model-context` keeps it
   aware of what the user changed in the card.
 - Declared contracts: input schemas, output schemas, visibility scoping,
   and resource metadata that a reviewer can inspect before anything runs.
 - Portable deployment: the same `McpApp` can be served to an MCP host,
-  embedded in Shiny, or wrapped as a shinychat tool card — and in hosts
-  without MCP Apps support, the tools still work as plain text tools.
+  embedded in Shiny, or wrapped as a shinychat tool card. In hosts without
+  MCP Apps support, the same tools run as plain text tools.
 - Small cards over giant dashboards: each card has one job and maps cleanly
   to one tool call.

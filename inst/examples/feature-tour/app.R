@@ -84,7 +84,8 @@ tour_js <- HTML(
   });
 
   // 1. App-only tool: this button calls a tool that is hidden from the
-  //    model (visibility 'app'). Row-level detail stays a human affordance.
+  //    model (visibility 'app'). Row-level detail stays available to the
+  //    user without ever appearing in the model's tool list.
   //    The argument is named detail_region (not region) on purpose: the
   //    bridge auto-wires tool args whose names match input ids, and this
   //    tool should only run when the user asks for it.

@@ -113,7 +113,7 @@ cause is a host that doesn't support the MCP Apps extension yet.
 MCP Apps is an optional MCP extension
 ([spec](https://github.com/modelcontextprotocol/ext-apps)) that hosts must
 opt into. Your tools degrade gracefully: **in any MCP client they work as
-ordinary text tools; the interactive UI lights up where the host supports
+ordinary text tools; the interactive UI appears in hosts that support
 MCP Apps.**
 
 | Host | Interactive UI |
@@ -124,11 +124,9 @@ MCP Apps.**
 | Shiny / shinychat via `mcp_embed()` | ✅ |
 | Any other MCP client (no apps extension) | text-only tools, still fully functional |
 
-A second thing you get for free: as the user interacts with the rendered UI,
-the bridge pushes the current input state into the model's context
-(`ui/update-model-context`). **The model sees what the user did in the app
-and can act on it in the next turn** --- that's what makes MCP Apps more
-than embedded dashboards.
+The bridge also reports input state to the model's context as the user
+interacts with the rendered UI (`ui/update-model-context`). The model can
+see what the user changed in the app and act on it in its next turn.
 
 ## Converting a Shiny app
 
@@ -268,12 +266,12 @@ mcp_app(
 )
 ```
 
-See `vignette("mcp-apps-protocol")` for the full story.
+See `vignette("mcp-apps-protocol")` for details.
 
 ## Examples
 
-shinymcp ships an example ladder — each app adds one new idea, so you can
-work up from a 30-line hello-world to a full embedded-governance demo:
+shinymcp ships an example ladder: each app adds one new idea, so you can
+work up from a 30-line hello-world to a full embedded-governance demo.
 
 ```{r examples, eval = FALSE}
 # 1. The whole contract in ~30 lines: one input, one tool, one output
