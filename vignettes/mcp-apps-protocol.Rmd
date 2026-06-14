@@ -28,13 +28,13 @@ with a new host, or contribute to shinymcp itself.
 
 Every MCP App involves three processes:
 
-1. **Server** — your R process, started by `serve(app)`. It answers
+1. **Server**: your R process, started by `serve(app)`. It answers
    MCP JSON-RPC requests over stdio or HTTP: `tools/list`,
    `tools/call`, `resources/list`, `resources/read`.
-2. **Host** — the chat client (Claude Desktop, ChatGPT, VS Code, or
+2. **Host**: the chat client (Claude Desktop, ChatGPT, VS Code, or
    shinymcp's own Shiny host and `preview_app()`). It talks MCP to the
    server and renders your app's HTML inside a sandboxed iframe.
-3. **View** — your app's HTML page running inside that iframe. The
+3. **View**: your app's HTML page running inside that iframe. The
    shinymcp JS bridge (inlined into the page) talks to the host with
    postMessage/JSON-RPC. It never talks to the server directly; the
    host proxies everything.
@@ -71,10 +71,10 @@ View  <- Host     response, then cleanup
 
 Two messages in that flow matter most:
 
-- **`ui/update-model-context`** pushes the UI's current state into the
+- `ui/update-model-context` pushes the UI's current state into the
   model's context. This is why the model "knows" what the user selected
   in the rendered app and can act on it in the next turn.
-- **`ui/notifications/tool-input`** flows the other way: when the model
+- `ui/notifications/tool-input` flows the other way: when the model
   calls a tool, the host pushes those arguments into the UI so the
   rendered controls match what the model asked for.
 
@@ -115,10 +115,10 @@ Two messages in that flow matter most:
 
 ### Graceful degradation
 
-MCP Apps is an *optional, negotiated* extension. Clients advertise
+MCP Apps is an optional extension that clients negotiate. Clients advertise
 support in `initialize` under
 `capabilities.extensions["io.modelcontextprotocol/ui"]`. When a client
-does **not** advertise it, shinymcp still serves all tools and withholds
+does not advertise it, shinymcp still serves all tools and withholds
 the nested `_meta.ui` block. The deprecated flat `_meta["ui/resourceUri"]`
 key is kept in both cases, so hosts that predate capability negotiation
 (SEP-1865 draft era) keep finding the UI resource, while text-only clients
@@ -132,33 +132,32 @@ The host tells the view its theme in `hostContext` (and again via
 bridge applies it automatically by setting `data-bs-theme="dark"` (or
 `"light"`) on the document element:
 
-- **bslib apps** (Bootstrap 5.3+) restyle automatically.
-- **Plain shinymcp components** get a built-in dark variant.
-- **Custom CSS** can opt in with selectors like
+- bslib apps (Bootstrap 5.3+) restyle automatically.
+- Plain shinymcp components get a built-in dark variant.
+- Custom CSS can opt in with selectors like
   `:root[data-bs-theme="dark"] .my-widget { ... }`.
 
 Host-provided `styles.variables` (CSS custom properties) are also
 applied to `:root`, so hosts that publish design tokens flow through.
 
-## CSP: why external assets fail, and how to declare them
+## CSP: external assets and how to declare them
 
-This is the most common way a working app breaks in a real host.
-**Hosts apply a restrictive
-Content Security Policy to the iframe**, by default roughly
+This is the most common way a working app breaks in a real host. Hosts
+apply a restrictive Content Security Policy to the iframe, by default roughly
 `default-src 'none'; script-src 'self' 'unsafe-inline'; connect-src 'none'`.
 That means:
 
 - No `fetch()`/XHR/WebSocket to any external service.
 - No scripts, stylesheets, fonts, or images loaded from CDNs.
-- Failures are *silent*: assets don't load and nothing is reported.
+- Failures are silent: assets don't load and nothing is reported.
 
 shinymcp's default posture avoids all of this: `html_resource()`
-**inlines every dependency** (bslib CSS/JS, your styles) into the HTML,
+inlines every dependency (bslib CSS/JS, your styles) into the HTML,
 and plots travel as base64 data URIs. If your app stays inside that
 model, you never think about CSP.
 
-When you genuinely need external access — say an htmlwidget loading
-from a CDN, or client-side calls to an API — declare the domains so
+When you genuinely need external access, say an htmlwidget loading
+from a CDN, or client-side calls to an API, declare the domains so
 spec-compliant hosts can allow them:
 
 ```{r}
@@ -185,8 +184,8 @@ Related declarations:
 ## Lazy-loading data with extra resources
 
 Inlining keeps apps CSP-proof, but it also means every byte ships in the
-initial HTML resource. For large datasets, declare them as **extra
-resources** and fetch them on demand from the iframe. The request flows
+initial HTML resource. For large datasets, declare them as extra
+resources and fetch them on demand from the iframe. The request flows
 through the host to your R process, so no CSP declaration is needed:
 
 ```{r}
@@ -307,19 +306,19 @@ shinymcp aims for strict compliance, with these documented exceptions:
    from the spec.
 3. **Shiny host sandboxing.** `mcp_embed()` / `mcp_host_server()`
    render the app via `srcdoc` with
-   `sandbox="allow-scripts allow-same-origin"` on the *same origin* as
-   your Shiny app. This is appropriate for embedding **your own**
+   `sandbox="allow-scripts allow-same-origin"` on the same origin as
+   your Shiny app. This is appropriate for embedding your own
    trusted apps; it is not a hardened boundary for third-party HTML.
    The spec's sandbox-proxy pattern (separate origin) is out of scope
    for the built-in host.
 4. **`initialArguments` in `hostContext`.** shinymcp's own hosts pass
-   initial tool arguments in `hostContext.initialArguments` *in
-   addition to* the spec's `ui/notifications/tool-input`, which the
-   bridge also handles. Standard hosts only use the latter; both work.
+   initial tool arguments in `hostContext.initialArguments` alongside
+   the spec's `ui/notifications/tool-input`, which the bridge also
+   handles. Standard hosts only use the latter; both work.
 
 ## Debugging
 
-`preview_app(app)` runs a local reference host with a **protocol log
-panel** (bottom-right toggle) showing every JSON-RPC message in both
+`preview_app(app)` runs a local reference host with a protocol log
+panel (bottom-right toggle) showing every JSON-RPC message in both
 directions. It is usually the fastest way to see what a real host sees.
 For failure modes and fixes, see `vignette("debugging-shinymcp")`.
