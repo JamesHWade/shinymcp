@@ -63,6 +63,61 @@ tool_name <- function(tool) {
   }
 }
 
+#' Extract a tool's annotations as a plain list
+#'
+#' Works for ellmer ToolDef objects (`tool@annotations`) and plain-list tools
+#' (`tool$annotations`). Returns `NULL` when none are present.
+#' @param tool A tool object.
+#' @noRd
+tool_annotations_of <- function(tool) {
+  ann <- if (is_ellmer_tool(tool)) {
+    tool@annotations
+  } else if (is.list(tool)) {
+    tool$annotations
+  } else {
+    NULL
+  }
+  if (length(ann) == 0) NULL else as.list(ann)
+}
+
+# MCP tool annotation hints use camelCase; ellmer's tool_annotations() uses
+# snake_case. Map the known hints and pass through any already-camelCase keys.
+SHINYMCP_ANNOTATION_KEYS <- c(
+  title = "title",
+  read_only_hint = "readOnlyHint",
+  destructive_hint = "destructiveHint",
+  idempotent_hint = "idempotentHint",
+  open_world_hint = "openWorldHint"
+)
+
+#' Normalize tool annotations to the MCP camelCase shape
+#'
+#' @param annotations A named list of annotation hints (snake_case or camelCase).
+#' @return A named list with MCP hint keys, or `NULL` if empty.
+#' @noRd
+normalize_tool_annotations <- function(annotations) {
+  if (length(annotations) == 0) {
+    return(NULL)
+  }
+  camel <- unname(SHINYMCP_ANNOTATION_KEYS)
+  out <- list()
+  for (nm in names(annotations)) {
+    value <- annotations[[nm]]
+    if (is.null(value)) {
+      next
+    }
+    key <- if (nm %in% names(SHINYMCP_ANNOTATION_KEYS)) {
+      SHINYMCP_ANNOTATION_KEYS[[nm]]
+    } else if (nm %in% camel) {
+      nm
+    } else {
+      next
+    }
+    out[[key]] <- value
+  }
+  if (length(out) == 0) NULL else out
+}
+
 #' Build a JSON-ready input schema from an ellmer TypeObject
 #' @param arguments An ellmer TypeObject (tool@@arguments)
 #' @noRd
@@ -121,6 +176,11 @@ SHINYMCP_UI_EXTENSION_ID <- "io.modelcontextprotocol/ui"
 SHINYMCP_UI_MIME_TYPE <- "text/html;profile=mcp-app"
 
 SHINYMCP_SINGLE_RESULT_KEY <- "__shinymcp_result__"
+
+# Schema-free side channel carrying per-output render types for multi-output
+# results. Kept separate from the string-valued structuredContent so the
+# declared outputSchema (every property `type: "string"`) still validates.
+SHINYMCP_TYPES_KEY <- "__shinymcp_types__"
 
 #' Negotiate the core MCP protocol version with a client
 #'
@@ -279,7 +339,7 @@ normalize_extra_resources <- function(resources) {
 #'
 #' Content functions commonly return `jsonlite::toJSON()` output, which is a
 #' `json`-classed object that downstream serializers (jsonlite, Shiny's
-#' custom messages) inline as raw JSON instead of a string — breaking
+#' custom messages) inline as raw JSON instead of a string - breaking
 #' `JSON.parse(contents[0].text)` in the app. Strip classes and collapse
 #' multi-line character vectors so `text` is always a single string.
 #'
@@ -366,6 +426,13 @@ format_tool_result <- function(result) {
     )
     structured <- mcp_result_structured_content(result)
     if (!is.null(structured)) {
+      # Carry render types alongside the string values so plots/tables render
+      # correctly even on output elements that lack a data-shinymcp-output-type
+      # attribute (native or hand-authored outputs).
+      types <- mcp_result_structured_types(result)
+      if (length(types) > 0) {
+        structured[[SHINYMCP_TYPES_KEY]] <- types
+      }
       payload$structuredContent <- structured
     }
     return(payload)

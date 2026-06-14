@@ -579,6 +579,28 @@ mcp_result_structured_content <- function(result) {
   NULL
 }
 
+#' Map each typed output id to its render type for the bridge
+#'
+#' Plain (non-`shinymcp_result`) values are skipped: they render as text and
+#' need no type hint.
+#'
+#' @param result A named list keyed by output id.
+#' @return A named list of `id -> type`, or an empty list.
+#' @noRd
+mcp_result_structured_types <- function(result) {
+  if (!is.list(result) || is.null(names(result))) {
+    return(list())
+  }
+  types <- list()
+  for (id in names(result)) {
+    value <- result[[id]]
+    if (is_mcp_result(value)) {
+      types[[id]] <- mcp_result_output_type(value)
+    }
+  }
+  types
+}
+
 #' Build a shinychat-friendly tool result with a live embedded card
 #'
 #' @param app An [McpApp] object.

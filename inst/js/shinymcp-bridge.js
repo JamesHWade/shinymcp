@@ -690,12 +690,20 @@
         }
       }
 
+      var typeMap = params.structuredContent.__shinymcp_types__ || {};
       var keys = Object.keys(params.structuredContent);
       for (var j = 0; j < keys.length; j++) {
-        if (keys[j] === "__shinymcp_result__") {
+        if (
+          keys[j] === "__shinymcp_result__" ||
+          keys[j] === "__shinymcp_types__"
+        ) {
           continue;
         }
-        updateOutput(keys[j], params.structuredContent[keys[j]]);
+        updateOutput(
+          keys[j],
+          params.structuredContent[keys[j]],
+          typeMap[keys[j]]
+        );
       }
     } else if (textContent) {
       // Update all text outputs with the raw text result

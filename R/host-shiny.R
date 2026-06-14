@@ -315,6 +315,7 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
 #' @param id Shiny module id.
 #' @export
 mcp_host_ui <- function(id) {
+  rlang::check_installed("shiny", "for `mcp_host_ui()`.")
   ns <- shiny::NS(id)
   mcp_host_markup(ns("host"))
 }
@@ -352,6 +353,7 @@ mcp_host_server <- function(
   initial_arguments = NULL,
   debug = FALSE
 ) {
+  rlang::check_installed("shiny", "for `mcp_host_server()`.")
   shiny::moduleServer(id, function(input, output, session) {
     app <- as_mcp_app(app)
     registered <- register_shiny_host_instance(
@@ -455,6 +457,7 @@ mcp_embed <- function(
   debounce_ms = NULL,
   height = "auto"
 ) {
+  rlang::check_installed("shiny", "for `mcp_embed()`.")
   app <- as_mcp_app(app)
   session <- active_shiny_session()
 

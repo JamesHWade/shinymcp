@@ -9,6 +9,23 @@ test_that("format_tool_result handles typed result fragments", {
   expect_match(result$content[[1]]$text, "ready")
 })
 
+test_that("format_tool_result carries per-output render types as a side channel", {
+  result <- format_tool_result(list(
+    summary = mcp_result_text("ready"),
+    grid = mcp_result_table(data.frame(x = 1)),
+    note = mcp_result_html(htmltools::tags$div("hi"))
+  ))
+
+  types <- result$structuredContent[["__shinymcp_types__"]]
+  expect_equal(types$summary, "text")
+  expect_equal(types$grid, "table")
+  expect_equal(types$note, "html")
+
+  # Output values stay strings so the declared outputSchema still validates.
+  expect_type(result$structuredContent$summary, "character")
+  expect_type(result$structuredContent$grid, "character")
+})
+
 test_that("format_tool_result handles bare typed results", {
   result <- format_tool_result(mcp_result_text("ready"))
 
