@@ -34,6 +34,8 @@ navbar:
     articles:
       text: Articles
       menu:
+        - text: shinymcp by example
+          href: articles/shinymcp-by-example.html
         - text: Use Cases
           href: articles/use-cases.html
         - text: Converting Shiny Apps
@@ -44,8 +46,6 @@ navbar:
           href: articles/choose-the-right-migration-path.html
         - text: Use with shinychat
           href: articles/use-shinymcp-with-shinychat.html
-        - text: Compatibility Matrix
-          href: articles/compatibility-matrix.html
         - text: MCP Apps Protocol
           href: articles/mcp-apps-protocol.html
         - text: Debugging shinymcp
