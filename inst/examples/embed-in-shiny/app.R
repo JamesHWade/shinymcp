@@ -30,8 +30,10 @@ greet_app <- mcp_app(
 ui <- page_sidebar(
   title = "An MCP App embedded in Shiny",
   sidebar = sidebar(
-    "The card on the right is the same MCP App you would serve to a client. ",
-    "Here it runs inside Shiny, which is a convenient place to review it."
+    htmltools::p(
+      "The card on the right is the same MCP App you would serve to a client. ",
+      "Here it runs inside Shiny, which is a convenient place to review it."
+    )
   ),
   card(
     card_header("Embedded MCP App"),

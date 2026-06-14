@@ -27,6 +27,7 @@ test_that("serve-to-client server script builds the expected app", {
 test_that("embed-in-shiny sources into a shiny app object", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("ellmer")
+  skip_if_not_installed("bslib")
   path <- system.file(
     "examples",
     "embed-in-shiny",
