@@ -426,7 +426,57 @@ check_unresolvable_patterns <- function(ir) {
     )
   }
 
+  # Server constructs the converter does not model yet. Naming them turns a
+  # silently empty or partial conversion into an explicit note.
+  used <- server_call_names(ir$server_body)
+  if (any(c("moduleServer", "callModule") %in% used)) {
+    warnings <- c(
+      warnings,
+      "App uses Shiny modules (moduleServer/callModule), which the converter does not expand. Tool groups for module contents will be missing."
+    )
+  }
+  state_fns <- intersect(
+    c("reactiveValues", "reactiveVal", "eventReactive"),
+    used
+  )
+  if (length(state_fns) > 0) {
+    warnings <- c(
+      warnings,
+      sprintf(
+        "App uses reactive state (%s), which the converter does not model. Affected outputs may convert to empty tools.",
+        paste(state_fns, collapse = ", ")
+      )
+    )
+  }
+
   warnings
+}
+
+#' Collect the function names called anywhere in a server body
+#'
+#' Walks an expression tree and returns the unique call names (via
+#' [call_name()], so `shiny::reactiveVal` resolves to `reactiveVal`).
+#'
+#' @param expr A server body expression (or list of expressions).
+#' @return Character vector of unique call names.
+#' @noRd
+server_call_names <- function(expr) {
+  found <- character()
+  walk <- function(e) {
+    if (is.call(e)) {
+      nm <- call_name(e)
+      if (nzchar(nm)) {
+        found[[length(found) + 1L]] <<- nm
+      }
+    }
+    if (is.call(e) || is.list(e) || is.pairlist(e)) {
+      for (part in as.list(e)) {
+        walk(part)
+      }
+    }
+  }
+  tryCatch(walk(expr), error = function(e) NULL)
+  unique(found)
 }
 
 #' Print method for ReactiveAnalysis

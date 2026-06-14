@@ -438,8 +438,8 @@ scaffold_tool_outputs <- function(group, args) {
       plot = ,
       image = mcp_result_plot(
         function() {
-          plot.new()
-          text(0.5, 0.5, note, cex = 0.9)
+          graphics::plot.new()
+          graphics::text(0.5, 0.5, note, cex = 0.9)
         },
         text = note
       ),

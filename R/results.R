@@ -351,7 +351,9 @@ render_table_fragment <- function(x) {
 
   data <- tryCatch(as.data.frame(x), error = function(...) NULL)
   if (is.null(data)) {
-    return(render_html_fragment(htmltools::tags$pre(capture.output(print(x)))))
+    return(render_html_fragment(htmltools::tags$pre(
+      utils::capture.output(print(x))
+    )))
   }
 
   header <- htmltools::tags$thead(
@@ -567,7 +569,10 @@ mcp_result_text_fallback <- function(x) {
     return(paste(parts[nzchar(parts)], collapse = "\n\n"))
   }
 
-  paste(capture.output(str(x, give.attr = FALSE)), collapse = "\n")
+  paste(
+    utils::capture.output(utils::str(x, give.attr = FALSE)),
+    collapse = "\n"
+  )
 }
 
 #' @noRd
