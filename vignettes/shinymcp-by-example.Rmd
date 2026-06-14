@@ -89,7 +89,7 @@ sidebar = bslib::sidebar(
 )
 ```
 
-The tool arguments are `species`, `x_var`, `y_var`, and `trend` — matching the ids above exactly.
+The tool arguments are `species`, `x_var`, `y_var`, and `trend`, matching the ids above exactly.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "penguins", package = "shinymcp"))
@@ -195,7 +195,7 @@ serve(app)
 shinymcp::preview_app(system.file("examples", "module-tool", package = "shinymcp"))
 ```
 
-When not to use this pattern: a one-off app has no reason to be structured as a module. Module reuse pays off when the same histogram (or form, or table) needs to appear in multiple places — a Shiny dashboard, a shinychat card, and an MCP host.
+When not to use this pattern: a one-off app has no reason to be structured as a module. Module reuse pays off when the same histogram (or form, or table) needs to appear in multiple places: a Shiny dashboard, a shinychat card, and an MCP host.
 
 ## 8. converted-dashboard — the output of `convert_app()`
 
@@ -215,7 +215,7 @@ ui <- htmltools::tagList(
 shinymcp::preview_app(system.file("examples", "converted-dashboard", package = "shinymcp"))
 ```
 
-See `vignette("automatic-conversion")` for the full conversion workflow. When not to use the conversion pipeline: it infers structure but not domain logic. Review the generated tool bodies before shipping — the function bodies are mechanical translations and may need hand-tuning for complex apps.
+See `vignette("automatic-conversion")` for the full conversion workflow. When not to use the conversion pipeline: it infers structure but not domain logic. Review the generated tool bodies before shipping; the function bodies are mechanical translations and may need hand-tuning for complex apps.
 
 ## 9. serve-to-client — register with a real MCP client
 
@@ -255,6 +255,7 @@ card_app <- mcp_app(
   tools = list(list(
     name = "inspect_dataset",
     fun = function(dataset = "mtcars") {
+      # summary_text <- paste(capture.output(summary(get(dataset))), collapse = "\n")
       list(
         summary = summary_text,
         plot = mcp_result_plot(function() { ... }, text = paste("Scatter plot for", dataset))
@@ -281,7 +282,7 @@ When not to use this pattern: if you are not building a chat UI with shinychat, 
 
 ## 11. embed-in-shiny — host a card in a dashboard
 
-`mcp_host_ui()` and `mcp_host_server()` let you embed any `mcp_app()` object directly inside a Shiny dashboard as a sandboxed iframe. Define the app once, then use it either as a client-facing MCP server or as an embedded review panel — the same object works in both contexts.
+`mcp_host_ui()` and `mcp_host_server()` let you embed any `mcp_app()` object directly inside a Shiny dashboard as a sandboxed iframe. Define the app once, then use it either as a client-facing MCP server or as an embedded review panel; the same object works in both contexts.
 
 ```{r}
 greet_app <- mcp_app(ui = ..., tools = list(...), name = "greet")
@@ -336,7 +337,7 @@ When not to use this pattern: a fixed, well-understood schema is clearer hard-co
 
 ## 13. rpharma-hangout — capstone: multi-skill clinical app
 
-The R/Pharma demo puts everything together. Two `mcp_app()` objects — a Safety Signal Scout and an Enrollment Rescue Simulator — run as selectable skill cards inside a clinical Shiny dashboard. Each produces a `mcp_result_text()` return with a `model_value` list; the parent Shiny app reads that structured data from `mcp_host_server()$last_raw_result()` without scraping the display. A contract inspector panel renders the tool's input schema live, and both cards are also registered with shinychat via `as_shinychat_tool()`.
+The R/Pharma demo puts everything together. Two `mcp_app()` objects (a Safety Signal Scout and an Enrollment Rescue Simulator) run as selectable skill cards inside a clinical Shiny dashboard. Each produces a `mcp_result_text()` return with a `model_value` list; the parent Shiny app reads that structured data from `mcp_host_server()$last_raw_result()` without scraping the display. A contract inspector panel renders the tool's input schema live, and both cards are also registered with shinychat via `as_shinychat_tool()`.
 
 ```{r}
 # Each skill card carries a structured model_value alongside display content
@@ -359,7 +360,9 @@ list(
 shiny::runApp(system.file("examples", "rpharma-hangout", package = "shinymcp"))
 ```
 
-See `inst/examples/rpharma-hangout/README.md` for the full setup. The clinical data is synthetic; the patterns — approved skills, inspectable contracts, structured handoffs — apply to any regulated or high-stakes domain where a human needs to see exactly what the agent called and what it got back.
+See `inst/examples/rpharma-hangout/README.md` for the full setup. The clinical data is synthetic; the patterns (approved skills, inspectable contracts, structured handoffs) apply to any regulated or high-stakes domain where a human needs to see exactly what the agent called and what it got back.
+
+When not to use this pattern: if you do not need human oversight of agent calls and the app covers a single skill, a single `mcp_app()` served directly (example 9) is far less setup than a multi-card dashboard with a shinychat integration.
 
 ## Going further
 
