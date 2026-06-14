@@ -37,8 +37,39 @@ generate_mcp_app <- function(analysis, ir, output_dir) {
     writeLines(notes, file.path(output_dir, "CONVERSION_NOTES.md"))
   }
 
+  # Fail loudly at write time rather than letting unparseable generated code
+  # degrade silently downstream in convert_app().
+  for (f in c("ui.R", "tools.R", "server.R", "app.R")) {
+    validate_generated_r(file.path(output_dir, f))
+  }
+
   cli::cli_alert_success("Generated MCP App in {.path {output_dir}}")
   invisible(output_dir)
+}
+
+#' Validate that a generated file is syntactically valid R
+#'
+#' Parses (without evaluating) a generated file and raises a structured
+#' generation error naming the file if it is not valid R. Catching this here
+#' turns a whole class of code-generation bugs from silent into loud.
+#'
+#' @param path Path to a generated `.R` file.
+#' @return The path, invisibly.
+#' @noRd
+validate_generated_r <- function(path) {
+  tryCatch(
+    parse(file = path),
+    error = function(e) {
+      shinymcp_error_generation(
+        c(
+          "Generated file {.path {basename(path)}} is not valid R.",
+          "x" = conditionMessage(e),
+          "i" = "This is a shinymcp code-generation bug. Please report it at {.url https://github.com/JamesHWade/shinymcp/issues}."
+        )
+      )
+    }
+  )
+  invisible(path)
 }
 
 #' Generate HTML for MCP App UI
@@ -521,7 +552,12 @@ extract_arg_code <- function(args, name, default = "NULL") {
   if (is.null(val)) {
     return(default)
   }
-  tryCatch(deparse(val, width.cutoff = 500), error = function(e) default)
+  # deparse() can return a multi-element character vector for wide or
+  # multi-line values; collapse so callers always get one parseable string.
+  tryCatch(
+    paste(deparse(val, width.cutoff = 500), collapse = " "),
+    error = function(e) default
+  )
 }
 
 #' Extract choices argument as R code
