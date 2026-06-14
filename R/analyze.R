@@ -19,9 +19,13 @@ analyze_reactive_graph <- function(ir) {
   # Find connected components
   components <- find_connected_components(graph)
 
+  # Capture each output's render expression so generated tools can carry the
+  # original logic rather than only a placeholder.
+  output_deps <- find_output_dependencies(ir$server_body, ir$reactives)
+
   # Map each component to a tool group
   tool_groups <- lapply(components, function(comp) {
-    make_tool_group(comp, ir)
+    make_tool_group(comp, ir, output_deps)
   })
 
   warnings <- check_unresolvable_patterns(ir)
@@ -298,7 +302,7 @@ find_connected_components <- function(graph) {
 #' @param ir The ShinyAppIR object
 #' @return A tool group list
 #' @noRd
-make_tool_group <- function(component, ir) {
+make_tool_group <- function(component, ir, output_deps = list()) {
   input_nodes <- component[grepl("^input:", component)]
   output_nodes <- component[grepl("^output:", component)]
   reactive_nodes <- component[grepl("^reactive:", component)]
@@ -317,14 +321,20 @@ make_tool_group <- function(component, ir) {
     }
   })
 
-  # Gather structured output info
+  # Gather structured output info, attaching the captured render expression
+  # so the generator can surface the original logic.
   output_targets <- lapply(output_ids, function(id) {
     idx <- which(vapply(ir$outputs, function(out) out$id == id, logical(1)))
-    if (length(idx) > 0) {
+    target <- if (length(idx) > 0) {
       ir$outputs[[idx[1]]]
     } else {
       list(id = id, type = "unknown")
     }
+    dep <- output_deps[[id]]
+    if (!is.null(dep) && !is.null(dep$render_expr)) {
+      target$render_expr <- dep$render_expr
+    }
+    target
   })
 
   # Build a descriptive name from outputs

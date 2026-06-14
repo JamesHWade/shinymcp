@@ -250,6 +250,33 @@ generate_tools <- function(tool_groups) {
   paste(lines, collapse = "\n")
 }
 
+#' Render captured output logic as commented R for the user to port
+#'
+#' The generated tool body keeps an executable placeholder so the file still
+#' parses and runs, but emitting the original `render*()` expression as a
+#' comment turns a blind scaffold into fill-in-the-blank.
+#'
+#' @param output_targets List of output definitions, optionally carrying a
+#'   `render_expr` captured during analysis.
+#' @return Character vector of comment lines (possibly empty).
+#' @noRd
+render_logic_comment <- function(output_targets) {
+  lines <- character()
+  for (out in output_targets) {
+    expr <- out$render_expr
+    if (is.null(expr)) {
+      next
+    }
+    deparsed <- deparse(expr, width.cutoff = 500)
+    lines <- c(
+      lines,
+      sprintf("    # Original logic for output '%s':", out$id),
+      paste0("    # ", deparsed)
+    )
+  }
+  lines
+}
+
 #' Generate a single ellmer::tool() definition
 #' @param group A tool group definition
 #' @return Character vector of R code lines
@@ -289,6 +316,19 @@ generate_tool_definition <- function(group) {
     logical(1)
   ))
 
+  # Surface the original render logic as a comment so the user can port it.
+  render_logic <- render_logic_comment(group$output_targets)
+  plot_placeholder <- if (length(render_logic) > 0) {
+    render_logic
+  } else {
+    "    # TODO: Insert plot logic from original render function here"
+  }
+  compute_placeholder <- if (length(render_logic) > 0) {
+    render_logic
+  } else {
+    "    # TODO: Insert computation logic from original render function here"
+  }
+
   # Build function body
   if (has_plot) {
     body_lines <- c(
@@ -296,7 +336,7 @@ generate_tool_definition <- function(group) {
       "    tmp <- tempfile(fileext = \".png\")",
       "    grDevices::png(tmp, width = 800, height = 600)",
       "    on.exit(unlink(tmp), add = TRUE)",
-      "    # TODO: Insert plot logic from original render function here",
+      plot_placeholder,
       "    plot(1, main = \"Placeholder\")",
       "    grDevices::dev.off()",
       "    raw <- readBin(tmp, \"raw\", file.info(tmp)$size)",
@@ -304,7 +344,7 @@ generate_tool_definition <- function(group) {
     )
   } else {
     body_lines <- c(
-      "    # TODO: Insert computation logic from original render function here",
+      compute_placeholder,
       sprintf("    paste(\"Result for:\", %s)", param_list)
     )
   }
