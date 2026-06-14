@@ -548,7 +548,7 @@ mcp_result_text_fallback <- function(x) {
           render_html_fragment(x$value)
         ))),
         table = paste(
-          capture.output(utils::head(as.data.frame(x$value))),
+          utils::capture.output(utils::head(as.data.frame(x$value))),
           collapse = "\n"
         ),
         plot = "[plot]",
