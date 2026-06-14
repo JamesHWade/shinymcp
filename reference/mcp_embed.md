@@ -11,8 +11,8 @@ session, provide an `id` and pair the result with
 mcp_embed(
   app,
   id = NULL,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto"
 )
 ```
@@ -31,10 +31,13 @@ mcp_embed(
 - trigger:
 
   Interaction mode: `"debounce"`, `"change"`, `"submit"`, or `"manual"`.
+  Defaults to the app's own declaration (`mcp_app(trigger = )`), falling
+  back to `"debounce"`.
 
 - debounce_ms:
 
-  Debounce interval in milliseconds.
+  Debounce interval in milliseconds. Defaults to the app's own
+  declaration, falling back to 250.
 
 - height:
 

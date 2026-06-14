@@ -28,7 +28,7 @@ an id and pair the result with mcp_host_server()."><meta property="og:image" con
     <li><a class="dropdown-item" href="../articles/automatic-conversion.html">Automatic Conversion</a></li>
     <li><a class="dropdown-item" href="../articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
     <li><a class="dropdown-item" href="../articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
-    <li><a class="dropdown-item" href="../articles/compatibility-matrix.html">Compatibility Matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/mcp-apps-protocol.html">MCP Apps Protocol</a></li>
     <li><a class="dropdown-item" href="../articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -63,8 +63,8 @@ an <code>id</code> and pair the result with <code><a href="mcp_host_server.html"
     <div class="sourceCode"><pre class="sourceCode r"><code><span><span class="fu">mcp_embed</span><span class="op">(</span></span>
 <span>  <span class="va">app</span>,</span>
 <span>  id <span class="op">=</span> <span class="cn">NULL</span>,</span>
-<span>  trigger <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"debounce"</span>, <span class="st">"change"</span>, <span class="st">"submit"</span>, <span class="st">"manual"</span><span class="op">)</span>,</span>
-<span>  debounce_ms <span class="op">=</span> <span class="fl">250</span>,</span>
+<span>  trigger <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  debounce_ms <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  height <span class="op">=</span> <span class="st">"auto"</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -83,11 +83,13 @@ an <code>id</code> and pair the result with <code><a href="mcp_host_server.html"
 
 <dt id="arg-trigger">trigger<a class="anchor" aria-label="anchor" href="#arg-trigger"></a></dt>
 <dd><p>Interaction mode: <code>"debounce"</code>, <code>"change"</code>, <code>"submit"</code>, or
-<code>"manual"</code>.</p></dd>
+<code>"manual"</code>. Defaults to the app's own declaration
+(<code>mcp_app(trigger = )</code>), falling back to <code>"debounce"</code>.</p></dd>
 
 
 <dt id="arg-debounce-ms">debounce_ms<a class="anchor" aria-label="anchor" href="#arg-debounce-ms"></a></dt>
-<dd><p>Debounce interval in milliseconds.</p></dd>
+<dd><p>Debounce interval in milliseconds. Defaults to the
+app's own declaration, falling back to 250.</p></dd>
 
 
 <dt id="arg-height">height<a class="anchor" aria-label="anchor" href="#arg-height"></a></dt>

@@ -44,7 +44,7 @@
     <li><a class="dropdown-item" href="../articles/automatic-conversion.html">Automatic Conversion</a></li>
     <li><a class="dropdown-item" href="../articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
     <li><a class="dropdown-item" href="../articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
-    <li><a class="dropdown-item" href="../articles/compatibility-matrix.html">Compatibility Matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/mcp-apps-protocol.html">MCP Apps Protocol</a></li>
     <li><a class="dropdown-item" href="../articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
   </ul>
 </li>
@@ -139,6 +139,49 @@ cards.</li>
 <li>Rich display works in shinychat, but plain fallback text still
 matters for other hosts.</li>
 </ul>
+<div class="section level3">
+<h3 id="nothing-renders-in-the-chat-client">Nothing renders in the chat client<a class="anchor" aria-label="anchor" href="#nothing-renders-in-the-chat-client"></a>
+</h3>
+<p>MCP Apps is an optional, negotiated MCP extension. If the host does
+not advertise
+<code>capabilities.extensions["io.modelcontextprotocol/ui"]</code>
+during <code>initialize</code>, shinymcp serves your tools
+<em>without</em> UI metadata and they run as plain text tools — that’s
+graceful degradation, not a bug. Check that your client version actually
+supports MCP Apps, and confirm the app works in
+<code><a href="../reference/preview_app.html">preview_app()</a></code> first (it is a known-good reference
+host).</p>
+</div>
+<div class="section level3">
+<h3 id="tool-calls-appear-to-hang-or-the-ui-silently-stops-updating">Tool calls appear to hang or the UI silently stops updating<a class="anchor" aria-label="anchor" href="#tool-calls-appear-to-hang-or-the-ui-silently-stops-updating"></a>
+</h3>
+<p>A JSON-RPC <em>error</em> response from the host (e.g. a rejected or
+misnamed tool call) is surfaced by the bridge as a rejected Promise and
+logged to the iframe’s browser console
+(<code>[shinymcp-bridge] Tool call failed ...</code>). Open the host’s
+devtools and check the console for the iframe context. The
+<code><a href="../reference/preview_app.html">preview_app()</a></code> protocol log shows every message in both
+directions.</p>
+</div>
+<div class="section level3">
+<h3 id="external-assets-or-api-calls-dont-load">External assets or API calls don’t load<a class="anchor" aria-label="anchor" href="#external-assets-or-api-calls-dont-load"></a>
+</h3>
+<p>Hosts apply a restrictive Content Security Policy to the app iframe —
+external scripts, styles, fonts, and <code>fetch()</code> calls are
+blocked by default and <strong>fail silently</strong>. Either inline
+everything (shinymcp’s default behavior covers htmltools dependencies
+automatically) or declare the domains via
+<code>mcp_app(csp = list(connect_domains = ..., resource_domains = ...))</code>.
+See <code><a href="../articles/mcp-apps-protocol.html">vignette("mcp-apps-protocol")</a></code>.</p>
+</div>
+<div class="section level3">
+<h3 id="the-app-looks-wrong-in-dark-mode">The app looks wrong in dark mode<a class="anchor" aria-label="anchor" href="#the-app-looks-wrong-in-dark-mode"></a>
+</h3>
+<p>The bridge applies the host’s theme by setting
+<code>data-bs-theme</code> on the document element. bslib (Bootstrap
+5.3+) UIs adapt automatically; custom CSS needs explicit
+<code>:root[data-bs-theme="dark"]</code> rules.</p>
+</div>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

@@ -8,8 +8,8 @@ Host shell server for an embedded MCP app
 mcp_host_server(
   id,
   app,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto",
   initial_arguments = NULL,
   debug = FALSE
@@ -30,10 +30,13 @@ mcp_host_server(
 - trigger:
 
   Interaction mode: `"change"`, `"debounce"`, `"submit"`, or `"manual"`.
+  Defaults to the app's own declaration (`mcp_app(trigger = )`), falling
+  back to `"debounce"`.
 
 - debounce_ms:
 
-  Debounce interval in milliseconds.
+  Debounce interval in milliseconds. Defaults to the app's own
+  declaration, falling back to 250.
 
 - height:
 
@@ -52,3 +55,10 @@ mcp_host_server(
 A small control API with `instance_id`, `execute()`, `reset()`,
 `dispose()`, and read-only reactives for `model_context`, `last_result`,
 `last_raw_result`, `last_tool_call`, and `last_size`.
+
+## Details
+
+The embedded app is rendered via `srcdoc` in an iframe with
+`sandbox="allow-scripts allow-same-origin"`, i.e. on the same origin as
+the hosting Shiny app. This is appropriate for embedding apps you wrote
+and trust; it is not a hardened boundary for running third-party HTML.

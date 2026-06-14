@@ -44,7 +44,7 @@
     <li><a class="dropdown-item" href="../articles/automatic-conversion.html">Automatic Conversion</a></li>
     <li><a class="dropdown-item" href="../articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
     <li><a class="dropdown-item" href="../articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
-    <li><a class="dropdown-item" href="../articles/compatibility-matrix.html">Compatibility Matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/mcp-apps-protocol.html">MCP Apps Protocol</a></li>
     <li><a class="dropdown-item" href="../articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
   </ul>
 </li>
@@ -86,9 +86,137 @@
 <p><code>shinymcp</code> is strongest when an AI assistant needs to do
 more than print a number. The assistant can call a tool, receive
 structured data for reasoning, and show the user an interactive card
-with controls, tables, plots, and formatted output.</p>
-<p>The package includes a use-case gallery with three small but
-realistic MCP Apps:</p>
+with controls, tables, plots, and formatted output. The card also
+reports the user’s interactions back into the model’s context, so the
+assistant can act on what the user did in its next turn.</p>
+<div class="section level2">
+<h2 id="the-example-ladder">The example ladder<a class="anchor" aria-label="anchor" href="#the-example-ladder"></a>
+</h2>
+<p>The bundled examples are ordered so each one adds a single new idea.
+Work through them in order and you’ll have touched every major feature
+of the package. Each lives at
+<code>system.file("examples", "&lt;name&gt;", "app.R", package = "shinymcp")</code>,
+and each runs in <code><a href="../reference/preview_app.html">preview_app()</a></code> — a local reference host
+with a protocol log — or as a stdio MCP server via
+<code>Rscript app.R</code>.</p>
+<table class="table">
+<colgroup>
+<col width="33%">
+<col width="33%">
+<col width="33%">
+</colgroup>
+<thead><tr class="header">
+<th>Level</th>
+<th>Example</th>
+<th>The one new idea</th>
+</tr></thead>
+<tbody>
+<tr class="odd">
+<td>1</td>
+<td><code>hello-mcp</code></td>
+<td>The whole contract: one input, one tool, one output, ~30 lines</td>
+</tr>
+<tr class="even">
+<td>2</td>
+<td><code>bslib-inputs</code></td>
+<td>Native shiny/bslib inputs auto-detected by id — no wrappers</td>
+</tr>
+<tr class="odd">
+<td>3</td>
+<td><code>penguins</code></td>
+<td>A real dashboard: ggplot2, multiple outputs, a declared
+<code>outputSchema</code>
+</td>
+</tr>
+<tr class="even">
+<td>4</td>
+<td><code>feature-tour</code></td>
+<td>The protocol features: app-only tools, lazy resources, theme
+syncing, <code>window.shinymcp</code>
+</td>
+</tr>
+<tr class="odd">
+<td>5</td>
+<td><code>multi-tool</code></td>
+<td>One app, several tools — connected reactive groups become separate
+contracts</td>
+</tr>
+<tr class="even">
+<td>6</td>
+<td>
+<code>use-cases</code> gallery</td>
+<td>Realistic chat cards with typed <code>model_value</code> handoffs
+(this article)</td>
+</tr>
+<tr class="odd">
+<td>7</td>
+<td>
+<code>shinychat-card</code> + <code>rpharma-hangout</code>
+</td>
+<td>Embedding: the same <code>McpApp</code> inside Shiny dashboards and
+shinychat</td>
+</tr>
+</tbody>
+</table>
+<p>Every level builds on the same three ideas:</p>
+<ol style="list-style-type: decimal">
+<li>
+<strong>Names are the contract.</strong> Tool argument names match
+input ids; result keys match output ids. There is no other binding
+mechanism.</li>
+<li>
+<strong>One result, two consumers.</strong> The human gets the
+rendered card; the model gets structured values it can reason over
+without scraping the display.</li>
+<li>
+<strong>One definition, many homes.</strong> The same
+<code>McpApp</code> serves to Claude over MCP, embeds in a Shiny app,
+and wraps as a shinychat tool card.</li>
+</ol>
+</div>
+<div class="section level2">
+<h2 id="level-4-in-detail-the-feature-tour">Level 4 in detail: the feature tour<a class="anchor" aria-label="anchor" href="#level-4-in-detail-the-feature-tour"></a>
+</h2>
+<p><code>feature-tour</code> packs the MCP Apps protocol features into
+one annotated app. Open it in <code><a href="../reference/preview_app.html">preview_app()</a></code> with the
+protocol log visible and you can watch each one on the wire:</p>
+<div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"feature-tour"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
+<p>What to look for:</p>
+<ul>
+<li>
+<strong>App-only tools</strong> (<code>tool_visibility</code>): the
+<code>fetch_region_detail</code> tool is callable from the card’s “Load
+region detail” button but carries
+<code>_meta.ui.visibility = ["app"]</code>, so the model never sees it.
+Use this to keep UI plumbing — or human-only detail views — out of the
+model’s tool list.</li>
+<li>
+<strong>Lazy resources</strong> (<code>resources</code> +
+<code>window.shinymcp.readResource()</code>): the region catalog isn’t
+inlined into the HTML; the card fetches it through the host at startup.
+This is the pattern for shipping large datasets without bloating the
+<code>ui://</code> resource.</li>
+<li>
+<strong>Declared result shapes</strong> (<code>tool_outputs</code>):
+the analysis tool publishes an <code>outputSchema</code>, so hosts and
+models know it returns a base64 plot named <code>trend</code> and a text
+summary named <code>summary</code> before ever calling it.</li>
+<li>
+<strong>Theme syncing</strong>: flip your OS or host theme and the
+card follows. The bridge maps the host’s theme onto Bootstrap’s
+<code>data-bs-theme</code>.</li>
+<li>
+<strong>Host interactions</strong> (<code>window.shinymcp</code>):
+buttons that send a message into the conversation, open a link, and
+request fullscreen. These are spec methods; a host that doesn’t support
+one rejects the call.</li>
+</ul>
+</div>
+<div class="section level2">
+<h2 id="the-use-case-gallery">The use-case gallery<a class="anchor" aria-label="anchor" href="#the-use-case-gallery"></a>
+</h2>
+<p>The gallery contains three small but realistic MCP Apps:</p>
 <table class="table">
 <colgroup>
 <col width="50%">
@@ -117,26 +245,29 @@ recommendation</td>
 </table>
 <p>The apps are intentionally card-sized: controls fit in a compact
 grid, the primary answer is immediately visible, and secondary tables
-stay available without taking over the chat transcript.</p>
-<div class="section level2">
-<h2 id="run-a-use-case-as-an-mcp-app">Run a use case as an MCP App<a class="anchor" aria-label="anchor" href="#run-a-use-case-as-an-mcp-app"></a>
-</h2>
+stay available without taking over the chat transcript. Each declares
+<code>tool_outputs</code> (so its result shape is part of the published
+contract) and <code>prefers_border</code> (a rendering hint for the
+host).</p>
+<div class="section level3">
+<h3 id="run-a-use-case-as-an-mcp-app">Run a use case as an MCP App<a class="anchor" aria-label="anchor" href="#run-a-use-case-as-an-mcp-app"></a>
+</h3>
 <p>The gallery entrypoint serves one use case at a time. Set
 <code>SHINYMCP_USE_CASE</code> to <code>revenue</code>,
 <code>experiment</code>, or <code>incident</code>.</p>
-<div class="sourceCode" id="cb1"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="va">SHINYMCP_USE_CASE</span><span class="op">=</span>revenue <span class="ex">Rscript</span> <span class="dt">\</span></span>
-<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a>  <span class="st">"</span><span class="va">$(</span><span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">'cat(system.file("examples", "use-cases", "app.R", package = "shinymcp"))'</span><span class="va">)</span><span class="st">"</span></span></code></pre></div>
+<div class="sourceCode" id="cb2"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="va">SHINYMCP_USE_CASE</span><span class="op">=</span>revenue <span class="ex">Rscript</span> <span class="dt">\</span></span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>  <span class="st">"</span><span class="va">$(</span><span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">'cat(system.file("examples", "use-cases", "app.R", package = "shinymcp"))'</span><span class="va">)</span><span class="st">"</span></span></code></pre></div>
 <p>For Claude Desktop or another MCP host, point the server command at
 that same <code>app.R</code> file and set the environment variable for
 the use case you want to show.</p>
 </div>
-<div class="section level2">
-<h2 id="revenue-scenario-board">Revenue scenario board<a class="anchor" aria-label="anchor" href="#revenue-scenario-board"></a>
-</h2>
+<div class="section level3">
+<h3 id="revenue-scenario-board">Revenue scenario board<a class="anchor" aria-label="anchor" href="#revenue-scenario-board"></a>
+</h3>
 <p>This card turns go-to-market assumptions into a twelve-month
 forecast. The assistant can reason over the structured result while the
 user sees the ARR trajectory and monthly forecast table.</p>
-<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"use-cases"</span>, <span class="st">"apps.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu">shinymcp_use_case</span><span class="op">(</span><span class="st">"revenue"</span><span class="op">)</span></span>
 <span><span class="va">app</span><span class="op">$</span><span class="fu">call_tool</span><span class="op">(</span><span class="st">"forecast_revenue"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
@@ -148,13 +279,13 @@ user sees the ARR trajectory and monthly forecast table.</p>
 <span>  monthly_churn <span class="op">=</span> <span class="fl">2.5</span></span>
 <span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
-<div class="section level2">
-<h2 id="experiment-planner">Experiment planner<a class="anchor" aria-label="anchor" href="#experiment-planner"></a>
-</h2>
+<div class="section level3">
+<h3 id="experiment-planner">Experiment planner<a class="anchor" aria-label="anchor" href="#experiment-planner"></a>
+</h3>
 <p>This card helps an assistant move from “can we detect a 15% lift?” to
 a specific sample size and runtime. The plot gives the human reviewer a
 quick sense of how much margin the design has.</p>
-<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"use-cases"</span>, <span class="st">"apps.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu">shinymcp_use_case</span><span class="op">(</span><span class="st">"experiment"</span><span class="op">)</span></span>
 <span><span class="va">app</span><span class="op">$</span><span class="fu">call_tool</span><span class="op">(</span><span class="st">"plan_experiment"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
@@ -164,14 +295,14 @@ quick sense of how much margin the design has.</p>
 <span>  traffic_per_day <span class="op">=</span> <span class="fl">6000</span></span>
 <span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
-<div class="section level2">
-<h2 id="incident-triage-console">Incident triage console<a class="anchor" aria-label="anchor" href="#incident-triage-console"></a>
-</h2>
+<div class="section level3">
+<h3 id="incident-triage-console">Incident triage console<a class="anchor" aria-label="anchor" href="#incident-triage-console"></a>
+</h3>
 <p>This card is useful for support, SRE, and operations chats. The
 assistant can collect facts conversationally, call the tool, and return
 a priority, briefing, and runbook without losing the structured values
 it needs for follow-up.</p>
-<div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
+<div class="sourceCode" id="cb5"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"use-cases"</span>, <span class="st">"apps.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span><span class="op">)</span></span>
 <span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu">shinymcp_use_case</span><span class="op">(</span><span class="st">"incident"</span><span class="op">)</span></span>
 <span><span class="va">app</span><span class="op">$</span><span class="fu">call_tool</span><span class="op">(</span><span class="st">"triage_incident"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
@@ -182,13 +313,14 @@ it needs for follow-up.</p>
 <span>  regulated_data <span class="op">=</span> <span class="cn">TRUE</span></span>
 <span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
+</div>
 <div class="section level2">
 <h2 id="shinychat-integration">shinychat integration<a class="anchor" aria-label="anchor" href="#shinychat-integration"></a>
 </h2>
 <p>The gallery also includes a Shiny app that registers all three cards
 as <code>shinychat</code> tool results through
 <code><a href="../reference/as_shinychat_tool.html">as_shinychat_tool()</a></code>.</p>
-<div class="sourceCode" id="cb5"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$(</span><span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">'cat(system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp"))'</span><span class="va">)</span><span class="st">"</span></span></code></pre></div>
+<div class="sourceCode" id="cb6"><pre class="sourceCode bash"><code class="sourceCode bash"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="ex">Rscript</span> <span class="st">"</span><span class="va">$(</span><span class="ex">Rscript</span> <span class="at">-e</span> <span class="st">'cat(system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp"))'</span><span class="va">)</span><span class="st">"</span></span></code></pre></div>
 <p>When <code>OPENAI_API_KEY</code> is available, that app uses
 <code>chat_mod_ui()</code> and <code>chat_mod_server()</code> with one
 ellmer client per Shiny session. Without a configured model provider, it
@@ -200,19 +332,29 @@ the <code>McpApp</code>, receives bridge events from the iframe, and
 executes tool calls in R. The iframe itself remains a portable MCP App
 surface instead of a nested Shiny app, which keeps each chat card small
 and reusable outside Shiny.</p>
+<p>For the full embedding-and-governance story — contract inspectors,
+typed meeting-note handoffs, approved skill registries — see the
+R/Pharma demo at
+<code>system.file("examples", "rpharma-hangout", package = "shinymcp")</code>.</p>
 </div>
 <div class="section level2">
-<h2 id="why-these-examples-matter">Why these examples matter<a class="anchor" aria-label="anchor" href="#why-these-examples-matter"></a>
+<h2 id="what-the-examples-cover">What the examples cover<a class="anchor" aria-label="anchor" href="#what-the-examples-cover"></a>
 </h2>
 <p>These examples cover the surfaces most teams need before adopting MCP
 Apps:</p>
 <ul>
 <li>Rich UI for people: inputs, tables, plots, and formatted HTML.</li>
 <li>Structured values for the model: the assistant can reason over
-numbers without scraping the display.</li>
+numbers without scraping the display, and
+<code>ui/update-model-context</code> keeps it aware of what the user
+changed in the card.</li>
+<li>Declared contracts: input schemas, output schemas, visibility
+scoping, and resource metadata that a reviewer can inspect before
+anything runs.</li>
 <li>Portable deployment: the same <code>McpApp</code> can be served to
-an MCP host, embedded in Shiny, or wrapped as a shinychat tool
-card.</li>
+an MCP host, embedded in Shiny, or wrapped as a shinychat tool card. In
+hosts without MCP Apps support, the same tools run as plain text
+tools.</li>
 <li>Small cards over giant dashboards: each card has one job and maps
 cleanly to one tool call.</li>
 </ul>

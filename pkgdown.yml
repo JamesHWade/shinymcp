@@ -6,10 +6,11 @@ articles:
   choose-the-right-migration-path: choose-the-right-migration-path.html
   converting-shiny-apps: converting-shiny-apps.html
   debugging-shinymcp: debugging-shinymcp.html
+  mcp-apps-protocol: mcp-apps-protocol.html
   shinymcp-by-example: shinymcp-by-example.html
   use-cases: use-cases.html
   use-shinymcp-with-shinychat: use-shinymcp-with-shinychat.html
-last_built: 2026-06-14T18:28Z
+last_built: 2026-06-14T18:46Z
 urls:
   reference: https://jameshwade.github.io/shinymcp/reference
   article: https://jameshwade.github.io/shinymcp/articles

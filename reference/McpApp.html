@@ -26,7 +26,7 @@ MCP App"><meta property="og:image" content="https://jameshwade.github.io/shinymc
     <li><a class="dropdown-item" href="../articles/automatic-conversion.html">Automatic Conversion</a></li>
     <li><a class="dropdown-item" href="../articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
     <li><a class="dropdown-item" href="../articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
-    <li><a class="dropdown-item" href="../articles/compatibility-matrix.html">Compatibility Matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/mcp-apps-protocol.html">MCP Apps Protocol</a></li>
     <li><a class="dropdown-item" href="../articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -84,8 +84,12 @@ annotated with resource URIs for MCP consumption.</p>
 <li><p><a href="#method-McpApp-html_resource"><code>McpApp$html_resource()</code></a></p></li>
 <li><p><a href="#method-McpApp-mcp_tools"><code>McpApp$mcp_tools()</code></a></p></li>
 <li><p><a href="#method-McpApp-tool_definitions"><code>McpApp$tool_definitions()</code></a></p></li>
+<li><p><a href="#method-McpApp-extra_resources"><code>McpApp$extra_resources()</code></a></p></li>
+<li><p><a href="#method-McpApp-read_extra_resource"><code>McpApp$read_extra_resource()</code></a></p></li>
+<li><p><a href="#method-McpApp-resource_meta"><code>McpApp$resource_meta()</code></a></p></li>
 <li><p><a href="#method-McpApp-call_tool"><code>McpApp$call_tool()</code></a></p></li>
 <li><p><a href="#method-McpApp-resource_uri"><code>McpApp$resource_uri()</code></a></p></li>
+<li><p><a href="#method-McpApp-interaction_defaults"><code>McpApp$interaction_defaults()</code></a></p></li>
 <li><p><a href="#method-McpApp-print"><code>McpApp$print()</code></a></p></li>
 <li><p><a href="#method-McpApp-clone"><code>McpApp$clone()</code></a></p></li>
 </ul></div><p></p><hr><a id="method-McpApp-new"></a><div class="section">
@@ -97,7 +101,15 @@ annotated with resource URIs for MCP consumption.</p>
 <span>  tools <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span>,</span>
 <span>  name <span class="op">=</span> <span class="st">"shinymcp-app"</span>,</span>
 <span>  version <span class="op">=</span> <span class="st">"0.1.0"</span>,</span>
-<span>  theme <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  theme <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  csp <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  permissions <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  prefers_border <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tool_visibility <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  trigger <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  debounce_ms <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  resources <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tool_outputs <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
@@ -126,6 +138,60 @@ provided, the UI will be wrapped in a themed page. Not needed if <code>ui</code>
 is already a <code><a href="https://rstudio.github.io/bslib/reference/page.html" class="external-link">bslib::page()</a></code>.</p></dd>
 
 
+<dt><code>csp</code></dt>
+<dd><p>Optional named list of Content Security Policy domain
+declarations for the app's <code>ui://</code> resource, per the MCP Apps spec.
+Hosts block undeclared external domains. Fields: <code>connect_domains</code>
+(fetch/XHR/WebSocket origins), <code>resource_domains</code> (scripts, styles,
+images, fonts), <code>frame_domains</code> (nested iframes), <code>base_uri_domains</code>.
+Apps with fully inlined assets (the shinymcp default) don't need this.</p></dd>
+
+
+<dt><code>permissions</code></dt>
+<dd><p>Optional named list of sandbox permissions the app
+needs (e.g. <code>list(camera = list())</code>). Most apps don't need this.</p></dd>
+
+
+<dt><code>prefers_border</code></dt>
+<dd><p>Optional logical; hint that the host should draw
+a border around the embedded app.</p></dd>
+
+
+<dt><code>tool_visibility</code></dt>
+<dd><p>Optional named list mapping tool names to
+visibility scopes per the MCP Apps spec. Each entry is a character
+vector drawn from <code>c("model", "app")</code>. Use <code>"app"</code> for tools only the
+UI should call (hidden from the model), <code>"model"</code> for tools the UI
+should not call. Default (unset) is both.</p></dd>
+
+
+<dt><code>trigger</code></dt>
+<dd><p>When the UI calls tools as inputs change: <code>"debounce"</code>
+(default, batches rapid changes) or <code>"change"</code> (immediate). The
+<code>"submit"</code> and <code>"manual"</code> modes only apply inside shinymcp's own
+Shiny host, which provides Apply/Run buttons.</p></dd>
+
+
+<dt><code>debounce_ms</code></dt>
+<dd><p>Debounce interval in milliseconds (default 250).</p></dd>
+
+
+<dt><code>resources</code></dt>
+<dd><p>Optional named list of extra resources served
+alongside the app. Names are URIs; values are a string (static
+content), a function returning a string (evaluated on each read,
+useful for lazy-loading data into the UI via
+<code>window.shinymcp.readResource()</code>), or a list with fields <code>content</code>
+(string or function), <code>mime_type</code>, <code>name</code>, <code>description</code>, <code>meta</code>.</p></dd>
+
+
+<dt><code>tool_outputs</code></dt>
+<dd><p>Optional named list mapping tool names to the
+output ids they return (e.g. <code>list(explore = c("scatter", "stats"))</code>).
+Used to generate an <code>outputSchema</code> for each tool. Only declare this
+for tools that return a named list keyed by those output ids.</p></dd>
+
+
 </dl><p></p></div>
 </div>
 
@@ -152,7 +218,10 @@ bslib or other htmltools-based packages are inlined automatically.</p><div class
 </div><p></p><hr><a id="method-McpApp-mcp_tools"></a><div class="section">
 <h3 id="method-mcp-tools-">Method <code>mcp_tools()</code><a class="anchor" aria-label="anchor" href="#method-mcp-tools-"></a></h3>
 <p>Get tools annotated with MCP metadata
-Returns the tools list with _meta.ui.resourceUri added to each tool.</p><div class="section">
+Returns the tools list with <code>_meta.ui</code> added to each plain-list tool,
+excluding tools whose <code>visibility</code> does not include <code>"model"</code> (those
+are app-only: callable from the rendered UI, hidden from the model).
+Used by the shinychat/mcptools registration paths.</p><div class="section">
 <h4 id="usage-2">Usage<a class="anchor" aria-label="anchor" href="#usage-2"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">mcp_tools</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
@@ -165,19 +234,70 @@ Returns a list of tool definition objects suitable for JSON-RPC.
 Each tool includes <code>_meta.ui.resourceUri</code> linking it to the app's
 UI resource, which tells MCP Apps-capable hosts to render the UI.</p><div class="section">
 <h4 id="usage-3">Usage<a class="anchor" aria-label="anchor" href="#usage-3"></a></h4>
-<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">tool_definitions</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">tool_definitions</span><span class="op">(</span>include_ui_meta <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>include_ui_meta</code></dt>
+<dd><p>Whether to attach <code>_meta.ui</code> to each tool.
+Set to <code>FALSE</code> for clients that did not advertise the MCP Apps
+extension capability, so tools degrade gracefully to text-only.</p></dd>
+
+
+</dl><p></p></div>
+</div>
+
+</div><p></p><hr><a id="method-McpApp-extra_resources"></a><div class="section">
+<h3 id="method-extra-resources-">Method <code>extra_resources()</code><a class="anchor" aria-label="anchor" href="#method-extra-resources-"></a></h3>
+<p>Get the extra resources declared for this app
+Returns a named list (URI -&gt; normalized spec with <code>uri</code>, <code>name</code>,
+<code>description</code>, <code>mime_type</code>, <code>content_fn</code>, <code>meta</code>) for registration
+alongside the app's main ui:// resource.</p><div class="section">
+<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">extra_resources</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+
+</div><p></p><hr><a id="method-McpApp-read_extra_resource"></a><div class="section">
+<h3 id="method-read-extra-resource-">Method <code>read_extra_resource()</code><a class="anchor" aria-label="anchor" href="#method-read-extra-resource-"></a></h3>
+<p>Read one extra resource by URI
+Returns a <code>resources/read</code> contents entry (<code>uri</code>, <code>mimeType</code>, <code>text</code>,
+optional <code>_meta</code>). Errors with class <code>shinymcp_error_resource</code> when
+the URI is not a declared extra resource.</p><div class="section">
+<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">read_extra_resource</span><span class="op">(</span><span class="va">uri</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+<div class="section">
+<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<p></p><div class="arguments"><dl><dt><code>uri</code></dt>
+<dd><p>The resource URI to read</p></dd>
+
+
+</dl><p></p></div>
+</div>
+
+</div><p></p><hr><a id="method-McpApp-resource_meta"></a><div class="section">
+<h3 id="method-resource-meta-">Method <code>resource_meta()</code><a class="anchor" aria-label="anchor" href="#method-resource-meta-"></a></h3>
+<p>Get the <code>_meta</code> for this app's ui:// resource
+Returns the <code>_meta</code> list (CSP domains, permissions, prefersBorder)
+to attach to the resource in <code>resources/list</code> and <code>resources/read</code>
+responses, or <code>NULL</code> when nothing was declared.</p><div class="section">
+<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">resource_meta</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 
 </div><p></p><hr><a id="method-McpApp-call_tool"></a><div class="section">
 <h3 id="method-call-tool-">Method <code>call_tool()</code><a class="anchor" aria-label="anchor" href="#method-call-tool-"></a></h3>
 <p>Call a tool by name</p><div class="section">
-<h4 id="usage-4">Usage<a class="anchor" aria-label="anchor" href="#usage-4"></a></h4>
+<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">call_tool</span><span class="op">(</span><span class="va">name</span>, arguments <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-2">Arguments<a class="anchor" aria-label="anchor" href="#arguments-2"></a></h4>
+<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>name</code></dt>
 <dd><p>Name of the tool to call</p></dd>
 
@@ -192,20 +312,31 @@ UI resource, which tells MCP Apps-capable hosts to render the UI.</p><div class=
 </div><p></p><hr><a id="method-McpApp-resource_uri"></a><div class="section">
 <h3 id="method-resource-uri-">Method <code>resource_uri()</code><a class="anchor" aria-label="anchor" href="#method-resource-uri-"></a></h3>
 <p>Get the ui:// resource URI for this app</p><div class="section">
-<h4 id="usage-5">Usage<a class="anchor" aria-label="anchor" href="#usage-5"></a></h4>
+<h4 id="usage-8">Usage<a class="anchor" aria-label="anchor" href="#usage-8"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">resource_uri</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
+</div>
+
+
+</div><p></p><hr><a id="method-McpApp-interaction_defaults"></a><div class="section">
+<h3 id="method-interaction-defaults-">Method <code>interaction_defaults()</code><a class="anchor" aria-label="anchor" href="#method-interaction-defaults-"></a></h3>
+<p>Get the app's declared interaction defaults
+Returns a list with <code>trigger</code> and <code>debounce_ms</code> as declared at
+construction (either may be <code>NULL</code> when unset). Hosts use this to
+defer to the app's declaration when the embedder didn't specify.</p><div class="section">
+<h4 id="usage-9">Usage<a class="anchor" aria-label="anchor" href="#usage-9"></a></h4>
+<p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">interaction_defaults</span><span class="op">(</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 
 </div><p></p><hr><a id="method-McpApp-print"></a><div class="section">
 <h3 id="method-print-">Method <code><a href="https://rdrr.io/r/base/print.html" class="external-link">print()</a></code><a class="anchor" aria-label="anchor" href="#method-print-"></a></h3>
 <p>Print method</p><div class="section">
-<h4 id="usage-6">Usage<a class="anchor" aria-label="anchor" href="#usage-6"></a></h4>
+<h4 id="usage-10">Usage<a class="anchor" aria-label="anchor" href="#usage-10"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">print</span><span class="op">(</span><span class="va">...</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-3">Arguments<a class="anchor" aria-label="anchor" href="#arguments-3"></a></h4>
+<h4 id="arguments-5">Arguments<a class="anchor" aria-label="anchor" href="#arguments-5"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>...</code></dt>
 <dd><p>Ignored.</p></dd>
 
@@ -216,12 +347,12 @@ UI resource, which tells MCP Apps-capable hosts to render the UI.</p><div class=
 </div><p></p><hr><a id="method-McpApp-clone"></a><div class="section">
 <h3 id="method-clone-">Method <code>clone()</code><a class="anchor" aria-label="anchor" href="#method-clone-"></a></h3>
 <p>The objects of this class are cloneable with this method.</p><div class="section">
-<h4 id="usage-7">Usage<a class="anchor" aria-label="anchor" href="#usage-7"></a></h4>
+<h4 id="usage-11">Usage<a class="anchor" aria-label="anchor" href="#usage-11"></a></h4>
 <p></p><div class="r"><div class="sourceCode"><pre><code><span><span class="va">McpApp</span><span class="op">$</span><span class="fu">clone</span><span class="op">(</span>deep <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span></code></pre></div><p></p></div>
 </div>
 
 <div class="section">
-<h4 id="arguments-4">Arguments<a class="anchor" aria-label="anchor" href="#arguments-4"></a></h4>
+<h4 id="arguments-6">Arguments<a class="anchor" aria-label="anchor" href="#arguments-6"></a></h4>
 <p></p><div class="arguments"><dl><dt><code>deep</code></dt>
 <dd><p>Whether to make a deep clone.</p></dd>
 

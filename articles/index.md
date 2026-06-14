@@ -10,6 +10,8 @@
   Apps](https://jameshwade.github.io/shinymcp/articles/converting-shiny-apps.md):
 - [Debugging
   shinymcp](https://jameshwade.github.io/shinymcp/articles/debugging-shinymcp.md):
+- [The MCP Apps Protocol in
+  shinymcp](https://jameshwade.github.io/shinymcp/articles/mcp-apps-protocol.md):
 - [shinymcp by
   example](https://jameshwade.github.io/shinymcp/articles/shinymcp-by-example.md):
 - [shinymcp use

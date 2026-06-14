@@ -24,7 +24,7 @@
     <li><a class="dropdown-item" href="../articles/automatic-conversion.html">Automatic Conversion</a></li>
     <li><a class="dropdown-item" href="../articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
     <li><a class="dropdown-item" href="../articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
-    <li><a class="dropdown-item" href="../articles/compatibility-matrix.html">Compatibility Matrix</a></li>
+    <li><a class="dropdown-item" href="../articles/mcp-apps-protocol.html">MCP Apps Protocol</a></li>
     <li><a class="dropdown-item" href="../articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
   </ul></li>
       </ul><ul class="navbar-nav"><li class="nav-item"><form class="form-inline" role="search">
@@ -60,6 +60,14 @@
 <span>  name <span class="op">=</span> <span class="st">"shinymcp-app"</span>,</span>
 <span>  version <span class="op">=</span> <span class="st">"0.1.0"</span>,</span>
 <span>  theme <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  csp <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  permissions <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  prefers_border <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tool_visibility <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  trigger <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  debounce_ms <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  resources <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  tool_outputs <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  <span class="va">...</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
@@ -90,6 +98,65 @@
 <dd><p>Optional <code><a href="https://rstudio.github.io/bslib/reference/bs_theme.html" class="external-link">bslib::bs_theme()</a></code> object. Supports
 <code>brand</code> for <a href="https://posit-dev.github.io/brand-yml/" class="external-link">brand.yml</a> theming.
 Not needed if <code>ui</code> is already a <code><a href="https://rstudio.github.io/bslib/reference/page.html" class="external-link">bslib::page()</a></code>.</p></dd>
+
+
+<dt id="arg-csp">csp<a class="anchor" aria-label="anchor" href="#arg-csp"></a></dt>
+<dd><p>Optional named list of Content Security Policy domain
+declarations for the app's <code>ui://</code> resource, per the MCP Apps spec.
+MCP hosts apply a restrictive default policy that blocks all external
+network access and assets, so any domain your app loads from at runtime
+must be declared here. Fields (snake_case or spec camelCase):</p><ul><li><p><code>connect_domains</code>: origins for fetch/XHR/WebSocket requests</p></li>
+<li><p><code>resource_domains</code>: origins for scripts, styles, images, fonts</p></li>
+<li><p><code>frame_domains</code>: origins for nested iframes</p></li>
+<li><p><code>base_uri_domains</code>: allowed <code>base-uri</code> values</p></li>
+</ul><p>Apps with fully inlined assets (the shinymcp default) don't need this.</p></dd>
+
+
+<dt id="arg-permissions">permissions<a class="anchor" aria-label="anchor" href="#arg-permissions"></a></dt>
+<dd><p>Optional named list of iframe permissions the app
+needs, e.g. <code>list(camera = list())</code>. Most apps don't need this.</p></dd>
+
+
+<dt id="arg-prefers-border">prefers_border<a class="anchor" aria-label="anchor" href="#arg-prefers-border"></a></dt>
+<dd><p>Optional logical hint that the host should draw a
+border around the embedded app.</p></dd>
+
+
+<dt id="arg-tool-visibility">tool_visibility<a class="anchor" aria-label="anchor" href="#arg-tool-visibility"></a></dt>
+<dd><p>Optional named list mapping tool names to MCP Apps
+visibility scopes (character vectors drawn from <code>c("model", "app")</code>).
+Use <code>"app"</code> for tools only the rendered UI should call (hidden from the
+model's tool list), <code>"model"</code> for tools the UI must not call. Unset
+tools are visible to both.</p></dd>
+
+
+<dt id="arg-trigger">trigger<a class="anchor" aria-label="anchor" href="#arg-trigger"></a></dt>
+<dd><p>When the UI calls tools as inputs change: <code>"debounce"</code>
+(default) or <code>"change"</code>. <code>"submit"</code>/<code>"manual"</code> only apply inside
+shinymcp's own Shiny host.</p></dd>
+
+
+<dt id="arg-debounce-ms">debounce_ms<a class="anchor" aria-label="anchor" href="#arg-debounce-ms"></a></dt>
+<dd><p>Debounce interval in milliseconds (default 250).</p></dd>
+
+
+<dt id="arg-resources">resources<a class="anchor" aria-label="anchor" href="#arg-resources"></a></dt>
+<dd><p>Optional named list of extra resources served alongside
+the app, readable from the UI via <code>window.shinymcp.readResource(uri)</code>.
+Names are URIs; values are a string (static content), a function
+returning a string (evaluated on each read — useful for lazy-loading
+data instead of inlining it into the app HTML), or a list with fields
+<code>content</code>, <code>mime_type</code> (default <code>"text/plain"</code>), <code>name</code>, <code>description</code>,
+and <code>meta</code>. For example:
+<code>resources = list("ui://my-app/data" = list(content = function() jsonlite::toJSON(mtcars), mime_type = "application/json"))</code></p></dd>
+
+
+<dt id="arg-tool-outputs">tool_outputs<a class="anchor" aria-label="anchor" href="#arg-tool-outputs"></a></dt>
+<dd><p>Optional named list mapping tool names to the output
+ids they return, e.g. <code>list(explore = c("scatter", "stats"))</code>. Declared
+tools get an auto-generated <code>outputSchema</code> (all properties are strings,
+with descriptions derived from the matching UI output types). Only
+declare tools that return a named list keyed by those output ids.</p></dd>
 
 
 <dt id="arg--">...<a class="anchor" aria-label="anchor" href="#arg--"></a></dt>
