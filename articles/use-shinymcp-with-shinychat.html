@@ -84,23 +84,22 @@
 
     
     
-<p><code>shinymcp</code> supports two runtime-first shinychat paths:</p>
-<ol style="list-style-type: decimal">
-<li>Wrap a small <code>McpApp</code> as an ellmer tool with
-<code><a href="../reference/as_shinychat_tool.html">as_shinychat_tool()</a></code>.</li>
-<li>Embed a live <code>McpApp</code> directly in Shiny with
-<code><a href="../reference/mcp_host_ui.html">mcp_host_ui()</a></code> / <code><a href="../reference/mcp_host_server.html">mcp_host_server()</a></code> or
-<code><a href="../reference/mcp_embed.html">mcp_embed()</a></code>.</li>
-</ol>
-<p>In both paths, the card is a portable MCP App iframe. When it runs
-inside Shiny, the active Shiny session owns the live host state and
-executes tool calls in R. The iframe stays lightweight HTML plus the
-shinymcp bridge rather than starting a nested Shiny runtime for every
-chat card.</p>
-<p><code>shinymcp</code> also sets shinychat’s
-<code>display$full_screen</code> flag for tool cards when available, and
-the embedded host shell includes its own full-screen control for direct
-Shiny embeds and older shinychat development builds.</p>
+<p>There are two ways to put a shinymcp card into a shinychat
+conversation, and both run the tool in the live Shiny session. You can
+wrap a small <code>McpApp</code> as an ellmer tool with
+<code><a href="../reference/as_shinychat_tool.html">as_shinychat_tool()</a></code>, or you can embed a live
+<code>McpApp</code> directly in Shiny with <code><a href="../reference/mcp_host_ui.html">mcp_host_ui()</a></code>
+and <code><a href="../reference/mcp_host_server.html">mcp_host_server()</a></code> (or the <code><a href="../reference/mcp_embed.html">mcp_embed()</a></code>
+shorthand).</p>
+<p>Either way, the card is a portable MCP App iframe. When it runs
+inside Shiny, the active Shiny session owns the live host state and runs
+tool calls in R. The iframe is lightweight HTML plus the shinymcp
+bridge, so you avoid starting a nested Shiny runtime for every chat
+card.</p>
+<p>When shinychat exposes <code>display$full_screen</code>, shinymcp
+sets it for tool cards. The embedded host shell also carries its own
+full-screen control, which covers direct Shiny embeds and older
+shinychat development builds.</p>
 <div class="section level2">
 <h2 id="tool-card-path-with-chat_mod_server">Tool-card path with <code>chat_mod_server()</code><a class="anchor" aria-label="anchor" href="#tool-card-path-with-chat_mod_server"></a>
 </h2>
@@ -148,13 +147,13 @@ Shiny embeds and older shinychat development builds.</p>
 <span><span class="op">}</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
-<p>The wrapped tool returns:</p>
+<p>The wrapped tool returns three things:</p>
 <ul>
-<li>A machine-facing value, which defaults to the raw tool result
-transformed by <code>value_fn</code>.</li>
-<li>A human-facing shinychat tool card, which defaults to a live
-embedded <code>McpApp</code>.</li>
-<li>Full-screen affordances for larger card inspection, using
+<li>A machine-facing value, the raw tool result transformed by
+<code>value_fn</code>.</li>
+<li>A human-facing shinychat tool card, a live embedded
+<code>McpApp</code> by default.</li>
+<li>Full-screen affordances for inspecting a larger card, using
 shinychat’s native tool-card mode when available.</li>
 </ul>
 </div>
@@ -162,8 +161,8 @@ shinychat’s native tool-card mode when available.</li>
 <h2 id="content-streaming-path-with-chat_ui-chat_append">Content-streaming path with <code>chat_ui()</code> +
 <code>chat_append()</code><a class="anchor" aria-label="anchor" href="#content-streaming-path-with-chat_ui-chat_append"></a>
 </h2>
-<p>Use <code><a href="../reference/mcp_content_result.html">mcp_content_result()</a></code> when you already have a live
-Shiny session and want to append a card yourself:</p>
+<p>When you already have a live Shiny session and want to append the
+card yourself, reach for <code><a href="../reference/mcp_content_result.html">mcp_content_result()</a></code>:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span><span class="fu"><a href="https://posit-dev.github.io/shinychat/r/reference/chat_ui.html" class="external-link">chat_ui</a></span><span class="op">(</span><span class="st">"chat"</span><span class="op">)</span><span class="op">)</span></span>
 <span></span>
@@ -182,7 +181,8 @@ Shiny session and want to append a card yourself:</p>
 <div class="section level2">
 <h2 id="direct-embedding-in-shiny">Direct embedding in Shiny<a class="anchor" aria-label="anchor" href="#direct-embedding-in-shiny"></a>
 </h2>
-<p>For authored Shiny UIs, use the host shell helpers directly:</p>
+<p>When you write the Shiny UI yourself, call the host shell helpers
+directly:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_fillable.html" class="external-link">page_fillable</a></span><span class="op">(</span></span>
 <span>  <span class="fu"><a href="../reference/mcp_host_ui.html">mcp_host_ui</a></span><span class="op">(</span><span class="st">"card"</span><span class="op">)</span></span>
@@ -195,10 +195,10 @@ Shiny session and want to append a card yourself:</p>
 <span>    trigger <span class="op">=</span> <span class="st">"submit"</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">}</span></span></code></pre></div>
-<p><code>mcp_embed(card_app)</code> is the convenience helper for
-dynamic server-side contexts where a live session already exists.</p>
-<p>The returned host object also exposes read-only reactives so the
-outer Shiny app can observe the embedded card:</p>
+<p><code>mcp_embed(card_app)</code> is the shorthand for dynamic
+server-side contexts where a live session already exists.</p>
+<p>The host object exposes read-only reactives, so the outer Shiny app
+can watch the embedded card:</p>
 <div class="sourceCode" id="cb4"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
 <span>  <span class="va">host</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mcp_host_server.html">mcp_host_server</a></span><span class="op">(</span><span class="st">"card"</span>, app <span class="op">=</span> <span class="va">card_app</span><span class="op">)</span></span>
@@ -218,34 +218,32 @@ outer Shiny app can observe the embedded card:</p>
 <div class="section level2">
 <h2 id="interaction-modes">Interaction modes<a class="anchor" aria-label="anchor" href="#interaction-modes"></a>
 </h2>
-<p><code><a href="../reference/mcp_embed.html">mcp_embed()</a></code> and <code><a href="../reference/mcp_host_server.html">mcp_host_server()</a></code> support
-four trigger modes:</p>
+<p><code><a href="../reference/mcp_embed.html">mcp_embed()</a></code> and <code><a href="../reference/mcp_host_server.html">mcp_host_server()</a></code> take a
+<code>trigger</code> that decides when the card calls its tool:</p>
 <ul>
 <li>
-<code>change</code>: execute immediately on input change.</li>
+<code>change</code> runs on every input change.</li>
 <li>
-<code>debounce</code>: execute after a short quiet period.</li>
+<code>debounce</code> runs after a short quiet period.</li>
 <li>
-<code>submit</code>: require the host shell Apply button.</li>
+<code>submit</code> waits for the host shell Apply button.</li>
 <li>
-<code>manual</code>: require an explicit host-side command such as
+<code>manual</code> waits for an explicit host-side command such as
 <code>host$execute()</code>.</li>
 </ul>
 </div>
 <div class="section level2">
-<h2 id="recommended-usage">Recommended usage<a class="anchor" aria-label="anchor" href="#recommended-usage"></a>
+<h2 id="what-to-reach-for-and-when">What to reach for, and when<a class="anchor" aria-label="anchor" href="#what-to-reach-for-and-when"></a>
 </h2>
-<ul>
-<li>Prefer small single-purpose cards.</li>
-<li>Prefer sequential tool execution in shinychat until you have a
-strong reason to expose many parallel cards.</li>
-<li>Treat the chat card as the human surface and the
-<code>value_fn</code> output as the model-facing value.</li>
-<li>Use Shiny modules directly when you need a Shiny-only app with full
-reactive UI semantics.</li>
-<li>Use <code>McpApp</code> cards when you want the same experience to
-work in shinychat and MCP hosts.</li>
-</ul>
+<p>A few things hold up well in practice. Keep cards small and
+single-purpose. Let tools run one at a time in shinychat until you have
+a real reason to put many parallel cards in front of the model. Treat
+the chat card as the human surface and the <code>value_fn</code> output
+as the value the model reads back.</p>
+<p>The choice between approaches comes down to where the app needs to
+run. When you want a Shiny-only app with full reactive UI semantics, use
+Shiny modules directly. When you want the same card to work in both
+shinychat and MCP hosts, build it as an <code>McpApp</code>.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

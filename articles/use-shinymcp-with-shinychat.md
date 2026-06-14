@@ -1,26 +1,25 @@
 # Use shinymcp with shinychat
 
-`shinymcp` supports two runtime-first shinychat paths:
+There are two ways to put a shinymcp card into a shinychat conversation,
+and both run the tool in the live Shiny session. You can wrap a small
+`McpApp` as an ellmer tool with
+[`as_shinychat_tool()`](https://jameshwade.github.io/shinymcp/reference/as_shinychat_tool.md),
+or you can embed a live `McpApp` directly in Shiny with
+[`mcp_host_ui()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_ui.md)
+and
+[`mcp_host_server()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_server.md)
+(or the
+[`mcp_embed()`](https://jameshwade.github.io/shinymcp/reference/mcp_embed.md)
+shorthand).
 
-1.  Wrap a small `McpApp` as an ellmer tool with
-    [`as_shinychat_tool()`](https://jameshwade.github.io/shinymcp/reference/as_shinychat_tool.md).
-2.  Embed a live `McpApp` directly in Shiny with
-    [`mcp_host_ui()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_ui.md)
-    /
-    [`mcp_host_server()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_server.md)
-    or
-    [`mcp_embed()`](https://jameshwade.github.io/shinymcp/reference/mcp_embed.md).
+Either way, the card is a portable MCP App iframe. When it runs inside
+Shiny, the active Shiny session owns the live host state and runs tool
+calls in R. The iframe is lightweight HTML plus the shinymcp bridge, so
+you avoid starting a nested Shiny runtime for every chat card.
 
-In both paths, the card is a portable MCP App iframe. When it runs
-inside Shiny, the active Shiny session owns the live host state and
-executes tool calls in R. The iframe stays lightweight HTML plus the
-shinymcp bridge rather than starting a nested Shiny runtime for every
-chat card.
-
-`shinymcp` also sets shinychat’s `display$full_screen` flag for tool
-cards when available, and the embedded host shell includes its own
-full-screen control for direct Shiny embeds and older shinychat
-development builds.
+When shinychat exposes `display$full_screen`, shinymcp sets it for tool
+cards. The embedded host shell also carries its own full-screen control,
+which covers direct Shiny embeds and older shinychat development builds.
 
 ## Tool-card path with `chat_mod_server()`
 
@@ -71,21 +70,19 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-The wrapped tool returns:
+The wrapped tool returns three things:
 
-- A machine-facing value, which defaults to the raw tool result
-  transformed by `value_fn`.
-- A human-facing shinychat tool card, which defaults to a live embedded
-  `McpApp`.
-- Full-screen affordances for larger card inspection, using shinychat’s
-  native tool-card mode when available.
+- A machine-facing value, the raw tool result transformed by `value_fn`.
+- A human-facing shinychat tool card, a live embedded `McpApp` by
+  default.
+- Full-screen affordances for inspecting a larger card, using
+  shinychat’s native tool-card mode when available.
 
 ## Content-streaming path with `chat_ui()` + `chat_append()`
 
-Use
-[`mcp_content_result()`](https://jameshwade.github.io/shinymcp/reference/mcp_content_result.md)
-when you already have a live Shiny session and want to append a card
-yourself:
+When you already have a live Shiny session and want to append the card
+yourself, reach for
+[`mcp_content_result()`](https://jameshwade.github.io/shinymcp/reference/mcp_content_result.md):
 
 ``` r
 
@@ -106,7 +103,8 @@ server <- function(input, output, session) {
 
 ## Direct embedding in Shiny
 
-For authored Shiny UIs, use the host shell helpers directly:
+When you write the Shiny UI yourself, call the host shell helpers
+directly:
 
 ``` r
 
@@ -123,11 +121,11 @@ server <- function(input, output, session) {
 }
 ```
 
-`mcp_embed(card_app)` is the convenience helper for dynamic server-side
-contexts where a live session already exists.
+`mcp_embed(card_app)` is the shorthand for dynamic server-side contexts
+where a live session already exists.
 
-The returned host object also exposes read-only reactives so the outer
-Shiny app can observe the embedded card:
+The host object exposes read-only reactives, so the outer Shiny app can
+watch the embedded card:
 
 ``` r
 
@@ -152,22 +150,23 @@ server <- function(input, output, session) {
 [`mcp_embed()`](https://jameshwade.github.io/shinymcp/reference/mcp_embed.md)
 and
 [`mcp_host_server()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_server.md)
-support four trigger modes:
+take a `trigger` that decides when the card calls its tool:
 
-- `change`: execute immediately on input change.
-- `debounce`: execute after a short quiet period.
-- `submit`: require the host shell Apply button.
-- `manual`: require an explicit host-side command such as
+- `change` runs on every input change.
+- `debounce` runs after a short quiet period.
+- `submit` waits for the host shell Apply button.
+- `manual` waits for an explicit host-side command such as
   `host$execute()`.
 
-## Recommended usage
+## What to reach for, and when
 
-- Prefer small single-purpose cards.
-- Prefer sequential tool execution in shinychat until you have a strong
-  reason to expose many parallel cards.
-- Treat the chat card as the human surface and the `value_fn` output as
-  the model-facing value.
-- Use Shiny modules directly when you need a Shiny-only app with full
-  reactive UI semantics.
-- Use `McpApp` cards when you want the same experience to work in
-  shinychat and MCP hosts.
+A few things hold up well in practice. Keep cards small and
+single-purpose. Let tools run one at a time in shinychat until you have
+a real reason to put many parallel cards in front of the model. Treat
+the chat card as the human surface and the `value_fn` output as the
+value the model reads back.
+
+The choice between approaches comes down to where the app needs to run.
+When you want a Shiny-only app with full reactive UI semantics, use
+Shiny modules directly. When you want the same card to work in both
+shinychat and MCP hosts, build it as an `McpApp`.

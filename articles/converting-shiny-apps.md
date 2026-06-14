@@ -1,14 +1,13 @@
 # Converting Shiny Apps to MCP Apps
 
-MCP Apps are interactive UIs that render directly inside AI chat
-interfaces like Claude Desktop. Unlike Shiny apps that run in a browser
-with a persistent server, MCP Apps are lightweight HTML documents where
-user interactions trigger **tool calls** — stateless R functions that
-the AI host invokes on demand.
+An MCP App is an interactive UI that renders inside an AI chat interface
+like Claude Desktop. A Shiny app runs in a browser tab backed by a
+persistent server. An MCP App is a small HTML document, and user
+interactions trigger tool calls: stateless R functions that the AI host
+invokes on demand.
 
-This vignette walks through converting a Shiny app into an MCP App using
-shinymcp. We’ll use the classic Palmer Penguins explorer as a worked
-example.
+This vignette converts a Shiny app into an MCP App with shinymcp, using
+the classic Palmer Penguins explorer as the worked example.
 
 ## Key differences from Shiny
 
@@ -23,10 +22,10 @@ Before converting, it helps to understand what changes:
 | **State** | Server-side reactive values | Recomputed each tool call |
 | **Layout** | [`fluidPage()`](https://rdrr.io/pkg/shiny/man/fluidPage.html), [`sidebarLayout()`](https://rdrr.io/pkg/shiny/man/sidebarLayout.html) | bslib ([`page_sidebar()`](https://rstudio.github.io/bslib/reference/page_sidebar.html), [`card()`](https://rstudio.github.io/bslib/reference/card.html)) |
 
-The core shift: **flatten your reactive graph into tool functions**.
-Each connected group of inputs → reactives → outputs becomes a single
-tool that accepts inputs as arguments and returns outputs as a named
-list.
+The work of converting an app is flattening your reactive graph into
+tool functions. Each connected group of inputs → reactives → outputs
+becomes a single tool that takes the inputs as arguments and returns the
+outputs as a named list.
 
 ## Step 1: Identify inputs and outputs
 
@@ -84,37 +83,26 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
-From this app, we identify:
+This app has four inputs: a `selectInput` for `species`, two more for
+`x_var` and `y_var`, and a `checkboxInput` for `trend`. It has two
+outputs: a `plotOutput` named `scatter` holding a ggplot, and a
+`verbatimTextOutput` named `stats` holding summary statistics.
 
-**Inputs:**
-
-- `species` — `selectInput` with 4 choices
-- `x_var` — `selectInput` with 4 variable choices
-- `y_var` — `selectInput` with 4 variable choices
-- `trend` — `checkboxInput` (boolean)
-
-**Outputs:**
-
-- `scatter` — `plotOutput` (a ggplot scatter plot)
-- `stats` — `verbatimTextOutput` (summary statistics)
-
-**Reactive logic:**
-
-- `filtered_data()` filters penguins by species
-- Both outputs depend on `filtered_data()` plus the axis/trend inputs
-- Everything is connected — one reactive group → one tool
+The reactive logic is one piece. `filtered_data()` filters penguins by
+species, and both outputs depend on it together with the axis and trend
+inputs. Everything is connected, so it maps to a single tool.
 
 ## Step 2: Map components
 
 The JS bridge auto-detects inputs by matching tool argument names to
-element `id` attributes. This means you can keep your Shiny inputs as-is
-— just ensure the `id` matches a tool argument name:
+element `id` attributes. You can keep your Shiny inputs as they are, as
+long as the `id` matches a tool argument name:
 
 | Shiny input | What to do |
 |----|----|
-| `selectInput("species", "Species", choices)` | Keep it! Auto-detected by `id="species"` |
-| `selectInput("x_var", "X axis", choices)` | Keep it! Auto-detected by `id="x_var"` |
-| `checkboxInput("trend", "Show trend line")` | Keep it! Auto-detected by `id="trend"` |
+| `selectInput("species", "Species", choices)` | Keep it. Auto-detected by `id="species"` |
+| `selectInput("x_var", "X axis", choices)` | Keep it. Auto-detected by `id="x_var"` |
+| `checkboxInput("trend", "Show trend line")` | Keep it. Auto-detected by `id="trend"` |
 
 For outputs, replace Shiny outputs with shinymcp equivalents:
 
@@ -131,11 +119,11 @@ output, use `mcp_output(tag, id, type)`.
 Use bslib for layout instead of Shiny’s
 [`fluidPage()`](https://rdrr.io/pkg/shiny/man/fluidPage.html) /
 [`sidebarLayout()`](https://rdrr.io/pkg/shiny/man/sidebarLayout.html).
-bslib components work directly with htmltools — no Shiny server needed.
+bslib components work directly with htmltools, with no Shiny server.
 Standard
 [`shiny::selectInput()`](https://rdrr.io/pkg/shiny/man/selectInput.html),
 [`shiny::checkboxInput()`](https://rdrr.io/pkg/shiny/man/checkboxInput.html),
-etc. are auto-detected by the bridge:
+and the rest are auto-detected by the bridge:
 
 ``` r
 
@@ -178,17 +166,15 @@ ui <- page_sidebar(
 ```
 
 Named choice vectors (e.g. `"Bill Length (mm)" = "bill_length_mm"`) work
-exactly like Shiny — the name is displayed, the value is sent to the
+exactly like Shiny: the name is displayed, the value is sent to the
 tool.
 
 ## Step 4: Convert reactive logic to a tool
 
-This is the key step. Flatten the reactive graph into a single function:
-
-1.  The function **arguments** are the input values (with sensible
-    defaults)
-2.  The function **body** does what the reactives and renderers did
-3.  The function **returns** a named list mapping output IDs to values
+Flatten the reactive graph into a single function. The arguments are the
+input values, each with a sensible default. The body does what the
+reactives and renderers did. The function returns a named list that maps
+output IDs to values.
 
 For plots, render to a temporary PNG and return the base64-encoded
 image. The bridge displays it as an `<img>` element.
@@ -250,34 +236,29 @@ tools <- list(
 )
 ```
 
-Important details:
+A few things are worth getting right here.
 
-- **Return keys match output IDs**: `list(scatter = ..., stats = ...)`
-  corresponds to `mcp_plot("scatter")` and `mcp_text("stats")`. The
-  bridge uses these keys to route values to the correct output elements.
+The return keys match the output IDs. `list(scatter = ..., stats = ...)`
+corresponds to `mcp_plot("scatter")` and `mcp_text("stats")`, and the
+bridge uses these keys to route values to the right output elements.
 
-- **Base64 plots**: Use
-  [`ggsave()`](https://ggplot2.tidyverse.org/reference/ggsave.html) or
-  [`png()`](https://rdrr.io/r/grDevices/png.html) +
-  [`dev.off()`](https://rdrr.io/r/grDevices/dev.html), then
-  [`base64enc::base64encode()`](https://rdrr.io/pkg/base64enc/man/base64.html).
-  The bridge wraps this in an `<img>` tag.
+Plots travel as base64. Use
+[`ggsave()`](https://ggplot2.tidyverse.org/reference/ggsave.html) or
+[`png()`](https://rdrr.io/r/grDevices/png.html) plus
+[`dev.off()`](https://rdrr.io/r/grDevices/dev.html), then
+[`base64enc::base64encode()`](https://rdrr.io/pkg/base64enc/man/base64.html),
+and the bridge wraps the result in an `<img>` tag. Text output renders
+in a `<pre>` tag, so the column alignment from R’s
+[`summary()`](https://rdrr.io/r/base/summary.html) and
+[`cat()`](https://rdrr.io/r/base/cat.html) survives.
 
-- **Text output**:
-  [`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_text.md)
-  renders in a `<pre>` tag, so R’s
-  [`summary()`](https://rdrr.io/r/base/summary.html) and
-  [`cat()`](https://rdrr.io/r/base/cat.html) output preserves column
-  alignment.
+Every argument needs a default value. The tool uses the defaults when it
+first loads, and they tell the AI what format to expect.
 
-- **Default arguments**: Every argument needs a default value. This is
-  what the tool uses when loaded initially and what the AI sees as the
-  expected format.
-
-- **Stateless**: No
-  [`reactiveVal()`](https://rdrr.io/pkg/shiny/man/reactiveVal.html), no
-  `<<-`, no session state. Each tool call recomputes from scratch. For
-  most apps this is fine since tool calls are fast.
+Tool calls are stateless: no
+[`reactiveVal()`](https://rdrr.io/pkg/shiny/man/reactiveVal.html), no
+`<<-`, no session state. Each call recomputes from scratch, which is
+fine for most apps because the calls are fast.
 
 ## Step 5: Assemble and serve
 
@@ -364,14 +345,11 @@ ellmer::tool(
 MCP tool calls are stateless. If your Shiny app uses
 [`reactiveVal()`](https://rdrr.io/pkg/shiny/man/reactiveVal.html) or
 [`reactiveValues()`](https://rdrr.io/pkg/shiny/man/reactiveValues.html)
-to accumulate state across interactions, you have two options:
-
-1.  **Recompute from inputs**: Most filtering/selection state can be
-    derived from the current input values alone.
-
-2.  **Use the file system**: For truly stateful apps (e.g., a todo
-    list), write state to a temp file and read it back on the next tool
-    call.
+to accumulate state across interactions, you have two options. Most
+filtering and selection state can be derived from the current input
+values alone, so recompute it. For state you genuinely have to carry,
+like a todo list, write it to a temp file and read it back on the next
+tool call.
 
 ### Tables
 

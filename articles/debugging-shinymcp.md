@@ -64,8 +64,8 @@ result@extra$display
 
 MCP Apps is an optional, negotiated MCP extension. If the host does not
 advertise `capabilities.extensions["io.modelcontextprotocol/ui"]` during
-`initialize`, shinymcp serves your tools *without* UI metadata and they
-run as plain text tools — that’s graceful degradation, not a bug. Check
+`initialize`, shinymcp serves your tools with no UI metadata and they
+run as plain text tools. That is graceful degradation, not a bug. Check
 that your client version actually supports MCP Apps, and confirm the app
 works in
 [`preview_app()`](https://jameshwade.github.io/shinymcp/reference/preview_app.md)
@@ -73,7 +73,7 @@ first (it is a known-good reference host).
 
 ### Tool calls appear to hang or the UI silently stops updating
 
-A JSON-RPC *error* response from the host (e.g. a rejected or misnamed
+A JSON-RPC error response from the host (e.g. a rejected or misnamed
 tool call) is surfaced by the bridge as a rejected Promise and logged to
 the iframe’s browser console (`[shinymcp-bridge] Tool call failed ...`).
 Open the host’s devtools and check the console for the iframe context.
@@ -83,11 +83,11 @@ protocol log shows every message in both directions.
 
 ### External assets or API calls don’t load
 
-Hosts apply a restrictive Content Security Policy to the app iframe —
-external scripts, styles, fonts, and `fetch()` calls are blocked by
-default and **fail silently**. Either inline everything (shinymcp’s
-default behavior covers htmltools dependencies automatically) or declare
-the domains via
+Hosts apply a restrictive Content Security Policy to the app iframe.
+External scripts, styles, fonts, and `fetch()` calls are blocked by
+default, and they fail with no error you can see. Either inline
+everything (shinymcp’s default behavior covers htmltools dependencies
+automatically) or declare the domains via
 `mcp_app(csp = list(connect_domains = ..., resource_domains = ...))`.
 See
 [`vignette("mcp-apps-protocol")`](https://jameshwade.github.io/shinymcp/articles/mcp-apps-protocol.md).

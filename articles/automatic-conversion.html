@@ -166,27 +166,12 @@ Complexity: medium
 Input refs: species, x_var, y_var, trend</code></pre>
 <p>The parser handles both <code>app.R</code> (single-file) and
 <code>ui.R</code>/<code>server.R</code> (split-file) apps. It walks the
-AST to extract:</p>
-<ul>
-<li>
-<strong>Inputs</strong>: All <code>*Input()</code> calls with their
-IDs, types, labels, and arguments</li>
-<li>
-<strong>Outputs</strong>: All <code>*Output()</code> calls with
-their IDs and types</li>
-<li>
-<strong>Server body</strong>: The body of the <code>server</code>
-function</li>
-<li>
-<strong>Reactives</strong>: All <code><a href="https://rdrr.io/pkg/shiny/man/reactive.html" class="external-link">reactive()</a></code> expressions
-with their input dependencies</li>
-<li>
-<strong>Observers</strong>: All <code><a href="https://rdrr.io/pkg/shiny/man/observe.html" class="external-link">observe()</a></code> and
-<code><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent()</a></code> calls</li>
-<li>
-<strong>Input refs</strong>: Every <code>input$name</code> and
-<code>input[["name"]]</code> reference</li>
-</ul>
+AST to find every <code>*Input()</code> call (with its id, type, label,
+and arguments), every <code>*Output()</code> call (with its id and
+type), the body of the <code>server</code> function, each
+<code><a href="https://rdrr.io/pkg/shiny/man/reactive.html" class="external-link">reactive()</a></code> expression and the inputs it depends on, each
+<code><a href="https://rdrr.io/pkg/shiny/man/observe.html" class="external-link">observe()</a></code> and <code><a href="https://rdrr.io/pkg/shiny/man/observeEvent.html" class="external-link">observeEvent()</a></code> call, and every
+<code>input$name</code> and <code>input[["name"]]</code> reference.</p>
 <p>The parser classifies apps by complexity:</p>
 <table class="table">
 <thead><tr class="header">
@@ -221,27 +206,19 @@ dependency graph:</p>
 Nodes: 7
 Edges: 6
 Tool groups: 1</code></pre>
-<p>The analyzer:</p>
-<ol style="list-style-type: decimal">
-<li>
-<strong>Builds a dependency graph</strong> — nodes are inputs,
-reactives, and outputs; edges represent data flow (<code>input$x</code>
-used in <code>reactive(...)</code> used in
-<code>renderPlot(...)</code>)</li>
-<li>
-<strong>Finds connected components</strong> — uses union-find to
-group nodes that are transitively connected</li>
-<li>
-<strong>Maps components to tool groups</strong> — each connected
-component becomes one tool with the component’s inputs as arguments and
-outputs as return values</li>
-<li>
-<strong>Flags unresolvable patterns</strong> — dynamic UI, file
-uploads, download handlers, and observers with side effects</li>
-</ol>
-<p>For example, a Shiny app where a <code><a href="https://rdrr.io/pkg/shiny/man/reactive.html" class="external-link">reactive()</a></code> feeds both
+<p>The analyzer builds a dependency graph whose nodes are inputs,
+reactives, and outputs, with edges for data flow: <code>input$x</code>
+used in <code>reactive(...)</code> used in <code>renderPlot(...)</code>.
+It then runs union-find to find connected components, grouping nodes
+that are transitively connected. Each connected component becomes one
+tool, with the component’s inputs as arguments and its outputs as return
+values. Along the way it flags the patterns it can’t resolve: dynamic
+UI, file uploads, download handlers, and observers with side
+effects.</p>
+<p>So a Shiny app where a <code><a href="https://rdrr.io/pkg/shiny/man/reactive.html" class="external-link">reactive()</a></code> feeds both
 <code><a href="https://rdrr.io/pkg/shiny/man/renderPlot.html" class="external-link">renderPlot()</a></code> and <code><a href="https://rdrr.io/pkg/shiny/man/renderPrint.html" class="external-link">renderText()</a></code> produces a
-single tool group containing all related inputs and both outputs.</p>
+single tool group that holds all the related inputs and both
+outputs.</p>
 </div>
 <div class="section level3">
 <h3 id="stage-3-generate">Stage 3: Generate<a class="anchor" aria-label="anchor" href="#stage-3-generate"></a>
@@ -249,30 +226,21 @@ single tool group containing all related inputs and both outputs.</p>
 <p><code><a href="../reference/generate_mcp_app.html">generate_mcp_app()</a></code> writes the MCP App files:</p>
 <div class="sourceCode" id="cb8"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/generate_mcp_app.html">generate_mcp_app</a></span><span class="op">(</span><span class="va">analysis</span>, <span class="va">ir</span>, output_dir <span class="op">=</span> <span class="st">"my-app-mcp"</span><span class="op">)</span></span></code></pre></div>
-<p>It generates:</p>
-<ul>
-<li>
-<strong>UI code</strong> using shinymcp components
-(<code><a href="../reference/mcp_select.html">mcp_select()</a></code>, <code><a href="../reference/mcp_plot.html">mcp_plot()</a></code>, etc.) mapped from
-the original Shiny inputs and outputs</li>
-<li>
-<strong>Tool definitions</strong> using <code><a href="https://ellmer.tidyverse.org/reference/tool.html" class="external-link">ellmer::tool()</a></code>
-with proper argument types (<code>type_string</code>,
-<code>type_number</code>, <code>type_boolean</code>) and tool
-annotations</li>
-<li>
-<strong>Server entrypoint</strong> that sources the tools and sets
-up a state environment</li>
-<li>
-<strong>Conversion notes</strong> (for complex apps) listing what
-needs manual review</li>
-</ul>
+<p>It generates the UI code using shinymcp components
+(<code><a href="../reference/mcp_select.html">mcp_select()</a></code>, <code><a href="../reference/mcp_plot.html">mcp_plot()</a></code>, and so on) mapped
+from the original Shiny inputs and outputs. It writes the tool
+definitions as <code><a href="https://ellmer.tidyverse.org/reference/tool.html" class="external-link">ellmer::tool()</a></code> calls with typed arguments
+(<code>type_string</code>, <code>type_number</code>,
+<code>type_boolean</code>) and tool annotations. It writes a server
+entrypoint that sources the tools and sets up a state environment. For
+complex apps, it also writes conversion notes listing what needs manual
+review.</p>
 </div>
 </div>
 <div class="section level2">
 <h2 id="what-gets-converted-automatically">What gets converted automatically<a class="anchor" aria-label="anchor" href="#what-gets-converted-automatically"></a>
 </h2>
-<p>The pipeline handles these Shiny patterns out of the box:</p>
+<p>The pipeline handles these Shiny patterns automatically:</p>
 <table class="table">
 <thead><tr class="header">
 <th>Shiny pattern</th>
@@ -350,13 +318,12 @@ needs manual review</li>
 <div class="section level2">
 <h2 id="what-needs-manual-review">What needs manual review<a class="anchor" aria-label="anchor" href="#what-needs-manual-review"></a>
 </h2>
-<p>The generated tools contain <strong>placeholder function
-bodies</strong>. You need to copy the actual computation logic from the
-original <code>render*()</code> functions into the generated tool
-functions.</p>
-<p>For simple apps, this is straightforward — the tool arguments match
-the original inputs and the return structure matches the outputs. For
-complex apps, review these areas:</p>
+<p>The generated tools contain placeholder function bodies. You copy the
+real computation from the original <code>render*()</code> functions into
+the generated tool functions.</p>
+<p>For simple apps, this is quick: the tool arguments match the original
+inputs, and the return structure matches the outputs. For complex apps,
+review these areas.</p>
 <div class="section level3">
 <h3 id="reactive-chain-logic">Reactive chain logic<a class="anchor" aria-label="anchor" href="#reactive-chain-logic"></a>
 </h3>
@@ -373,7 +340,7 @@ computation:</p>
 <span>  <span class="co"># ...</span></span>
 <span><span class="op">)</span></span>
 <span></span>
-<span><span class="co"># After manual review — fill in the real logic:</span></span>
+<span><span class="co"># After manual review, fill in the real logic:</span></span>
 <span><span class="va">update_scatter_and_stats</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/tool.html" class="external-link">tool</a></span><span class="op">(</span></span>
 <span>  fun <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">species</span> <span class="op">=</span> <span class="st">"All"</span>, <span class="va">x_var</span> <span class="op">=</span> <span class="st">"bill_length_mm"</span>,</span>
 <span>                 <span class="va">y_var</span> <span class="op">=</span> <span class="st">"bill_depth_mm"</span>, <span class="va">trend</span> <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span> <span class="op">{</span></span>
@@ -445,18 +412,11 @@ the tool read from a known directory.</p>
 <div class="section level2">
 <h2 id="after-conversion">After conversion<a class="anchor" aria-label="anchor" href="#after-conversion"></a>
 </h2>
-<p>Once you’ve filled in the tool bodies:</p>
-<ol style="list-style-type: decimal">
-<li>
-<strong>Test locally</strong> with <code>serve(app)</code> to verify
-the UI renders and tools respond</li>
-<li>
-<strong>Register with Claude Desktop</strong> by adding the app to
-your config</li>
-<li>
-<strong>Iterate</strong> — adjust layouts with bslib, tweak tool
-descriptions for better AI interactions</li>
-</ol>
+<p>Once you’ve filled in the tool bodies, test locally with
+<code>serve(app)</code> to check that the UI renders and the tools
+respond. Register the app with Claude Desktop by adding it to your
+config. From there you iterate: adjust layouts with bslib, and tweak the
+tool descriptions so the model calls them well.</p>
 <p>For a detailed walkthrough of building an MCP App from scratch
 (without the automatic pipeline), see
 <code><a href="../articles/converting-shiny-apps.html">vignette("converting-shiny-apps")</a></code>.</p>

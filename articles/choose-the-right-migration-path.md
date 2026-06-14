@@ -1,16 +1,15 @@
 # Choose the right migration path
 
-`shinymcp` should be treated as two related products:
+`shinymcp` does two jobs. It is a runtime for interactive cards and MCP
+Apps you write yourself, and it is an experimental converter that gets
+existing Shiny apps part of the way there. The runtime is the part to
+lean on today. Conversion still produces a scaffold you finish by hand.
 
-1.  A runtime for authored interactive cards and MCP Apps.
-2.  An experimental migration assistant for existing Shiny apps.
-
-The runtime path is the primary product today. Conversion remains
-scaffold-oriented.
+There are four ways to start, depending on what you already have.
 
 ## 1. Authored card from scratch
 
-Use this when you know the compact interaction you want.
+Reach for this when you already know the small interaction you want.
 
 ``` r
 
@@ -35,18 +34,16 @@ app <- mcp_app(
 )
 ```
 
-This path gives the cleanest runtime behavior in preview, shinychat, and
-MCP hosts.
+You write the handler yourself, so the runtime behaves the same way in
+preview, shinychat, and MCP hosts.
 
 ## 2. Wrapped module with explicit handler
 
-Use this when you already have a bounded module or server-side
-computation you trust.
-
-- Keep the Shiny UI fragment.
-- Expose only the inputs and outputs you want in the card.
-- Supply an explicit tool handler instead of expecting automatic
-  execution of arbitrary server code.
+Reach for this when you already have a bounded module or server-side
+computation you trust. You keep the Shiny UI fragment, expose only the
+inputs and outputs you want in the card, and supply an explicit tool
+handler. Nothing runs your arbitrary server code automatically; the
+handler you write is what the card calls.
 
 ## 3. Selective migration into multiple cards
 
@@ -62,31 +59,27 @@ cards <- as_mcp_apps("path/to/shiny-app")
 convert_app("path/to/shiny-app", mode = "cards")
 ```
 
-This path is still scaffold output:
-
-- tool bodies remain placeholders
-- large reactive groups still need review
-- side effects and unsupported widgets still need manual treatment
+The output is still a scaffold. Tool bodies come out as placeholders,
+large reactive groups need review, and side effects and unsupported
+widgets need manual treatment.
 
 ## 4. Full scaffold conversion
 
-Use `convert_app(mode = "scaffold")` when you want a starting point for
-manual completion.
+Reach for `convert_app(mode = "scaffold")` when you want a starting
+point to finish by hand.
 
 ``` r
 
 convert_app("path/to/shiny-app", mode = "scaffold")
 ```
 
-Always review `CONVERSION_NOTES.md`. The generated code is not a claim
-that the source app now has a bounded headless runtime.
+Always review `CONVERSION_NOTES.md`. The generated code is a draft, not
+a promise that the source app now has a bounded headless runtime.
 
 ## Runtime versus scaffold
 
-Use this rule of thumb:
-
-- If you authored the handlers yourself, you are on the runtime path.
-- If
-  [`convert_app()`](https://jameshwade.github.io/shinymcp/reference/convert_app.md)
-  generated the handlers, assume scaffold output until you replace the
-  placeholders.
+The line between the two is who wrote the handlers. If you wrote them
+yourself, you are on the runtime path and can trust the behavior. If
+[`convert_app()`](https://jameshwade.github.io/shinymcp/reference/convert_app.md)
+generated them, treat the result as scaffold output until you have
+replaced the placeholders.

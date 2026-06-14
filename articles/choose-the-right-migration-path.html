@@ -84,17 +84,17 @@
 
     
     
-<p><code>shinymcp</code> should be treated as two related products:</p>
-<ol style="list-style-type: decimal">
-<li>A runtime for authored interactive cards and MCP Apps.</li>
-<li>An experimental migration assistant for existing Shiny apps.</li>
-</ol>
-<p>The runtime path is the primary product today. Conversion remains
-scaffold-oriented.</p>
+<p><code>shinymcp</code> does two jobs. It is a runtime for interactive
+cards and MCP Apps you write yourself, and it is an experimental
+converter that gets existing Shiny apps part of the way there. The
+runtime is the part to lean on today. Conversion still produces a
+scaffold you finish by hand.</p>
+<p>There are four ways to start, depending on what you already have.</p>
 <div class="section level2">
 <h2 id="authored-card-from-scratch">1. Authored card from scratch<a class="anchor" aria-label="anchor" href="#authored-card-from-scratch"></a>
 </h2>
-<p>Use this when you know the compact interaction you want.</p>
+<p>Reach for this when you already know the small interaction you
+want.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mcp_app.html">mcp_app</a></span><span class="op">(</span></span>
 <span>  ui <span class="op">=</span> <span class="fu">htmltools</span><span class="fu">::</span><span class="fu"><a href="https://rstudio.github.io/htmltools/reference/tagList.html" class="external-link">tagList</a></span><span class="op">(</span></span>
@@ -115,20 +115,17 @@ scaffold-oriented.</p>
 <span>    <span class="op">)</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>This path gives the cleanest runtime behavior in preview, shinychat,
-and MCP hosts.</p>
+<p>You write the handler yourself, so the runtime behaves the same way
+in preview, shinychat, and MCP hosts.</p>
 </div>
 <div class="section level2">
 <h2 id="wrapped-module-with-explicit-handler">2. Wrapped module with explicit handler<a class="anchor" aria-label="anchor" href="#wrapped-module-with-explicit-handler"></a>
 </h2>
-<p>Use this when you already have a bounded module or server-side
-computation you trust.</p>
-<ul>
-<li>Keep the Shiny UI fragment.</li>
-<li>Expose only the inputs and outputs you want in the card.</li>
-<li>Supply an explicit tool handler instead of expecting automatic
-execution of arbitrary server code.</li>
-</ul>
+<p>Reach for this when you already have a bounded module or server-side
+computation you trust. You keep the Shiny UI fragment, expose only the
+inputs and outputs you want in the card, and supply an explicit tool
+handler. Nothing runs your arbitrary server code automatically; the
+handler you write is what the card calls.</p>
 </div>
 <div class="section level2">
 <h2 id="selective-migration-into-multiple-cards">3. Selective migration into multiple cards<a class="anchor" aria-label="anchor" href="#selective-migration-into-multiple-cards"></a>
@@ -140,34 +137,28 @@ chat cards.</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">cards</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/as_mcp_apps.html">as_mcp_apps</a></span><span class="op">(</span><span class="st">"path/to/shiny-app"</span><span class="op">)</span></span>
 <span><span class="fu"><a href="../reference/convert_app.html">convert_app</a></span><span class="op">(</span><span class="st">"path/to/shiny-app"</span>, mode <span class="op">=</span> <span class="st">"cards"</span><span class="op">)</span></span></code></pre></div>
-<p>This path is still scaffold output:</p>
-<ul>
-<li>tool bodies remain placeholders</li>
-<li>large reactive groups still need review</li>
-<li>side effects and unsupported widgets still need manual
-treatment</li>
-</ul>
+<p>The output is still a scaffold. Tool bodies come out as placeholders,
+large reactive groups need review, and side effects and unsupported
+widgets need manual treatment.</p>
 </div>
 <div class="section level2">
 <h2 id="full-scaffold-conversion">4. Full scaffold conversion<a class="anchor" aria-label="anchor" href="#full-scaffold-conversion"></a>
 </h2>
-<p>Use <code>convert_app(mode = "scaffold")</code> when you want a
-starting point for manual completion.</p>
+<p>Reach for <code>convert_app(mode = "scaffold")</code> when you want a
+starting point to finish by hand.</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="fu"><a href="../reference/convert_app.html">convert_app</a></span><span class="op">(</span><span class="st">"path/to/shiny-app"</span>, mode <span class="op">=</span> <span class="st">"scaffold"</span><span class="op">)</span></span></code></pre></div>
 <p>Always review <code>CONVERSION_NOTES.md</code>. The generated code is
-not a claim that the source app now has a bounded headless runtime.</p>
+a draft, not a promise that the source app now has a bounded headless
+runtime.</p>
 </div>
 <div class="section level2">
 <h2 id="runtime-versus-scaffold">Runtime versus scaffold<a class="anchor" aria-label="anchor" href="#runtime-versus-scaffold"></a>
 </h2>
-<p>Use this rule of thumb:</p>
-<ul>
-<li>If you authored the handlers yourself, you are on the runtime
-path.</li>
-<li>If <code><a href="../reference/convert_app.html">convert_app()</a></code> generated the handlers, assume
-scaffold output until you replace the placeholders.</li>
-</ul>
+<p>The line between the two is who wrote the handlers. If you wrote them
+yourself, you are on the runtime path and can trust the behavior. If
+<code><a href="../reference/convert_app.html">convert_app()</a></code> generated them, treat the result as scaffold
+output until you have replaced the placeholders.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
     </nav></aside>

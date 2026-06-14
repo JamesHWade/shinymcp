@@ -7,7 +7,7 @@ plots, and formatted output. The card also reports the user’s
 interactions back into the model’s context, so the assistant can act on
 what the user did in its next turn.
 
-## The example ladder
+## The examples in order
 
 The bundled examples are ordered so each one adds a single new idea.
 Work through them in order and you’ll have touched every major feature
@@ -15,28 +15,26 @@ of the package. Each lives at
 `system.file("examples", "<name>", "app.R", package = "shinymcp")`, and
 each runs in
 [`preview_app()`](https://jameshwade.github.io/shinymcp/reference/preview_app.md)
-— a local reference host with a protocol log — or as a stdio MCP server
+(a local reference host with a protocol log) or as a stdio MCP server
 via `Rscript app.R`.
 
-| Level | Example | The one new idea |
+| Level | Example | What it adds |
 |----|----|----|
-| 1 | `hello-mcp` | The whole contract: one input, one tool, one output, ~30 lines |
-| 2 | `bslib-inputs` | Native shiny/bslib inputs auto-detected by id — no wrappers |
+| 1 | `hello-mcp-minimal` | The whole contract: one input, one tool, one output, ~30 lines |
+| 2 | `bslib-inputs` | Native shiny/bslib inputs auto-detected by id, no wrappers |
 | 3 | `penguins` | A real dashboard: ggplot2, multiple outputs, a declared `outputSchema` |
 | 4 | `feature-tour` | The protocol features: app-only tools, lazy resources, theme syncing, `window.shinymcp` |
-| 5 | `multi-tool` | One app, several tools — connected reactive groups become separate contracts |
+| 5 | `multi-tool` | One app, several tools, where connected reactive groups become separate contracts |
 | 6 | `use-cases` gallery | Realistic chat cards with typed `model_value` handoffs (this article) |
 | 7 | `shinychat-card` + `rpharma-hangout` | Embedding: the same `McpApp` inside Shiny dashboards and shinychat |
 
-Every level builds on the same three ideas:
-
-1.  **Names are the contract.** Tool argument names match input ids;
-    result keys match output ids. There is no other binding mechanism.
-2.  **One result, two consumers.** The human gets the rendered card; the
-    model gets structured values it can reason over without scraping the
-    display.
-3.  **One definition, many homes.** The same `McpApp` serves to Claude
-    over MCP, embeds in a Shiny app, and wraps as a shinychat tool card.
+Every level builds on the same three ideas. Names are the contract: tool
+argument names match input ids, and result keys match output ids. That
+is the only binding mechanism. One result serves two consumers, so the
+human gets the rendered card and the model gets structured values it can
+reason over instead of scraping the display. And one definition runs in
+several places: the same `McpApp` serves to Claude over MCP, embeds in a
+Shiny app, and wraps as a shinychat tool card.
 
 ## Level 4 in detail: the feature tour
 
@@ -52,24 +50,24 @@ source(system.file("examples", "feature-tour", "app.R", package = "shinymcp"))
 
 What to look for:
 
-- **App-only tools** (`tool_visibility`): the `fetch_region_detail` tool
-  is callable from the card’s “Load region detail” button but carries
+- App-only tools (`tool_visibility`): the `fetch_region_detail` tool is
+  callable from the card’s “Load region detail” button but carries
   `_meta.ui.visibility = ["app"]`, so the model never sees it. Use this
-  to keep UI plumbing — or human-only detail views — out of the model’s
+  to keep UI plumbing, or human-only detail views, out of the model’s
   tool list.
-- **Lazy resources** (`resources` + `window.shinymcp.readResource()`):
-  the region catalog isn’t inlined into the HTML; the card fetches it
-  through the host at startup. This is the pattern for shipping large
-  datasets without bloating the `ui://` resource.
-- **Declared result shapes** (`tool_outputs`): the analysis tool
-  publishes an `outputSchema`, so hosts and models know it returns a
-  base64 plot named `trend` and a text summary named `summary` before
-  ever calling it.
-- **Theme syncing**: flip your OS or host theme and the card follows.
-  The bridge maps the host’s theme onto Bootstrap’s `data-bs-theme`.
-- **Host interactions** (`window.shinymcp`): buttons that send a message
+- Lazy resources (`resources` plus `window.shinymcp.readResource()`):
+  the region catalog isn’t inlined into the HTML. The card fetches it
+  through the host at startup. This is how you ship large datasets
+  without bloating the `ui://` resource.
+- Declared result shapes (`tool_outputs`): the analysis tool publishes
+  an `outputSchema`, so hosts and models know it returns a base64 plot
+  named `trend` and a text summary named `summary` before ever calling
+  it.
+- Theme syncing: flip your OS or host theme and the card follows. The
+  bridge maps the host’s theme onto Bootstrap’s `data-bs-theme`.
+- Host interactions (`window.shinymcp`): buttons that send a message
   into the conversation, open a link, and request fullscreen. These are
-  spec methods; a host that doesn’t support one rejects the call.
+  spec methods, so a host that doesn’t support one rejects the call.
 
 ## The use-case gallery
 
@@ -181,8 +179,8 @@ calls in R. The iframe itself remains a portable MCP App surface instead
 of a nested Shiny app, which keeps each chat card small and reusable
 outside Shiny.
 
-For the full embedding-and-governance story — contract inspectors, typed
-meeting-note handoffs, approved skill registries — see the R/Pharma demo
+For the full embedding-and-governance story (contract inspectors, typed
+meeting-note handoffs, approved skill registries), see the R/Pharma demo
 at `system.file("examples", "rpharma-hangout", package = "shinymcp")`.
 
 ## What the examples cover

@@ -98,17 +98,17 @@ itself.</p>
 <p>Every MCP App involves three processes:</p>
 <ol style="list-style-type: decimal">
 <li>
-<strong>Server</strong> — your R process, started by
+<strong>Server</strong>: your R process, started by
 <code>serve(app)</code>. It answers MCP JSON-RPC requests over stdio or
 HTTP: <code>tools/list</code>, <code>tools/call</code>,
 <code>resources/list</code>, <code>resources/read</code>.</li>
 <li>
-<strong>Host</strong> — the chat client (Claude Desktop, ChatGPT, VS
+<strong>Host</strong>: the chat client (Claude Desktop, ChatGPT, VS
 Code, or shinymcp’s own Shiny host and <code><a href="../reference/preview_app.html">preview_app()</a></code>). It
 talks MCP to the server and renders your app’s HTML inside a sandboxed
 iframe.</li>
 <li>
-<strong>View</strong> — your app’s HTML page running inside that
+<strong>View</strong>: your app’s HTML page running inside that
 iframe. The shinymcp JS bridge (inlined into the page) talks to the host
 with postMessage/JSON-RPC. It never talks to the server directly; the
 host proxies everything.</li>
@@ -144,15 +144,13 @@ View  &lt;- Host     response, then cleanup</code></pre>
 <p>Two messages in that flow matter most:</p>
 <ul>
 <li>
-<strong><code>ui/update-model-context</code></strong> pushes the
-UI’s current state into the model’s context. This is why the model
-“knows” what the user selected in the rendered app and can act on it in
-the next turn.</li>
+<code>ui/update-model-context</code> pushes the UI’s current state
+into the model’s context. This is why the model “knows” what the user
+selected in the rendered app and can act on it in the next turn.</li>
 <li>
-<strong><code>ui/notifications/tool-input</code></strong> flows the
-other way: when the model calls a tool, the host pushes those arguments
-into the UI so the rendered controls match what the model asked
-for.</li>
+<code>ui/notifications/tool-input</code> flows the other way: when
+the model calls a tool, the host pushes those arguments into the UI so
+the rendered controls match what the model asked for.</li>
 </ul>
 </div>
 <div class="section level2">
@@ -324,16 +322,15 @@ notifications</td>
 <div class="section level3">
 <h3 id="graceful-degradation">Graceful degradation<a class="anchor" aria-label="anchor" href="#graceful-degradation"></a>
 </h3>
-<p>MCP Apps is an <em>optional, negotiated</em> extension. Clients
+<p>MCP Apps is an optional extension that clients negotiate. Clients
 advertise support in <code>initialize</code> under
 <code>capabilities.extensions["io.modelcontextprotocol/ui"]</code>. When
-a client does <strong>not</strong> advertise it, shinymcp still serves
-all tools and withholds the nested <code>_meta.ui</code> block. The
-deprecated flat <code>_meta["ui/resourceUri"]</code> key is kept in both
-cases, so hosts that predate capability negotiation (SEP-1865 draft era)
-keep finding the UI resource, while text-only clients ignore the unknown
-key per the MCP spec. You don’t need to do anything to get this
-behavior.</p>
+a client does not advertise it, shinymcp still serves all tools and
+withholds the nested <code>_meta.ui</code> block. The deprecated flat
+<code>_meta["ui/resourceUri"]</code> key is kept in both cases, so hosts
+that predate capability negotiation (SEP-1865 draft era) keep finding
+the UI resource, while text-only clients ignore the unknown key per the
+MCP spec. You don’t need to do anything to get this behavior.</p>
 </div>
 </div>
 <div class="section level2">
@@ -345,14 +342,9 @@ changes). The shinymcp bridge applies it automatically by setting
 <code>data-bs-theme="dark"</code> (or <code>"light"</code>) on the
 document element:</p>
 <ul>
-<li>
-<strong>bslib apps</strong> (Bootstrap 5.3+) restyle
-automatically.</li>
-<li>
-<strong>Plain shinymcp components</strong> get a built-in dark
-variant.</li>
-<li>
-<strong>Custom CSS</strong> can opt in with selectors like
+<li>bslib apps (Bootstrap 5.3+) restyle automatically.</li>
+<li>Plain shinymcp components get a built-in dark variant.</li>
+<li>Custom CSS can opt in with selectors like
 <code>:root[data-bs-theme="dark"] .my-widget { ... }</code>.</li>
 </ul>
 <p>Host-provided <code>styles.variables</code> (CSS custom properties)
@@ -360,26 +352,24 @@ are also applied to <code>:root</code>, so hosts that publish design
 tokens flow through.</p>
 </div>
 <div class="section level2">
-<h2 id="csp-why-external-assets-fail-and-how-to-declare-them">CSP: why external assets fail, and how to declare them<a class="anchor" aria-label="anchor" href="#csp-why-external-assets-fail-and-how-to-declare-them"></a>
+<h2 id="csp-external-assets-and-how-to-declare-them">CSP: external assets and how to declare them<a class="anchor" aria-label="anchor" href="#csp-external-assets-and-how-to-declare-them"></a>
 </h2>
 <p>This is the most common way a working app breaks in a real host.
-<strong>Hosts apply a restrictive Content Security Policy to the
-iframe</strong>, by default roughly
+Hosts apply a restrictive Content Security Policy to the iframe, by
+default roughly
 <code>default-src 'none'; script-src 'self' 'unsafe-inline'; connect-src 'none'</code>.
 That means:</p>
 <ul>
 <li>No <code>fetch()</code>/XHR/WebSocket to any external service.</li>
 <li>No scripts, stylesheets, fonts, or images loaded from CDNs.</li>
-<li>Failures are <em>silent</em>: assets don’t load and nothing is
-reported.</li>
+<li>Failures are silent: assets don’t load and nothing is reported.</li>
 </ul>
 <p>shinymcp’s default posture avoids all of this:
-<code>html_resource()</code> <strong>inlines every dependency</strong>
-(bslib CSS/JS, your styles) into the HTML, and plots travel as base64
-data URIs. If your app stays inside that model, you never think about
-CSP.</p>
-<p>When you genuinely need external access — say an htmlwidget loading
-from a CDN, or client-side calls to an API — declare the domains so
+<code>html_resource()</code> inlines every dependency (bslib CSS/JS,
+your styles) into the HTML, and plots travel as base64 data URIs. If
+your app stays inside that model, you never think about CSP.</p>
+<p>When you genuinely need external access, say an htmlwidget loading
+from a CDN, or client-side calls to an API, declare the domains so
 spec-compliant hosts can allow them:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mcp_app.html">mcp_app</a></span><span class="op">(</span></span>
@@ -409,10 +399,9 @@ frame.</li>
 <h2 id="lazy-loading-data-with-extra-resources">Lazy-loading data with extra resources<a class="anchor" aria-label="anchor" href="#lazy-loading-data-with-extra-resources"></a>
 </h2>
 <p>Inlining keeps apps CSP-proof, but it also means every byte ships in
-the initial HTML resource. For large datasets, declare them as
-<strong>extra resources</strong> and fetch them on demand from the
-iframe. The request flows through the host to your R process, so no CSP
-declaration is needed:</p>
+the initial HTML resource. For large datasets, declare them as extra
+resources and fetch them on demand from the iframe. The request flows
+through the host to your R process, so no CSP declaration is needed:</p>
 <div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mcp_app.html">mcp_app</a></span><span class="op">(</span></span>
 <span>  <span class="va">ui</span>,</span>
@@ -528,27 +517,26 @@ dropped once it’s removed from the spec.</li>
 <li>
 <strong>Shiny host sandboxing.</strong> <code><a href="../reference/mcp_embed.html">mcp_embed()</a></code> /
 <code><a href="../reference/mcp_host_server.html">mcp_host_server()</a></code> render the app via <code>srcdoc</code>
-with <code>sandbox="allow-scripts allow-same-origin"</code> on the
-<em>same origin</em> as your Shiny app. This is appropriate for
-embedding <strong>your own</strong> trusted apps; it is not a hardened
-boundary for third-party HTML. The spec’s sandbox-proxy pattern
-(separate origin) is out of scope for the built-in host.</li>
+with <code>sandbox="allow-scripts allow-same-origin"</code> on the same
+origin as your Shiny app. This is appropriate for embedding your own
+trusted apps; it is not a hardened boundary for third-party HTML. The
+spec’s sandbox-proxy pattern (separate origin) is out of scope for the
+built-in host.</li>
 <li>
 <strong><code>initialArguments</code> in
 <code>hostContext</code>.</strong> shinymcp’s own hosts pass initial
-tool arguments in <code>hostContext.initialArguments</code> <em>in
-addition to</em> the spec’s <code>ui/notifications/tool-input</code>,
-which the bridge also handles. Standard hosts only use the latter; both
-work.</li>
+tool arguments in <code>hostContext.initialArguments</code> alongside
+the spec’s <code>ui/notifications/tool-input</code>, which the bridge
+also handles. Standard hosts only use the latter; both work.</li>
 </ol>
 </div>
 <div class="section level2">
 <h2 id="debugging">Debugging<a class="anchor" aria-label="anchor" href="#debugging"></a>
 </h2>
 <p><code>preview_app(app)</code> runs a local reference host with a
-<strong>protocol log panel</strong> (bottom-right toggle) showing every
-JSON-RPC message in both directions. It is usually the fastest way to
-see what a real host sees. For failure modes and fixes, see
+protocol log panel (bottom-right toggle) showing every JSON-RPC message
+in both directions. It is usually the fastest way to see what a real
+host sees. For failure modes and fixes, see
 <code><a href="../articles/debugging-shinymcp.html">vignette("debugging-shinymcp")</a></code>.</p>
 </div>
   </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>

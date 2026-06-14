@@ -91,14 +91,14 @@ with controls, tables, plots, and formatted output. The card also
 reports the user’s interactions back into the model’s context, so the
 assistant can act on what the user did in its next turn.</p>
 <div class="section level2">
-<h2 id="the-example-ladder">The example ladder<a class="anchor" aria-label="anchor" href="#the-example-ladder"></a>
+<h2 id="the-examples-in-order">The examples in order<a class="anchor" aria-label="anchor" href="#the-examples-in-order"></a>
 </h2>
 <p>The bundled examples are ordered so each one adds a single new idea.
 Work through them in order and you’ll have touched every major feature
 of the package. Each lives at
 <code>system.file("examples", "&lt;name&gt;", "app.R", package = "shinymcp")</code>,
-and each runs in <code><a href="../reference/preview_app.html">preview_app()</a></code> — a local reference host
-with a protocol log — or as a stdio MCP server via
+and each runs in <code><a href="../reference/preview_app.html">preview_app()</a></code> (a local reference host with
+a protocol log) or as a stdio MCP server via
 <code>Rscript app.R</code>.</p>
 <table class="table">
 <colgroup>
@@ -109,18 +109,18 @@ with a protocol log — or as a stdio MCP server via
 <thead><tr class="header">
 <th>Level</th>
 <th>Example</th>
-<th>The one new idea</th>
+<th>What it adds</th>
 </tr></thead>
 <tbody>
 <tr class="odd">
 <td>1</td>
-<td><code>hello-mcp</code></td>
+<td><code>hello-mcp-minimal</code></td>
 <td>The whole contract: one input, one tool, one output, ~30 lines</td>
 </tr>
 <tr class="even">
 <td>2</td>
 <td><code>bslib-inputs</code></td>
-<td>Native shiny/bslib inputs auto-detected by id — no wrappers</td>
+<td>Native shiny/bslib inputs auto-detected by id, no wrappers</td>
 </tr>
 <tr class="odd">
 <td>3</td>
@@ -139,8 +139,8 @@ syncing, <code>window.shinymcp</code>
 <tr class="odd">
 <td>5</td>
 <td><code>multi-tool</code></td>
-<td>One app, several tools — connected reactive groups become separate
-contracts</td>
+<td>One app, several tools, where connected reactive groups become
+separate contracts</td>
 </tr>
 <tr class="even">
 <td>6</td>
@@ -159,21 +159,13 @@ shinychat</td>
 </tr>
 </tbody>
 </table>
-<p>Every level builds on the same three ideas:</p>
-<ol style="list-style-type: decimal">
-<li>
-<strong>Names are the contract.</strong> Tool argument names match
-input ids; result keys match output ids. There is no other binding
-mechanism.</li>
-<li>
-<strong>One result, two consumers.</strong> The human gets the
-rendered card; the model gets structured values it can reason over
-without scraping the display.</li>
-<li>
-<strong>One definition, many homes.</strong> The same
-<code>McpApp</code> serves to Claude over MCP, embeds in a Shiny app,
-and wraps as a shinychat tool card.</li>
-</ol>
+<p>Every level builds on the same three ideas. Names are the contract:
+tool argument names match input ids, and result keys match output ids.
+That is the only binding mechanism. One result serves two consumers, so
+the human gets the rendered card and the model gets structured values it
+can reason over instead of scraping the display. And one definition runs
+in several places: the same <code>McpApp</code> serves to Claude over
+MCP, embeds in a Shiny app, and wraps as a shinychat tool card.</p>
 </div>
 <div class="section level2">
 <h2 id="level-4-in-detail-the-feature-tour">Level 4 in detail: the feature tour<a class="anchor" aria-label="anchor" href="#level-4-in-detail-the-feature-tour"></a>
@@ -185,33 +177,28 @@ protocol log visible and you can watch each one on the wire:</p>
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/source.html" class="external-link">source</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/system.file.html" class="external-link">system.file</a></span><span class="op">(</span><span class="st">"examples"</span>, <span class="st">"feature-tour"</span>, <span class="st">"app.R"</span>, package <span class="op">=</span> <span class="st">"shinymcp"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 <p>What to look for:</p>
 <ul>
-<li>
-<strong>App-only tools</strong> (<code>tool_visibility</code>): the
+<li>App-only tools (<code>tool_visibility</code>): the
 <code>fetch_region_detail</code> tool is callable from the card’s “Load
 region detail” button but carries
 <code>_meta.ui.visibility = ["app"]</code>, so the model never sees it.
-Use this to keep UI plumbing — or human-only detail views — out of the
+Use this to keep UI plumbing, or human-only detail views, out of the
 model’s tool list.</li>
-<li>
-<strong>Lazy resources</strong> (<code>resources</code> +
+<li>Lazy resources (<code>resources</code> plus
 <code>window.shinymcp.readResource()</code>): the region catalog isn’t
-inlined into the HTML; the card fetches it through the host at startup.
-This is the pattern for shipping large datasets without bloating the
+inlined into the HTML. The card fetches it through the host at startup.
+This is how you ship large datasets without bloating the
 <code>ui://</code> resource.</li>
-<li>
-<strong>Declared result shapes</strong> (<code>tool_outputs</code>):
-the analysis tool publishes an <code>outputSchema</code>, so hosts and
-models know it returns a base64 plot named <code>trend</code> and a text
-summary named <code>summary</code> before ever calling it.</li>
-<li>
-<strong>Theme syncing</strong>: flip your OS or host theme and the
-card follows. The bridge maps the host’s theme onto Bootstrap’s
+<li>Declared result shapes (<code>tool_outputs</code>): the analysis
+tool publishes an <code>outputSchema</code>, so hosts and models know it
+returns a base64 plot named <code>trend</code> and a text summary named
+<code>summary</code> before ever calling it.</li>
+<li>Theme syncing: flip your OS or host theme and the card follows. The
+bridge maps the host’s theme onto Bootstrap’s
 <code>data-bs-theme</code>.</li>
-<li>
-<strong>Host interactions</strong> (<code>window.shinymcp</code>):
-buttons that send a message into the conversation, open a link, and
-request fullscreen. These are spec methods; a host that doesn’t support
-one rejects the call.</li>
+<li>Host interactions (<code>window.shinymcp</code>): buttons that send
+a message into the conversation, open a link, and request fullscreen.
+These are spec methods, so a host that doesn’t support one rejects the
+call.</li>
 </ul>
 </div>
 <div class="section level2">
@@ -333,8 +320,8 @@ the <code>McpApp</code>, receives bridge events from the iframe, and
 executes tool calls in R. The iframe itself remains a portable MCP App
 surface instead of a nested Shiny app, which keeps each chat card small
 and reusable outside Shiny.</p>
-<p>For the full embedding-and-governance story — contract inspectors,
-typed meeting-note handoffs, approved skill registries — see the
+<p>For the full embedding-and-governance story (contract inspectors,
+typed meeting-note handoffs, approved skill registries), see the
 R/Pharma demo at
 <code>system.file("examples", "rpharma-hangout", package = "shinymcp")</code>.</p>
 </div>

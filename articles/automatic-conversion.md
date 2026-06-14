@@ -77,20 +77,14 @@ ir
     Input refs: species, x_var, y_var, trend
 
 The parser handles both `app.R` (single-file) and `ui.R`/`server.R`
-(split-file) apps. It walks the AST to extract:
-
-- **Inputs**: All `*Input()` calls with their IDs, types, labels, and
-  arguments
-- **Outputs**: All `*Output()` calls with their IDs and types
-- **Server body**: The body of the `server` function
-- **Reactives**: All
-  [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html)
-  expressions with their input dependencies
-- **Observers**: All
-  [`observe()`](https://rdrr.io/pkg/shiny/man/observe.html) and
-  [`observeEvent()`](https://rdrr.io/pkg/shiny/man/observeEvent.html)
-  calls
-- **Input refs**: Every `input$name` and `input[["name"]]` reference
+(split-file) apps. It walks the AST to find every `*Input()` call (with
+its id, type, label, and arguments), every `*Output()` call (with its id
+and type), the body of the `server` function, each
+[`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html) expression
+and the inputs it depends on, each
+[`observe()`](https://rdrr.io/pkg/shiny/man/observe.html) and
+[`observeEvent()`](https://rdrr.io/pkg/shiny/man/observeEvent.html)
+call, and every `input$name` and `input[["name"]]` reference.
 
 The parser classifies apps by complexity:
 
@@ -116,24 +110,20 @@ analysis
     Edges: 6
     Tool groups: 1
 
-The analyzer:
+The analyzer builds a dependency graph whose nodes are inputs,
+reactives, and outputs, with edges for data flow: `input$x` used in
+`reactive(...)` used in `renderPlot(...)`. It then runs union-find to
+find connected components, grouping nodes that are transitively
+connected. Each connected component becomes one tool, with the
+component’s inputs as arguments and its outputs as return values. Along
+the way it flags the patterns it can’t resolve: dynamic UI, file
+uploads, download handlers, and observers with side effects.
 
-1.  **Builds a dependency graph** — nodes are inputs, reactives, and
-    outputs; edges represent data flow (`input$x` used in
-    `reactive(...)` used in `renderPlot(...)`)
-2.  **Finds connected components** — uses union-find to group nodes that
-    are transitively connected
-3.  **Maps components to tool groups** — each connected component
-    becomes one tool with the component’s inputs as arguments and
-    outputs as return values
-4.  **Flags unresolvable patterns** — dynamic UI, file uploads, download
-    handlers, and observers with side effects
-
-For example, a Shiny app where a
+So a Shiny app where a
 [`reactive()`](https://rdrr.io/pkg/shiny/man/reactive.html) feeds both
 [`renderPlot()`](https://rdrr.io/pkg/shiny/man/renderPlot.html) and
 [`renderText()`](https://rdrr.io/pkg/shiny/man/renderPrint.html)
-produces a single tool group containing all related inputs and both
+produces a single tool group that holds all the related inputs and both
 outputs.
 
 ### Stage 3: Generate
@@ -146,24 +136,20 @@ writes the MCP App files:
 generate_mcp_app(analysis, ir, output_dir = "my-app-mcp")
 ```
 
-It generates:
-
-- **UI code** using shinymcp components
-  ([`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md),
-  [`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md),
-  etc.) mapped from the original Shiny inputs and outputs
-- **Tool definitions** using
-  [`ellmer::tool()`](https://ellmer.tidyverse.org/reference/tool.html)
-  with proper argument types (`type_string`, `type_number`,
-  `type_boolean`) and tool annotations
-- **Server entrypoint** that sources the tools and sets up a state
-  environment
-- **Conversion notes** (for complex apps) listing what needs manual
-  review
+It generates the UI code using shinymcp components
+([`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md),
+[`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md),
+and so on) mapped from the original Shiny inputs and outputs. It writes
+the tool definitions as
+[`ellmer::tool()`](https://ellmer.tidyverse.org/reference/tool.html)
+calls with typed arguments (`type_string`, `type_number`,
+`type_boolean`) and tool annotations. It writes a server entrypoint that
+sources the tools and sets up a state environment. For complex apps, it
+also writes conversion notes listing what needs manual review.
 
 ## What gets converted automatically
 
-The pipeline handles these Shiny patterns out of the box:
+The pipeline handles these Shiny patterns automatically:
 
 | Shiny pattern | MCP App equivalent |
 |----|----|
@@ -184,13 +170,13 @@ The pipeline handles these Shiny patterns out of the box:
 
 ## What needs manual review
 
-The generated tools contain **placeholder function bodies**. You need to
-copy the actual computation logic from the original `render*()`
-functions into the generated tool functions.
+The generated tools contain placeholder function bodies. You copy the
+real computation from the original `render*()` functions into the
+generated tool functions.
 
-For simple apps, this is straightforward — the tool arguments match the
-original inputs and the return structure matches the outputs. For
-complex apps, review these areas:
+For simple apps, this is quick: the tool arguments match the original
+inputs, and the return structure matches the outputs. For complex apps,
+review these areas.
 
 ### Reactive chain logic
 
@@ -208,7 +194,7 @@ update_scatter_and_stats <- ellmer::tool(
   # ...
 )
 
-# After manual review — fill in the real logic:
+# After manual review, fill in the real logic:
 update_scatter_and_stats <- ellmer::tool(
   fun = function(species = "All", x_var = "bill_length_mm",
                  y_var = "bill_depth_mm", trend = FALSE) {
@@ -285,13 +271,11 @@ convert_app("my-app", output_dir = "output/my-mcp-app")
 
 ## After conversion
 
-Once you’ve filled in the tool bodies:
-
-1.  **Test locally** with `serve(app)` to verify the UI renders and
-    tools respond
-2.  **Register with Claude Desktop** by adding the app to your config
-3.  **Iterate** — adjust layouts with bslib, tweak tool descriptions for
-    better AI interactions
+Once you’ve filled in the tool bodies, test locally with `serve(app)` to
+check that the UI renders and the tools respond. Register the app with
+Claude Desktop by adding it to your config. From there you iterate:
+adjust layouts with bslib, and tweak the tool descriptions so the model
+calls them well.
 
 For a detailed walkthrough of building an MCP App from scratch (without
 the automatic pipeline), see

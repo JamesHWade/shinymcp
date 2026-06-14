@@ -84,14 +84,13 @@
 
     
     
-<p>MCP Apps are interactive UIs that render directly inside AI chat
-interfaces like Claude Desktop. Unlike Shiny apps that run in a browser
-with a persistent server, MCP Apps are lightweight HTML documents where
-user interactions trigger <strong>tool calls</strong> — stateless R
-functions that the AI host invokes on demand.</p>
-<p>This vignette walks through converting a Shiny app into an MCP App
-using shinymcp. We’ll use the classic Palmer Penguins explorer as a
-worked example.</p>
+<p>An MCP App is an interactive UI that renders inside an AI chat
+interface like Claude Desktop. A Shiny app runs in a browser tab backed
+by a persistent server. An MCP App is a small HTML document, and user
+interactions trigger tool calls: stateless R functions that the AI host
+invokes on demand.</p>
+<p>This vignette converts a Shiny app into an MCP App with shinymcp,
+using the classic Palmer Penguins explorer as the worked example.</p>
 <div class="section level2">
 <h2 id="key-differences-from-shiny">Key differences from Shiny<a class="anchor" aria-label="anchor" href="#key-differences-from-shiny"></a>
 </h2>
@@ -145,9 +144,9 @@ worked example.</p>
 </tr>
 </tbody>
 </table>
-<p>The core shift: <strong>flatten your reactive graph into tool
-functions</strong>. Each connected group of inputs → reactives → outputs
-becomes a single tool that accepts inputs as arguments and returns
+<p>The work of converting an app is flattening your reactive graph into
+tool functions. Each connected group of inputs → reactives → outputs
+becomes a single tool that takes the inputs as arguments and returns the
 outputs as a named list.</p>
 </div>
 <div class="section level2">
@@ -203,44 +202,24 @@ typical penguins Shiny app:</p>
 <span><span class="op">}</span></span>
 <span></span>
 <span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/shinyApp.html" class="external-link">shinyApp</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">server</span><span class="op">)</span></span></code></pre></div>
-<p>From this app, we identify:</p>
-<p><strong>Inputs:</strong></p>
-<ul>
-<li>
-<code>species</code> — <code>selectInput</code> with 4 choices</li>
-<li>
-<code>x_var</code> — <code>selectInput</code> with 4 variable
-choices</li>
-<li>
-<code>y_var</code> — <code>selectInput</code> with 4 variable
-choices</li>
-<li>
-<code>trend</code> — <code>checkboxInput</code> (boolean)</li>
-</ul>
-<p><strong>Outputs:</strong></p>
-<ul>
-<li>
-<code>scatter</code> — <code>plotOutput</code> (a ggplot scatter
-plot)</li>
-<li>
-<code>stats</code> — <code>verbatimTextOutput</code> (summary
-statistics)</li>
-</ul>
-<p><strong>Reactive logic:</strong></p>
-<ul>
-<li>
-<code>filtered_data()</code> filters penguins by species</li>
-<li>Both outputs depend on <code>filtered_data()</code> plus the
-axis/trend inputs</li>
-<li>Everything is connected — one reactive group → one tool</li>
-</ul>
+<p>This app has four inputs: a <code>selectInput</code> for
+<code>species</code>, two more for <code>x_var</code> and
+<code>y_var</code>, and a <code>checkboxInput</code> for
+<code>trend</code>. It has two outputs: a <code>plotOutput</code> named
+<code>scatter</code> holding a ggplot, and a
+<code>verbatimTextOutput</code> named <code>stats</code> holding summary
+statistics.</p>
+<p>The reactive logic is one piece. <code>filtered_data()</code> filters
+penguins by species, and both outputs depend on it together with the
+axis and trend inputs. Everything is connected, so it maps to a single
+tool.</p>
 </div>
 <div class="section level2">
 <h2 id="step-2-map-components">Step 2: Map components<a class="anchor" aria-label="anchor" href="#step-2-map-components"></a>
 </h2>
 <p>The JS bridge auto-detects inputs by matching tool argument names to
-element <code>id</code> attributes. This means you can keep your Shiny
-inputs as-is — just ensure the <code>id</code> matches a tool argument
+element <code>id</code> attributes. You can keep your Shiny inputs as
+they are, as long as the <code>id</code> matches a tool argument
 name:</p>
 <table class="table">
 <colgroup>
@@ -254,17 +233,17 @@ name:</p>
 <tbody>
 <tr class="odd">
 <td><code>selectInput("species", "Species", choices)</code></td>
-<td>Keep it! Auto-detected by <code>id="species"</code>
+<td>Keep it. Auto-detected by <code>id="species"</code>
 </td>
 </tr>
 <tr class="even">
 <td><code>selectInput("x_var", "X axis", choices)</code></td>
-<td>Keep it! Auto-detected by <code>id="x_var"</code>
+<td>Keep it. Auto-detected by <code>id="x_var"</code>
 </td>
 </tr>
 <tr class="odd">
 <td><code>checkboxInput("trend", "Show trend line")</code></td>
-<td>Keep it! Auto-detected by <code>id="trend"</code>
+<td>Keep it. Auto-detected by <code>id="trend"</code>
 </td>
 </tr>
 </tbody>
@@ -294,9 +273,9 @@ an output, use <code>mcp_output(tag, id, type)</code>.</p>
 </h2>
 <p>Use bslib for layout instead of Shiny’s <code><a href="https://rdrr.io/pkg/shiny/man/fluidPage.html" class="external-link">fluidPage()</a></code> /
 <code><a href="https://rdrr.io/pkg/shiny/man/sidebarLayout.html" class="external-link">sidebarLayout()</a></code>. bslib components work directly with
-htmltools — no Shiny server needed. Standard
+htmltools, with no Shiny server. Standard
 <code><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">shiny::selectInput()</a></code>, <code><a href="https://rdrr.io/pkg/shiny/man/checkboxInput.html" class="external-link">shiny::checkboxInput()</a></code>,
-etc. are auto-detected by the bridge:</p>
+and the rest are auto-detected by the bridge:</p>
 <div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
 <code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/JamesHWade/shinymcp" class="external-link">shinymcp</a></span><span class="op">)</span></span>
 <span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
@@ -336,21 +315,15 @@ etc. are auto-detected by the bridge:</p>
 <span><span class="op">)</span></span></code></pre></div>
 <p>Named choice vectors
 (e.g. <code>"Bill Length (mm)" = "bill_length_mm"</code>) work exactly
-like Shiny — the name is displayed, the value is sent to the tool.</p>
+like Shiny: the name is displayed, the value is sent to the tool.</p>
 </div>
 <div class="section level2">
 <h2 id="step-4-convert-reactive-logic-to-a-tool">Step 4: Convert reactive logic to a tool<a class="anchor" aria-label="anchor" href="#step-4-convert-reactive-logic-to-a-tool"></a>
 </h2>
-<p>This is the key step. Flatten the reactive graph into a single
-function:</p>
-<ol style="list-style-type: decimal">
-<li>The function <strong>arguments</strong> are the input values (with
-sensible defaults)</li>
-<li>The function <strong>body</strong> does what the reactives and
-renderers did</li>
-<li>The function <strong>returns</strong> a named list mapping output
-IDs to values</li>
-</ol>
+<p>Flatten the reactive graph into a single function. The arguments are
+the input values, each with a sensible default. The body does what the
+reactives and renderers did. The function returns a named list that maps
+output IDs to values.</p>
 <p>For plots, render to a temporary PNG and return the base64-encoded
 image. The bridge displays it as an <code>&lt;img&gt;</code>
 element.</p>
@@ -408,27 +381,23 @@ element.</p>
 <span>    <span class="op">)</span></span>
 <span>  <span class="op">)</span></span>
 <span><span class="op">)</span></span></code></pre></div>
-<p>Important details:</p>
-<ul>
-<li><p><strong>Return keys match output IDs</strong>:
+<p>A few things are worth getting right here.</p>
+<p>The return keys match the output IDs.
 <code>list(scatter = ..., stats = ...)</code> corresponds to
-<code>mcp_plot("scatter")</code> and <code>mcp_text("stats")</code>. The
-bridge uses these keys to route values to the correct output
-elements.</p></li>
-<li><p><strong>Base64 plots</strong>: Use <code><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave()</a></code> or
-<code><a href="https://rdrr.io/r/grDevices/png.html" class="external-link">png()</a></code> + <code><a href="https://rdrr.io/r/grDevices/dev.html" class="external-link">dev.off()</a></code>, then
-<code><a href="https://rdrr.io/pkg/base64enc/man/base64.html" class="external-link">base64enc::base64encode()</a></code>. The bridge wraps this in an
-<code>&lt;img&gt;</code> tag.</p></li>
-<li><p><strong>Text output</strong>: <code><a href="../reference/mcp_text.html">mcp_text()</a></code> renders in
-a <code>&lt;pre&gt;</code> tag, so R’s <code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> and
-<code><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat()</a></code> output preserves column alignment.</p></li>
-<li><p><strong>Default arguments</strong>: Every argument needs a
-default value. This is what the tool uses when loaded initially and what
-the AI sees as the expected format.</p></li>
-<li><p><strong>Stateless</strong>: No <code><a href="https://rdrr.io/pkg/shiny/man/reactiveVal.html" class="external-link">reactiveVal()</a></code>, no
-<code>&lt;&lt;-</code>, no session state. Each tool call recomputes from
-scratch. For most apps this is fine since tool calls are fast.</p></li>
-</ul>
+<code>mcp_plot("scatter")</code> and <code>mcp_text("stats")</code>, and
+the bridge uses these keys to route values to the right output
+elements.</p>
+<p>Plots travel as base64. Use <code><a href="https://ggplot2.tidyverse.org/reference/ggsave.html" class="external-link">ggsave()</a></code> or
+<code><a href="https://rdrr.io/r/grDevices/png.html" class="external-link">png()</a></code> plus <code><a href="https://rdrr.io/r/grDevices/dev.html" class="external-link">dev.off()</a></code>, then
+<code><a href="https://rdrr.io/pkg/base64enc/man/base64.html" class="external-link">base64enc::base64encode()</a></code>, and the bridge wraps the result
+in an <code>&lt;img&gt;</code> tag. Text output renders in a
+<code>&lt;pre&gt;</code> tag, so the column alignment from R’s
+<code><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary()</a></code> and <code><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat()</a></code> survives.</p>
+<p>Every argument needs a default value. The tool uses the defaults when
+it first loads, and they tell the AI what format to expect.</p>
+<p>Tool calls are stateless: no <code><a href="https://rdrr.io/pkg/shiny/man/reactiveVal.html" class="external-link">reactiveVal()</a></code>, no
+<code>&lt;&lt;-</code>, no session state. Each call recomputes from
+scratch, which is fine for most apps because the calls are fast.</p>
 </div>
 <div class="section level2">
 <h2 id="step-5-assemble-and-serve">Step 5: Assemble and serve<a class="anchor" aria-label="anchor" href="#step-5-assemble-and-serve"></a>
@@ -505,14 +474,11 @@ The bridge calls all tools whose inputs changed:</p>
 </h3>
 <p>MCP tool calls are stateless. If your Shiny app uses
 <code><a href="https://rdrr.io/pkg/shiny/man/reactiveVal.html" class="external-link">reactiveVal()</a></code> or <code><a href="https://rdrr.io/pkg/shiny/man/reactiveValues.html" class="external-link">reactiveValues()</a></code> to
-accumulate state across interactions, you have two options:</p>
-<ol style="list-style-type: decimal">
-<li><p><strong>Recompute from inputs</strong>: Most filtering/selection
-state can be derived from the current input values alone.</p></li>
-<li><p><strong>Use the file system</strong>: For truly stateful apps
-(e.g., a todo list), write state to a temp file and read it back on the
-next tool call.</p></li>
-</ol>
+accumulate state across interactions, you have two options. Most
+filtering and selection state can be derived from the current input
+values alone, so recompute it. For state you genuinely have to carry,
+like a todo list, write it to a temp file and read it back on the next
+tool call.</p>
 </div>
 <div class="section level3">
 <h3 id="tables">Tables<a class="anchor" aria-label="anchor" href="#tables"></a>
