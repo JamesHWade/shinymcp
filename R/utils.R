@@ -407,11 +407,13 @@ build_output_schema <- function(output_ids, ui_output_types = character(0)) {
 #' @noRd
 format_tool_result <- function(result) {
   if (is_mcp_result(result)) {
+    content <- list(list(
+      type = "text",
+      text = mcp_result_text_fallback(result)
+    ))
+    content <- c(content, mcp_result_image_content(result))
     return(list(
-      content = list(list(
-        type = "text",
-        text = mcp_result_text_fallback(result)
-      )),
+      content = content,
       structuredContent = setNames(
         list(mcp_result_wire_payload(result)),
         SHINYMCP_SINGLE_RESULT_KEY
@@ -421,9 +423,13 @@ format_tool_result <- function(result) {
 
   if (is.list(result) && !is.null(names(result))) {
     text_summary <- mcp_result_text_fallback(result)
-    payload <- list(
-      content = list(list(type = "text", text = text_summary))
-    )
+    content <- list(list(type = "text", text = text_summary))
+    # Append native image blocks so text-only and model-only hosts can see
+    # generated plots instead of a "[plot]" placeholder.
+    for (id in names(result)) {
+      content <- c(content, mcp_result_image_content(result[[id]]))
+    }
+    payload <- list(content = content)
     structured <- mcp_result_structured_content(result)
     if (!is.null(structured)) {
       # Carry render types alongside the string values so plots/tables render

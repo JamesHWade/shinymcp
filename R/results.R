@@ -601,6 +601,26 @@ mcp_result_structured_types <- function(result) {
   types
 }
 
+#' Build a native MCP image content block for a plot result
+#'
+#' Returns a one-element list with an `image` content block (raw base64 PNG)
+#' so text-only and model-only hosts can see generated plots, or an empty
+#' list for non-plot results.
+#'
+#' @param x A typed result (or any value).
+#' @return A list of zero or one content blocks.
+#' @noRd
+mcp_result_image_content <- function(x) {
+  if (!is_mcp_result(x) || !identical(x$kind, "plot")) {
+    return(list())
+  }
+  data <- mcp_result_patch_value(x)
+  if (!is.character(data) || length(data) != 1 || !nzchar(data)) {
+    return(list())
+  }
+  list(list(type = "image", data = data, mimeType = "image/png"))
+}
+
 #' Build a shinychat-friendly tool result with a live embedded card
 #'
 #' @param app An [McpApp] object.

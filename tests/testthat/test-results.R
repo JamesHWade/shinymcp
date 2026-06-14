@@ -9,6 +9,25 @@ test_that("format_tool_result handles typed result fragments", {
   expect_match(result$content[[1]]$text, "ready")
 })
 
+test_that("format_tool_result emits a native image block for plot results", {
+  skip_if_not_installed("base64enc")
+
+  single <- format_tool_result(mcp_result_plot(function() plot(1)))
+  img <- Filter(function(b) identical(b$type, "image"), single$content)
+  expect_length(img, 1)
+  expect_equal(img[[1]]$mimeType, "image/png")
+  expect_true(nzchar(img[[1]]$data))
+
+  multi <- format_tool_result(list(
+    note = mcp_result_text("hi"),
+    chart = mcp_result_plot(function() plot(1))
+  ))
+  img2 <- Filter(function(b) identical(b$type, "image"), multi$content)
+  expect_length(img2, 1)
+  # The text summary still leads the content array.
+  expect_equal(multi$content[[1]]$type, "text")
+})
+
 test_that("format_tool_result carries per-output render types as a side channel", {
   result <- format_tool_result(list(
     summary = mcp_result_text("ready"),
