@@ -34,6 +34,8 @@ navbar:
     articles:
       text: Articles
       menu:
+        - text: shinymcp by example
+          href: articles/shinymcp-by-example.html
         - text: Use Cases
           href: articles/use-cases.html
         - text: Converting Shiny Apps
