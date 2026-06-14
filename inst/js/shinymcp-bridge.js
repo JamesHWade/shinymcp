@@ -1,9 +1,11 @@
 // shinymcp-bridge.js
 // MCP Apps postMessage/JSON-RPC bridge for shinymcp
-// Implements the official MCP Apps postMessage protocol (SEP-1865).
+// Implements the official MCP Apps postMessage protocol (spec 2026-01-26).
 // No external dependencies required.
 (function () {
   "use strict";
+
+  var APPS_PROTOCOL_VERSION = "2026-01-26";
 
   // ---------------------------------------------------------------------------
   // Utility: CSS.escape polyfill for ES5 environments
@@ -232,8 +234,8 @@
       message.params = params;
     }
 
-    return new Promise(function (resolve) {
-      pendingRequests[id] = resolve;
+    return new Promise(function (resolve, reject) {
+      pendingRequests[id] = { resolve: resolve, reject: reject };
       window.parent.postMessage(message, "*");
     });
   }
@@ -265,6 +267,75 @@
       },
       "*"
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Model context updates
+  // ---------------------------------------------------------------------------
+
+  // ui/update-model-context is a request per the MCP Apps spec (the host
+  // acknowledges it). Failures are logged but never block the UI.
+  function updateModelContext(structuredContent) {
+    var promise = sendRequest("ui/update-model-context", {
+      structuredContent: structuredContent,
+    });
+    if (promise) {
+      promise["catch"](function (err) {
+        console.warn(
+          "[shinymcp-bridge] ui/update-model-context failed:",
+          err
+        );
+      });
+    }
+    return promise;
+  }
+
+  // Debounce model-context updates so rapid input events (one per keystroke
+  // on text inputs) collapse into one trailing request per quiet period.
+  var modelContextTimer = null;
+  function scheduleModelContextUpdate() {
+    if (modelContextTimer) clearTimeout(modelContextTimer);
+    modelContextTimer = setTimeout(function () {
+      modelContextTimer = null;
+      updateModelContext(collectAllInputs());
+    }, currentDebounceMs());
+  }
+
+  // ---------------------------------------------------------------------------
+  // Host context (theme, locale, styles)
+  // ---------------------------------------------------------------------------
+
+  // Merge a (possibly partial) host context update and apply what we can:
+  // theme maps to Bootstrap/bslib's data-bs-theme attribute, locale to the
+  // document language, and styles.variables to CSS custom properties.
+  function applyHostContext(context) {
+    if (!context || typeof context !== "object") return;
+    if (!hostContext) hostContext = {};
+    var keys = Object.keys(context);
+    for (var i = 0; i < keys.length; i++) {
+      hostContext[keys[i]] = context[keys[i]];
+    }
+
+    if (context.theme === "dark" || context.theme === "light") {
+      document.documentElement.setAttribute("data-bs-theme", context.theme);
+    }
+    if (typeof context.locale === "string" && context.locale) {
+      document.documentElement.lang = context.locale;
+    }
+    if (
+      context.styles &&
+      context.styles.variables &&
+      typeof context.styles.variables === "object"
+    ) {
+      var varNames = Object.keys(context.styles.variables);
+      for (var j = 0; j < varNames.length; j++) {
+        var varName = varNames[j];
+        var varValue = context.styles.variables[varName];
+        if (varName.indexOf("--") === 0 && typeof varValue === "string") {
+          document.documentElement.style.setProperty(varName, varValue);
+        }
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -406,10 +477,8 @@
 
     var inputs = collectAllInputs();
 
-    // Update model context with current input values
-    sendNotification("ui/update-model-context", {
-      structuredContent: inputs,
-    });
+    // Update model context with current input values (debounced)
+    scheduleModelContextUpdate();
 
     // Accumulate changed input names across debounce intervals so rapid
     // changes to inputs in different tool groups all trigger their tools.
@@ -507,12 +576,22 @@
     var data = event.data;
     if (!data || data.jsonrpc !== "2.0") return;
 
-    // Handle responses to our requests
-    if (data.id !== undefined && data.result !== undefined) {
-      var resolve = pendingRequests[data.id];
-      if (resolve) {
+    // Handle responses (success or error) to our requests.
+    // Responses have an id but no method; requests from the host have both.
+    if (data.id !== undefined && !data.method) {
+      var pending = pendingRequests[data.id];
+      if (pending) {
         delete pendingRequests[data.id];
-        resolve(data.result);
+        if (data.error) {
+          var err = new Error(
+            (data.error && data.error.message) || "JSON-RPC error"
+          );
+          err.code = data.error && data.error.code;
+          err.data = data.error && data.error.data;
+          pending.reject(err);
+        } else {
+          pending.resolve(data.result);
+        }
       }
       return;
     }
@@ -521,6 +600,12 @@
     if (!data.method) return;
 
     switch (data.method) {
+      case "ping":
+        if (data.id !== undefined) {
+          sendResponse(data.id, {});
+        }
+        break;
+
       case "ui/notifications/tool-result":
         handleToolResult(data.params);
         break;
@@ -529,7 +614,12 @@
         handleToolInput(data.params);
         break;
 
+      // shinymcp-private host extensions (used by the bundled Shiny host).
+      // The ui/notifications/* prefix is reserved by the MCP Apps spec, so
+      // the x-shinymcp/* spellings are the forward-looking names; both are
+      // accepted while the bundled host migrates.
       case "ui/notifications/trigger-tool-call":
+      case "x-shinymcp/trigger-tool-call":
         if (callToolTimer) clearTimeout(callToolTimer);
         var changedInputs = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
         pendingChangedInputs = [];
@@ -537,10 +627,9 @@
         break;
 
       case "ui/notifications/reset":
+      case "x-shinymcp/reset":
         handleToolInput({ arguments: initialInputSnapshot });
-        sendNotification("ui/update-model-context", {
-          structuredContent: collectAllInputs(),
-        });
+        updateModelContext(collectAllInputs());
         if (
           currentTriggerMode() === "change" ||
           currentTriggerMode() === "debounce"
@@ -558,9 +647,7 @@
         break;
 
       case "ui/notifications/host-context-changed":
-        if (data.params) {
-          hostContext = data.params;
-        }
+        applyHostContext(data.params);
         break;
 
       case "ui/resource-teardown":
@@ -673,6 +760,21 @@
     }
     inputListeners = [];
 
+    if (callToolTimer) clearTimeout(callToolTimer);
+    if (modelContextTimer) clearTimeout(modelContextTimer);
+    callToolTimer = null;
+    modelContextTimer = null;
+
+    // Settle anything still waiting on the host so callers don't hang.
+    var pendingIds = Object.keys(pendingRequests);
+    for (var j = 0; j < pendingIds.length; j++) {
+      var pending = pendingRequests[pendingIds[j]];
+      if (pending && pending.reject) {
+        pending.reject(new Error("shinymcp bridge was torn down"));
+      }
+    }
+    pendingRequests = {};
+
     if (messageHandler) {
       window.removeEventListener("message", messageHandler);
       messageHandler = null;
@@ -707,39 +809,104 @@
     // Fields must match McpUiInitializeRequestSchema exactly:
     // appInfo (not clientInfo), appCapabilities, protocolVersion
     var initPromise = sendRequest("ui/initialize", {
-      protocolVersion: "2025-06-18",
+      protocolVersion: APPS_PROTOCOL_VERSION,
       appInfo: {
         name: config.appName || "shinymcp-app",
         version: config.version || "0.0.1",
       },
-      appCapabilities: {},
+      appCapabilities: {
+        availableDisplayModes: ["inline", "fullscreen"],
+      },
     });
 
     // Handle initialize response
     if (initPromise) {
-      initPromise.then(function (result) {
-        hostContext = result.hostContext || null;
+      initPromise
+        .then(function (result) {
+          applyHostContext(result.hostContext || null);
 
-        if (
-          hostContext &&
-          hostContext.initialArguments &&
-          typeof hostContext.initialArguments === "object"
-        ) {
-          handleToolInput({ arguments: hostContext.initialArguments });
-        }
-        initialInputSnapshot = collectAllInputs();
+          if (
+            hostContext &&
+            hostContext.initialArguments &&
+            typeof hostContext.initialArguments === "object"
+          ) {
+            handleToolInput({ arguments: hostContext.initialArguments });
+          }
+          initialInputSnapshot = collectAllInputs();
 
-        // Send initialized notification
-        sendNotification("ui/notifications/initialized", {});
+          // Send initialized notification
+          sendNotification("ui/notifications/initialized", {});
 
-        // Set up auto-resize notifications (like the official SDK)
-        setupAutoResize();
+          // Set up auto-resize notifications (like the official SDK)
+          setupAutoResize();
 
-        // Call all server tools with initial input values so outputs are populated
-        callServerTools(collectAllInputs(), null);
-      });
+          // Call all server tools with initial input values so outputs are populated
+          callServerTools(collectAllInputs(), null);
+        })
+        ["catch"](function (err) {
+          console.error("[shinymcp-bridge] ui/initialize failed:", err);
+        });
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Public API: host interaction helpers for app authors
+  // ---------------------------------------------------------------------------
+
+  // sendRequest returns null when there is no host (standalone page) or
+  // after teardown; the public API must always hand back a Promise so
+  // documented .then/.catch chains never throw on null.
+  function requestOrReject(method, params) {
+    return (
+      sendRequest(method, params) ||
+      Promise.reject(new Error("shinymcp bridge is not connected to a host"))
+    );
+  }
+
+  window.shinymcp = {
+    // Call a server tool through the host. Returns a Promise of the result.
+    callTool: function (name, args) {
+      return requestOrReject("tools/call", {
+        name: name,
+        arguments: args || {},
+      });
+    },
+    // Push structured content into the model's context for future turns.
+    updateModelContext: updateModelContext,
+    // Read a server resource through the host. Resolves with the
+    // resources/read result: { contents: [{ uri, mimeType, text }] }.
+    // Useful for lazy-loading data declared via mcp_app(resources = ).
+    readResource: function (uri) {
+      return requestOrReject("resources/read", { uri: uri });
+    },
+    // Ask the host to open an external URL.
+    openLink: function (url) {
+      return requestOrReject("ui/open-link", { url: url });
+    },
+    // Send a message into the host conversation on the user's behalf.
+    sendMessage: function (text) {
+      return requestOrReject("ui/message", {
+        role: "user",
+        content: { type: "text", text: text },
+      });
+    },
+    // Request a display mode change: "inline", "fullscreen", or "pip".
+    requestDisplayMode: function (mode) {
+      return requestOrReject("ui/request-display-mode", { mode: mode });
+    },
+    // Send a log message to the host.
+    log: function (level, data) {
+      sendNotification("notifications/message", {
+        level: level || "info",
+        logger: "shinymcp",
+        data: data,
+      });
+    },
+    // Read the most recent host context (theme, locale, displayMode, ...).
+    getHostContext: function () {
+      return hostContext;
+    },
+  };
 
   // ---------------------------------------------------------------------------
   // Auto-resize: notify host of content size changes

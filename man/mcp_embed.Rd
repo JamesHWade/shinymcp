@@ -7,8 +7,8 @@
 mcp_embed(
   app,
   id = NULL,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto"
 )
 }
@@ -18,9 +18,11 @@ mcp_embed(
 \item{id}{Optional DOM or module id.}
 
 \item{trigger}{Interaction mode: \code{"debounce"}, \code{"change"}, \code{"submit"}, or
-\code{"manual"}.}
+\code{"manual"}. Defaults to the app's own declaration
+(\code{mcp_app(trigger = )}), falling back to \code{"debounce"}.}
 
-\item{debounce_ms}{Debounce interval in milliseconds.}
+\item{debounce_ms}{Debounce interval in milliseconds. Defaults to the
+app's own declaration, falling back to 250.}
 
 \item{height}{Preferred initial height.}
 }

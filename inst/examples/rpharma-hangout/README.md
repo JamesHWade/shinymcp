@@ -55,9 +55,33 @@ Requires shiny, bslib, htmltools, ellmer, shinychat, and shinymcp.
 
 ### What to look at
 
-* The same R-backed tool reached three ways: an MCP client, the Shiny host, and shinychat.
-* The Contract inspector, showing the declared argument schema and the `ui://` card URI.
-* The aggregate `model_value` handed back to the parent app, which reacts to it directly rather than reading the rendered page.
-* Switching the approved skill, which swaps the UI, schema, outputs, and contract together.
+- The same R-backed tool reached three ways: an MCP client, the Shiny host, and
+  shinychat, all from a single `mcp_app()` definition.
+- The Contract inspector, showing the declared argument schema and the `ui://`
+  card URI, so reviewers see what an external client calls.
+- Each card has an inspectable tool contract rather than only a human UI,
+  including a declared result schema (`tool_outputs` becomes `outputSchema`), so
+  reviewers see what comes back before anything runs.
+- The aggregate `model_value` handed back to the parent app, which reacts to it
+  directly rather than reading the rendered page.
+- Switching the approved skill, which swaps the UI, schema, outputs, and
+  contract together.
+- shinychat presents those cards as interactive tool results, with suggestions
+  that help users discover what to ask.
+- The shinychat page keeps review boundaries visible in the chat footer:
+  aggregate tools only, visible arguments, and a clear auto-update vs Apply
+  distinction. Cards can auto-update on input changes; the dashboard uses Apply
+  because its embedded host is configured in submit mode.
+- The loop runs both ways: model tool calls drive the card, and user card
+  interactions land back in the model's context as typed data
+  (`ui/update-model-context`), an interaction record you can log and review.
+- MCP Apps support is negotiated per connection: clients without the apps
+  extension get the identical tools text-only, so adopting the contract is
+  low-risk.
+- Tools can be scoped with `tool_visibility`: app-only tools stay callable
+  from the card but never appear in the model's tool list.
+- Hosts enforce deny-by-default networking (CSP) on cards; a card that
+  declares no domains cannot phone home.
+- Aggregate-return boundaries and audit text can be built into each clinical skill.
 
 The `{dsprrr}` and `{deputy}` portions of the session use their own packages; see their documentation above.

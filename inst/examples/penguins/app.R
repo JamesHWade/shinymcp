@@ -117,5 +117,13 @@ tools <- list(
   )
 )
 
-app <- mcp_app(ui, tools, name = "penguins-explorer")
+# tool_outputs declares which output ids the tool returns, generating an
+# outputSchema so hosts and models know the result shape (the descriptions
+# are derived from the UI: "scatter" is a plot, "stats" is text).
+app <- mcp_app(
+  ui,
+  tools,
+  name = "penguins-explorer",
+  tool_outputs = list(explore_penguins = c("scatter", "stats"))
+)
 serve(app)

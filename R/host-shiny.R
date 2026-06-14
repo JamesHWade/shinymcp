@@ -128,12 +128,17 @@ register_shiny_host_instance <- function(
   session,
   app,
   instance_id = unique_id("shinymcp-instance"),
-  trigger = "debounce",
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto",
   initial_arguments = NULL,
   debug = FALSE
 ) {
+  app <- as_mcp_app(app)
+  interaction <- resolve_host_interaction(app, trigger, debounce_ms)
+  trigger <- interaction$trigger
+  debounce_ms <- interaction$debounce_ms
+
   registry <- ensure_shiny_host_registry(session)
   state <- new_mcp_host_state(
     app = app,
@@ -205,6 +210,19 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
             )
           )
         }
+        if (identical(event$method, "resources/read")) {
+          session$sendCustomMessage(
+            "shinymcp-host-response",
+            list(
+              instanceId = instance_id,
+              requestId = event$requestId,
+              error = paste(
+                "No active shinymcp host instance found for",
+                instance_id
+              )
+            )
+          )
+        }
         return()
       }
 
@@ -233,6 +251,21 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
             instanceId = instance_id,
             requestId = event$requestId,
             result = result
+          )
+        )
+        return()
+      }
+
+      if (identical(method, "resources/read")) {
+        response <- tryCatch(
+          list(result = mcp_host_read_resource(state, params$uri)),
+          error = function(e) list(error = conditionMessage(e))
+        )
+        session$sendCustomMessage(
+          "shinymcp-host-response",
+          c(
+            list(instanceId = instance_id, requestId = event$requestId),
+            response
           )
         )
         return()
@@ -288,11 +321,19 @@ mcp_host_ui <- function(id) {
 
 #' Host shell server for an embedded MCP app
 #'
+#' @details
+#' The embedded app is rendered via `srcdoc` in an iframe with
+#' `sandbox="allow-scripts allow-same-origin"`, i.e. on the same origin as
+#' the hosting Shiny app. This is appropriate for embedding apps you wrote
+#' and trust; it is not a hardened boundary for running third-party HTML.
+#'
 #' @param id Shiny module id.
 #' @param app An [McpApp] object.
 #' @param trigger Interaction mode: `"change"`, `"debounce"`, `"submit"`, or
-#'   `"manual"`.
-#' @param debounce_ms Debounce interval in milliseconds.
+#'   `"manual"`. Defaults to the app's own declaration
+#'   (`mcp_app(trigger = )`), falling back to `"debounce"`.
+#' @param debounce_ms Debounce interval in milliseconds. Defaults to the
+#'   app's own declaration, falling back to 250.
 #' @param height Preferred initial height for the host shell.
 #' @param initial_arguments Optional named list of initial tool arguments.
 #' @param debug Whether to enable debug affordances in the host shell.
@@ -305,14 +346,12 @@ mcp_host_ui <- function(id) {
 mcp_host_server <- function(
   id,
   app,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto",
   initial_arguments = NULL,
   debug = FALSE
 ) {
-  trigger <- match.arg(trigger)
-
   shiny::moduleServer(id, function(input, output, session) {
     app <- as_mcp_app(app)
     registered <- register_shiny_host_instance(
@@ -403,18 +442,19 @@ mcp_host_server <- function(
 #' @param app An [McpApp] object.
 #' @param id Optional DOM or module id.
 #' @param trigger Interaction mode: `"debounce"`, `"change"`, `"submit"`, or
-#'   `"manual"`.
-#' @param debounce_ms Debounce interval in milliseconds.
+#'   `"manual"`. Defaults to the app's own declaration
+#'   (`mcp_app(trigger = )`), falling back to `"debounce"`.
+#' @param debounce_ms Debounce interval in milliseconds. Defaults to the
+#'   app's own declaration, falling back to 250.
 #' @param height Preferred initial height.
 #' @export
 mcp_embed <- function(
   app,
   id = NULL,
-  trigger = c("debounce", "change", "submit", "manual"),
-  debounce_ms = 250,
+  trigger = NULL,
+  debounce_ms = NULL,
   height = "auto"
 ) {
-  trigger <- match.arg(trigger)
   app <- as_mcp_app(app)
   session <- active_shiny_session()
 

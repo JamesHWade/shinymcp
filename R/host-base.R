@@ -67,6 +67,31 @@ mcp_host_callback <- function(state, name, value) {
   invisible(value)
 }
 
+#' Resolve host interaction settings against the app's declaration
+#'
+#' Host-supplied values win when given; otherwise the app's own
+#' `mcp_app(trigger = , debounce_ms = )` declaration applies, then the
+#' package defaults. Keeps `mcp_app()`'s interaction arguments effective in
+#' embedded contexts instead of being silently clobbered by host defaults.
+#'
+#' @param app An McpApp object.
+#' @param trigger Host-supplied trigger, or NULL to defer to the app.
+#' @param debounce_ms Host-supplied debounce, or NULL to defer to the app.
+#' @return A list with resolved `trigger` and `debounce_ms`.
+#' @noRd
+resolve_host_interaction <- function(app, trigger = NULL, debounce_ms = NULL) {
+  defaults <- app$interaction_defaults()
+  trigger <- if (is.null(trigger)) {
+    defaults$trigger %||% "debounce"
+  } else {
+    rlang::arg_match0(trigger, c("debounce", "change", "submit", "manual"))
+  }
+  list(
+    trigger = trigger,
+    debounce_ms = debounce_ms %||% defaults$debounce_ms %||% 250
+  )
+}
+
 #' Build bridge config for a live host state
 #'
 #' @param state A host state environment.
@@ -87,7 +112,7 @@ mcp_host_bridge_config <- function(state) {
 #' @noRd
 mcp_host_initialize <- function(state) {
   compact_list(list(
-    protocolVersion = SHINYMCP_PROTOCOL_VERSION,
+    protocolVersion = SHINYMCP_APPS_PROTOCOL_VERSION,
     hostInfo = list(
       name = "shinymcp-host",
       version = as.character(utils::packageVersion("shinymcp"))
@@ -127,15 +152,28 @@ mcp_host_call_tool <- function(state, tool_name, arguments = list()) {
 
 #' Read a resource through a host state
 #'
+#' Returns a spec-shaped `resources/read` result (`contents` array) for the
+#' app's own ui:// resource or any extra resource declared via
+#' `mcp_app(resources = )`.
+#'
 #' @param state A host state environment.
 #' @param uri Resource URI.
-#' @return The resource payload.
+#' @return A list with a `contents` entry.
 #' @noRd
 mcp_host_read_resource <- function(state, uri) {
-  if (!identical(uri, state$app$resource_uri())) {
-    shinymcp_error_resource("Unknown resource URI", uri = uri)
+  if (identical(uri, state$app$resource_uri())) {
+    return(list(
+      contents = list(compact_list(list(
+        uri = uri,
+        mimeType = SHINYMCP_UI_MIME_TYPE,
+        text = state$app$html_resource(
+          bridge_config = mcp_host_bridge_config(state)
+        ),
+        `_meta` = state$app$resource_meta()
+      )))
+    ))
   }
-  state$app$html_resource(bridge_config = mcp_host_bridge_config(state))
+  list(contents = list(state$app$read_extra_resource(uri)))
 }
 
 #' Update the most recent model context seen by a host instance

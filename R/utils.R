@@ -95,10 +95,247 @@ compact_list <- function(x) {
   x[!vapply(x, is.null, logical(1))]
 }
 
-#' MCP protocol version supported by shinymcp
+#' Core MCP protocol versions supported by the server transport, newest first
 #' @noRd
-SHINYMCP_PROTOCOL_VERSION <- "2025-06-18"
+SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS <- c(
+  "2025-11-25",
+  "2025-06-18",
+  "2025-03-26",
+  "2024-11-05"
+)
+
+#' Latest core MCP protocol version supported by shinymcp
+#' @noRd
+SHINYMCP_PROTOCOL_VERSION <- SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS[[1]]
+
+#' MCP Apps extension spec version implemented by the JS bridge and hosts
+#' @noRd
+SHINYMCP_APPS_PROTOCOL_VERSION <- "2026-01-26"
+
+#' Extension identifier clients use to advertise MCP Apps support
+#' @noRd
+SHINYMCP_UI_EXTENSION_ID <- "io.modelcontextprotocol/ui"
+
+#' Required MIME type for ui:// resources per the MCP Apps spec
+#' @noRd
+SHINYMCP_UI_MIME_TYPE <- "text/html;profile=mcp-app"
+
 SHINYMCP_SINGLE_RESULT_KEY <- "__shinymcp_result__"
+
+#' Negotiate the core MCP protocol version with a client
+#'
+#' Per the MCP spec: if the client requests a version the server supports,
+#' echo it back; otherwise respond with the server's latest supported version.
+#'
+#' @param requested The client's requested protocol version (or NULL).
+#' @noRd
+negotiate_protocol_version <- function(requested) {
+  if (
+    is.character(requested) &&
+      length(requested) == 1 &&
+      requested %in% SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS
+  ) {
+    return(requested)
+  }
+  SHINYMCP_PROTOCOL_VERSION
+}
+
+#' Check whether an initialize request advertises MCP Apps support
+#'
+#' Per the MCP Apps spec (2026-01-26), clients advertise support via
+#' `capabilities.extensions["io.modelcontextprotocol/ui"]` with a `mimeTypes`
+#' array. A missing `mimeTypes` field is treated leniently as supporting the
+#' default HTML profile.
+#'
+#' @param params The `params` of an `initialize` request.
+#' @return `TRUE` if the client supports MCP Apps UI rendering.
+#' @noRd
+client_supports_mcp_apps <- function(params) {
+  ui_cap <- params$capabilities$extensions[[SHINYMCP_UI_EXTENSION_ID]]
+  if (is.null(ui_cap)) {
+    return(FALSE)
+  }
+  mime_types <- unlist(ui_cap$mimeTypes, use.names = FALSE)
+  if (is.null(mime_types)) {
+    return(TRUE)
+  }
+  SHINYMCP_UI_MIME_TYPE %in% mime_types
+}
+
+#' Convert user-facing CSP declarations to spec _meta.ui.csp keys
+#'
+#' Accepts snake_case keys (`connect_domains`, `resource_domains`,
+#' `frame_domains`, `base_uri_domains`) or the spec's camelCase keys
+#' directly. Values are coerced to character vectors and always serialized
+#' as JSON arrays.
+#'
+#' @param csp A named list of CSP domain declarations, or NULL.
+#' @noRd
+csp_to_meta <- function(csp) {
+  if (is.null(csp)) {
+    return(NULL)
+  }
+  if (!is.list(csp) || is.null(names(csp)) || any(!nzchar(names(csp)))) {
+    rlang::abort(
+      "`csp` must be a fully named list of domain declarations.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  key_map <- c(
+    connect_domains = "connectDomains",
+    resource_domains = "resourceDomains",
+    frame_domains = "frameDomains",
+    base_uri_domains = "baseUriDomains"
+  )
+  allowed <- unique(c(names(key_map), unname(key_map)))
+  out <- list()
+  for (nm in names(csp)) {
+    if (!nm %in% allowed) {
+      rlang::abort(
+        cli::format_inline(
+          "Unknown {.arg csp} field {.val {nm}}. Allowed: {.val {allowed}}."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+    key <- if (nm %in% names(key_map)) key_map[[nm]] else nm
+    out[[key]] <- I(as.character(csp[[nm]]))
+  }
+  out
+}
+
+#' Normalize user-supplied extra resources for an McpApp
+#'
+#' Accepts a named list (URI -> spec) where each spec is a string (static
+#' content), a function returning a string, or a list with `content`,
+#' `mime_type`, `name`, `description`, and `meta` fields. Returns a named
+#' list of normalized specs with `uri`, `name`, `description`, `mime_type`,
+#' `content_fn`, and `meta`.
+#'
+#' @param resources Named list of resource specs, or NULL.
+#' @noRd
+normalize_extra_resources <- function(resources) {
+  if (is.null(resources)) {
+    return(list())
+  }
+  if (
+    !is.list(resources) ||
+      is.null(names(resources)) ||
+      any(!nzchar(names(resources)))
+  ) {
+    rlang::abort(
+      "`resources` must be a fully named list (URI -> content).",
+      class = "shinymcp_error_validation"
+    )
+  }
+
+  out <- list()
+  for (uri in names(resources)) {
+    spec <- resources[[uri]]
+
+    if (is.function(spec)) {
+      spec <- list(content = spec)
+    } else if (is.character(spec) && length(spec) == 1) {
+      spec <- list(content = spec)
+    } else if (!is.list(spec)) {
+      rlang::abort(
+        cli::format_inline(
+          "Resource {.val {uri}} must be a string, a function, or a list with a {.field content} field."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+
+    content <- spec$content
+    content_fn <- if (is.function(content)) {
+      content
+    } else if (is.character(content) && length(content) == 1) {
+      local({
+        static <- content
+        function() static
+      })
+    } else {
+      rlang::abort(
+        cli::format_inline(
+          "Resource {.val {uri}} needs {.field content} as a single string or a function returning one."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+
+    out[[uri]] <- list(
+      uri = uri,
+      name = spec$name %||% uri,
+      description = spec$description %||% "",
+      mime_type = spec$mime_type %||% "text/plain",
+      content_fn = content_fn,
+      meta = spec$meta
+    )
+  }
+  out
+}
+
+#' Coerce resource content to a plain character scalar
+#'
+#' Content functions commonly return `jsonlite::toJSON()` output, which is a
+#' `json`-classed object that downstream serializers (jsonlite, Shiny's
+#' custom messages) inline as raw JSON instead of a string — breaking
+#' `JSON.parse(contents[0].text)` in the app. Strip classes and collapse
+#' multi-line character vectors so `text` is always a single string.
+#'
+#' @param content The value returned by a resource content function.
+#' @noRd
+coerce_resource_text <- function(content) {
+  content <- as.character(content)
+  if (length(content) != 1) {
+    content <- paste(content, collapse = "\n")
+  }
+  content
+}
+
+#' Build an outputSchema from declared output ids and scanned UI types
+#'
+#' All shinymcp structured outputs travel as strings (text, HTML fragments,
+#' base64 PNGs), so every property is `type: "string"` with a description
+#' derived from the output's UI type.
+#'
+#' @param output_ids Character vector of output ids the tool returns.
+#' @param ui_output_types Named character vector mapping output id -> UI type
+#'   (`"text"`, `"plot"`, `"table"`, `"html"`), as scanned from the UI.
+#' @noRd
+build_output_schema <- function(output_ids, ui_output_types = character(0)) {
+  if (length(output_ids) == 0) {
+    return(NULL)
+  }
+  descriptions <- c(
+    text = "Text content for output '%s'",
+    plot = "Base64-encoded PNG image for output '%s'",
+    table = "HTML table markup for output '%s'",
+    html = "HTML markup for output '%s'"
+  )
+  properties <- list()
+  for (id in output_ids) {
+    type <- if (id %in% names(ui_output_types)) {
+      ui_output_types[[id]]
+    } else {
+      NA_character_
+    }
+    template <- if (!is.na(type) && type %in% names(descriptions)) {
+      descriptions[[type]]
+    } else {
+      "Value for output '%s'"
+    }
+    properties[[id]] <- list(
+      type = "string",
+      description = sprintf(template, id)
+    )
+  }
+  list(
+    type = "object",
+    properties = properties,
+    required = as.list(output_ids)
+  )
+}
 
 #' Format an R tool result into the MCP tool-result shape
 #'
