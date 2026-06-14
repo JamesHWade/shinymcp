@@ -10,7 +10,12 @@ test_that("hello-mcp-minimal previews without error", {
 
 test_that("serve-to-client server script builds the expected app", {
   skip_if_not_installed("ellmer")
-  path <- system.file("examples", "serve-to-client", "serve.R", package = "shinymcp")
+  path <- system.file(
+    "examples",
+    "serve-to-client",
+    "serve.R",
+    package = "shinymcp"
+  )
   skip_if(path == "", "example not installed")
   env <- new.env()
   env$serve <- function(app, ...) app # stub so stdio loop never starts
@@ -22,7 +27,12 @@ test_that("serve-to-client server script builds the expected app", {
 test_that("embed-in-shiny sources into a shiny app object", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("ellmer")
-  path <- system.file("examples", "embed-in-shiny", "app.R", package = "shinymcp")
+  path <- system.file(
+    "examples",
+    "embed-in-shiny",
+    "app.R",
+    package = "shinymcp"
+  )
   skip_if(path == "", "example not installed")
   env <- new.env()
   captured <- new.env()
