@@ -11,17 +11,38 @@ vignette: >
 knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
-This article is a tour of shinymcp, one idea at a time. Each example in the package adds a single concept — inputs, outputs, native Shiny widgets, multi-tool routing, module reuse, stdio transport, and more — so you can read as far as your use case requires. Every app ships with the package and you can run any of them right now:
+This is a tour of shinymcp, built one idea at a time.
+
+A Shiny app lives behind a URL. You open it in a browser, change some inputs, read the result, and copy anything useful back to wherever you were working. shinymcp removes that round trip: it turns a Shiny-style app into an *MCP App* that runs inside an AI assistant like Claude Desktop. The inputs, plots, and tables appear in the conversation, respond to the user, and run your R code in place.
+
+Every example on this page is the same small machine with one part swapped out. Read as far as your problem needs and stop. Each section shows the idea with enough code to follow it, links to the complete app you can open and run, and says when to reach for the pattern.
+
+## The one idea behind all of them
+
+An MCP App is two things: some UI, and one or more *tools*. A tool is an ordinary R function dressed up with a name, a description, and typed arguments — an `ellmer::tool()`. shinymcp connects the two with a single convention based on names:
+
+- each **tool argument** is filled from the input whose `id` matches the argument name, and
+- each **name in the list the tool returns** is written into the output whose `id` matches it.
+
+That is the entire contract. There is no Shiny server here and no `shiny.js`. A small, self-contained JavaScript bridge reads the input values, calls your tool, and drops each returned value back into the matching output. Once you can see that loop, every example below is a variation on it: change the inputs, change the outputs, change where the tool runs, or change how you declare it.
+
+## Running the examples
+
+Every app ships with the package. Preview an MCP App in your browser with `preview_app()`. It starts a local host that speaks the real MCP Apps protocol, so the inputs trigger real tool calls and the outputs update for real:
 
 ```{r}
-shinymcp::preview_app(system.file("examples", "penguins", package = "shinymcp"))
+shinymcp::preview_app(system.file("examples", "hello-mcp-minimal", package = "shinymcp"))
 ```
+
+A few of the later examples are full Shiny apps rather than bare MCP Apps; run those with `shiny::runApp()`. Each section says which it is and links to the source so you can read the whole thing.
 
 ## 1. hello-mcp-minimal — the shape everything builds on
 
-Every MCP App has the same skeleton: a UI of components, a list of `ellmer::tool()` objects, an `mcp_app()` call, and `serve()`. The tool's argument names must match the input element ids; the return-list names must match the output element ids. That's the whole contract. Everything else in these examples is an elaboration of it.
+Start with the smallest app that does something, so the shape is unmistakable. One input, one tool, one output:
 
 ```{r}
+library(shinymcp)
+
 ui <- htmltools::tagList(
   mcp_text_input("name", "Your name", value = "world"),
   mcp_text("greeting")
@@ -42,15 +63,19 @@ app <- mcp_app(ui, tools, name = "hello-mcp-minimal")
 serve(app)
 ```
 
+Trace the names and the whole package falls into place. The tool argument `name` is filled from the input with `id = "name"`. The tool returns `list(greeting = ...)`, and that value lands in the output with `id = "greeting"`. `mcp_app()` bundles the UI and the tools; `serve()` makes them callable. Run it and type in the box — each keystroke calls `greet()` and updates the greeting.
+
 ```{r}
 shinymcp::preview_app(system.file("examples", "hello-mcp-minimal", package = "shinymcp"))
 ```
 
-When not to use this pattern: a function that takes inputs and returns a scalar with no visual output is simpler as a plain MCP tool registered directly with `ellmer::chat()$register_tool()`. The `mcp_app()` layer earns its keep when you need a card the user can interact with.
+Reach for this when a user should see and steer the inputs. If you only need a function the model can call with no interface of its own, a plain MCP tool registered directly with `ellmer` is simpler — the card is the thing worth adding.
 
-## 2. hello-mcp — plot and text outputs, bslib theme
+Full app: [`inst/examples/hello-mcp-minimal/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/hello-mcp-minimal/app.R).
 
-Once the basic skeleton is clear, adding richer outputs is mechanical. `mcp_plot()` expects a base64-encoded PNG in the return list; `mcp_text()` takes a string. A bslib `page()` with `bs_theme()` wraps the layout so the card inherits the host's design system.
+## 2. hello-mcp — real outputs and a theme
+
+A greeting is a string. Most apps return a plot and a table. Outputs work the same way as inputs: pick the right component, return a value under the matching name. `mcp_plot()` expects a base64-encoded PNG; `mcp_text()` expects a string. Wrapping the UI in a bslib `page()` lets the card inherit a design system.
 
 ```{r}
 ui <- bslib::page(
@@ -67,111 +92,198 @@ ui <- bslib::page(
     )
   )
 )
+
+get_summary <- ellmer::tool(
+  fun = function(dataset = "mtcars") {
+    data <- get(dataset, envir = asNamespace("datasets"))
+
+    tmp <- tempfile(fileext = ".png")
+    grDevices::png(tmp, width = 600, height = 280, res = 96)
+    on.exit(unlink(tmp))
+    plot(data, main = dataset)  # any base plot works
+    grDevices::dev.off()
+
+    list(
+      summary = paste(capture.output(summary(data)), collapse = "\n"),
+      plot = base64enc::base64encode(tmp)
+    )
+  },
+  name = "get_summary",
+  description = "Summary statistics and a plot for the selected dataset",
+  arguments = list(dataset = ellmer::type_string("Dataset name"))
+)
 ```
+
+The pattern for any plot is the same three steps: open a graphics device pointed at a temp file, draw, then return `base64enc::base64encode()` of the file under the plot output's name. The bridge knows that an `mcp_plot()` output takes an image, so it renders the string as one.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "hello-mcp", package = "shinymcp"))
 ```
 
-When not to use this pattern: if the tool returns one number or a short string, a plot card adds overhead with no benefit. Use `mcp_text()` alone until you have something worth visualizing.
+If the answer is a single number or a sentence, skip the plot; `mcp_text()` on its own is the right amount of machinery.
 
-## 3. penguins — native shiny/bslib inputs, auto-detected
+Full app: [`inst/examples/hello-mcp/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/hello-mcp/app.R).
 
-You do not need `mcp_select()` or `mcp_checkbox()` wrappers on every input. The JS bridge reads the tool's argument names from the config and looks for matching element ids in the DOM. A standard `shiny::selectInput("species", ...)` works without any extra annotation, as long as the element id matches the tool argument name.
+## 3. penguins — native shiny and bslib inputs
+
+So far the inputs have used shinymcp's own `mcp_select()` and `mcp_text_input()`. You don't have to. The bridge matches tool argument names to element `id`s in the rendered page, and a standard `shiny::selectInput("species", ...)` produces an element with `id = "species"`. So your existing inputs work untouched, as long as the ids line up with the argument names.
 
 ```{r}
-sidebar = bslib::sidebar(
-  width = 260,
-  shiny::selectInput("species", "Species", c("All", "Adelie", "Chinstrap", "Gentoo")),
-  shiny::selectInput("x_var", "X axis", var_choices),
-  shiny::selectInput("y_var", "Y axis", var_choices, selected = "bill_depth_mm"),
-  shiny::checkboxInput("trend", "Show trend line")
+ui <- bslib::page_sidebar(
+  theme = bslib::bs_theme(preset = "shiny"),
+  title = "Palmer Penguins Explorer",
+  sidebar = bslib::sidebar(
+    shiny::selectInput("species", "Species", c("All", "Adelie", "Chinstrap", "Gentoo")),
+    shiny::selectInput("x_var", "X axis", var_choices),
+    shiny::selectInput("y_var", "Y axis", var_choices, selected = "bill_depth_mm"),
+    shiny::checkboxInput("trend", "Show trend line")
+  ),
+  bslib::card(bslib::card_header("Scatter Plot"), mcp_plot("scatter", height = "380px")),
+  bslib::card(bslib::card_header("Summary Statistics"), mcp_text("stats"))
+)
+
+explore_penguins <- ellmer::tool(
+  fun = function(species = "All", x_var = "bill_length_mm",
+                 y_var = "bill_depth_mm", trend = FALSE) {
+    # ... build a ggplot, save to PNG, summarise ...
+    list(scatter = plot_b64, stats = stats)
+  },
+  name = "explore_penguins",
+  description = "Explore the Palmer Penguins dataset",
+  arguments = list(
+    species = ellmer::type_string("Species filter"),
+    x_var = ellmer::type_string("X axis variable name"),
+    y_var = ellmer::type_string("Y axis variable name"),
+    trend = ellmer::type_boolean("Whether to show a linear trend line")
+  )
 )
 ```
 
-The tool arguments are `species`, `x_var`, `y_var`, and `trend`, matching the ids above exactly.
+The four arguments — `species`, `x_var`, `y_var`, `trend` — are filled from the four inputs with the same ids. Note `trend` is a `type_boolean()`, so the checkbox arrives as `TRUE`/`FALSE`. This is the path of least resistance for an app you already have: keep the inputs, write the tool, match the names.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "penguins", package = "shinymcp"))
 ```
 
-When not to use this pattern: if you want to be explicit about which inputs are MCP-visible, or if the element id is generated by a library and doesn't match the argument name you want, the `mcp_*` wrappers in example 4 give you that control.
+The `mcp_*()` inputs from earlier are still worth using when you want the contract to be explicit on the page, or when a widget's id won't match the name you want — which is the next example.
 
-## 4. bslib-inputs — escape hatches for non-matching ids
+Full app: [`inst/examples/penguins/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/penguins/app.R).
 
-The id-equals-arg-name rule covers most cases. When it doesn't — because the id is on an inner element rather than the widget container — `mcp_input()` stamps a `data-shinymcp-input` attribute on any tag. `mcp_output()` does the same for output targets.
+## 4. bslib-inputs — escape hatches for awkward ids
+
+Auto-detection rests on the id matching the argument name. Sometimes it doesn't: `radioButtons()` puts its `id` on a wrapping `<div>`, not on the inputs the bridge would read. For those cases, two functions let you point the bridge by hand. `mcp_input()` stamps the attribute the bridge looks for onto any tag, and `mcp_output()` marks any tag as an output target.
 
 ```{r}
-# radioButtons puts the id on a wrapper div; mcp_input() redirects the bridge
-mcp_input(
-  shiny::radioButtons("format", "Format", c("summary", "head")),
-  id = "format"
+sidebar <- bslib::sidebar(
+  shiny::selectInput("dataset", "Dataset", c("mtcars", "iris", "pressure")),
+  shiny::numericInput("n", "Rows to show", value = 10, min = 1, max = 50),
+
+  # radioButtons puts the id on a wrapper, so name the input explicitly
+  mcp_input(
+    shiny::radioButtons("format", "Format", c("summary", "head")),
+    id = "format"
+  )
 )
 
-# mcp_output() turns any tag into an output target
-mcp_output(tags$pre(id = "result", style = "white-space: pre-wrap;"))
+# turn any tag into an output target
+result <- mcp_output(tags$pre(id = "result", style = "white-space: pre-wrap;"))
 ```
+
+Think of these as the manual override. The first two inputs need nothing; the radio group needs `mcp_input()` because its structure hides the id. Use the override only where auto-detection fails — sprinkling it everywhere just adds noise.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "bslib-inputs", package = "shinymcp"))
 ```
 
-When not to use this pattern: if every input in your UI already matches by id, adding `mcp_input()` wrappers is noise. Save these escape hatches for the cases where auto-detection fails.
+Full app: [`inst/examples/bslib-inputs/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/bslib-inputs/app.R).
 
-## 5. bind-mcp-demo — annotate an existing app selectively
+## 5. bind-mcp-demo — expose part of an app you already have
 
-`bindMcp()` is a pipe-friendly annotation: add it to any Shiny input or output tag to expose that element as an MCP endpoint. Elements without `bindMcp()` continue to work in the Shiny app but are invisible to the AI agent. Then `as_mcp_app()` wraps the whole `shinyApp()` object with a tool handler.
+The examples so far build an MCP App from scratch. Often you have a working Shiny app and want to expose only part of it to an agent, without rewriting it or breaking the version your colleagues already use. `bindMcp()` is a pipe-friendly annotation: add it to an input or output tag to make that element visible to MCP. Anything you don't annotate keeps working in Shiny but stays invisible to the agent.
 
 ```{r}
-# This input IS exposed to MCP
-selectInput("dataset", "Dataset:", c("mtcars", "iris", "pressure")) |>
-  bindMcp()
+ui <- bslib::page_sidebar(
+  sidebar = bslib::sidebar(
+    # exposed to the agent
+    selectInput("dataset", "Dataset:", c("mtcars", "iris", "pressure")) |> bindMcp(),
+    # works in Shiny, hidden from the agent
+    numericInput("n", "Rows to show:", value = 10, min = 1, max = 50)
+  ),
+  bslib::card(
+    plotOutput("plot") |> bindMcp(),
+    verbatimTextOutput("summary") |> bindMcp()
+  )
+)
 
-# This input is NOT exposed to MCP
-numericInput("n", "Rows to show:", value = 10, min = 1, max = 50)
-
-# Wrap the existing shiny app
+# the ordinary server() is unchanged; wrap the running app and attach a tool
 app <- shinyApp(ui, server) |>
-  as_mcp_app(name = "dataset-explorer", tools = list(...))
+  as_mcp_app(
+    name = "dataset-explorer",
+    tools = list(
+      ellmer::tool(
+        fun = function(dataset = "mtcars") list(summary = ..., plot = ...),
+        name = "explore_dataset",
+        description = "Explore a dataset",
+        arguments = list(dataset = ellmer::type_string("Dataset name"))
+      )
+    )
+  )
 serve(app)
 ```
+
+`bindMcp()` decides the boundary; `as_mcp_app()` wraps the existing `shinyApp()` and gives it the tool handler the agent calls. The `n` input is deliberately left unbound — a good reminder that exposure is a choice you make element by element, which matters when some controls shouldn't be in the agent's reach.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "bind-mcp-demo", package = "shinymcp"))
 ```
 
-When not to use this pattern: if you are building from scratch, `mcp_app()` directly (as in examples 1-4) keeps the MCP contract explicit from the start. `bindMcp()` is best for incrementally adding MCP support to an app that already exists and must keep working as a plain Shiny app.
+This is the tool for incremental adoption. Building something new, `mcp_app()` keeps the contract explicit from the first line, which is usually clearer.
 
-## 6. multi-tool — independent tools in one app
+Full app: [`inst/examples/bind-mcp-demo/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/bind-mcp-demo/app.R).
 
-When a UI has two unconnected groups of inputs and outputs, they become two separate tools. The JS bridge routes each input-change event only to the tool that owns that input, rather than calling a single hardcoded function. The analyzer also traces transitive reactive chains: if `filtered_data` depends on `base_data` which depends on `input$dataset`, the tool correctly lists `dataset` as an argument even though no intermediate reactive references it directly.
+## 6. multi-tool — more than one tool in an app
+
+One app can do two unrelated jobs, and they should be two tools. If a data explorer and a greeting box shared a single tool, changing your name would re-run the data query. shinymcp avoids that by analysing which inputs and outputs are connected and giving each connected group its own tool. The bridge then routes an input change only to the tool that owns it.
 
 ```{r}
 explore_data <- ellmer::tool(
-  fun = function(dataset, n_rows, sort_col) { ... },
+  fun = function(dataset, n_rows, sort_col) {
+    # ... filter, sort, plot ...
+    list(summary = ..., plot = ...)
+  },
   name = "update_summary_and_plot",
-  ...
+  description = "Explore a dataset: filter rows, sort, and visualise",
+  arguments = list(
+    dataset = ellmer::type_string("Dataset name"),
+    n_rows = ellmer::type_number("Number of rows to show"),
+    sort_col = ellmer::type_string("Column to sort by")
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE, idempotent_hint = TRUE)
 )
 
 greet <- ellmer::tool(
-  fun = function(user_name) { list(greeting = ...) },
+  fun = function(user_name) list(greeting = paste("Hello,", user_name)),
   name = "update_greeting",
-  ...
+  description = "Generate a personalised greeting",
+  arguments = list(user_name = ellmer::type_string("User's name"))
 )
 
-app <- mcp_app(ui = ui, tools = list(explore_data, greet), name = "multi-tool-demo")
-serve(app)
+app <- mcp_app(ui, tools = list(explore_data, greet), name = "multi-tool-demo")
 ```
+
+Two things are worth noticing. First, you pass a *list* of tools; nothing else changes. Second, the analyzer follows chained reactives, so if a filtered table depends on a base table that depends on `input$dataset`, the tool still lists `dataset` as an argument even though no single line names it directly. The `tool_annotations()` are hints to the client — here, that the tool only reads data and is safe to call repeatedly.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "multi-tool", package = "shinymcp"))
 ```
 
-When not to use this pattern: one task should be one tool. If you're tempted to put two conceptually unrelated operations in a single tool call, split the UI into separate `mcp_app()` objects instead.
+The rule of thumb is one task, one tool. If you're tempted to fold two unrelated operations into a single call, make two tools instead.
 
-## 7. module-tool — a Shiny module wrapped as a tool
+Full app: [`inst/examples/multi-tool/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/multi-tool/app.R).
 
-`mcp_tool_module()` takes a standard Shiny module (a `ui` function and a `server` function) and serves it as an MCP App. The module renders using Shiny's own rendering stack; the `handler` argument provides the MCP-side function that returns the structured result the client sees.
+## 7. module-tool — reuse a Shiny module
+
+If you've invested in a Shiny module — a paired `ui` and `server` function you use in several apps — you can serve it as an MCP App without rewriting it. `mcp_tool_module()` takes the module and a `handler`: the module renders with Shiny's own machinery, and the handler is the MCP-side function that computes the structured result the client receives.
 
 ```{r}
 app <- mcp_tool_module(
@@ -180,7 +292,12 @@ app <- mcp_tool_module(
   name = "histogram",
   description = "Show an interactive histogram with adjustable bins",
   handler = function(dataset = "faithful", bins = 25) {
-    # ... render to PNG, return list(plot = base64_string)
+    data <- if (dataset == "faithful") faithful$eruptions else mtcars$mpg
+    tmp <- tempfile(fileext = ".png")
+    grDevices::png(tmp, width = 600, height = 280, res = 96)
+    on.exit(unlink(tmp))
+    hist(data, breaks = as.integer(bins), main = paste(dataset, "histogram"))
+    grDevices::dev.off()
     list(plot = base64enc::base64encode(tmp))
   },
   arguments = list(
@@ -188,21 +305,40 @@ app <- mcp_tool_module(
     bins = ellmer::type_number("Number of histogram bins")
   )
 )
-serve(app)
 ```
+
+The same module could be dropped into a shinychat interface with `shinychat::chat_tool_module()`, which is the payoff: write the histogram once, use it in a dashboard, a chat, and an MCP App. A one-off app doesn't need this; modules earn their keep through reuse.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "module-tool", package = "shinymcp"))
 ```
 
-When not to use this pattern: a one-off app has no reason to be structured as a module. Module reuse pays off when the same histogram (or form, or table) needs to appear in multiple places: a Shiny dashboard, a shinychat card, and an MCP host.
+Full app: [`inst/examples/module-tool/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/module-tool/app.R).
 
-## 8. converted-dashboard — the output of `convert_app()`
+## 8. converted-dashboard — let the converter write the first draft
 
-This directory is what `convert_app()` produces when you point it at a plain Shiny app. The pipeline parses the source with `parse_shiny_app()`, traces the reactive graph with `analyze_reactive_graph()`, and writes files with `generate_mcp_app()`. The original app is in `original-app.R`; `app.R` is the generated result.
+You don't always have to write the MCP App by hand. Point `convert_app()` at a plain Shiny app and it produces a working starting point. It parses the source with `parse_shiny_app()`, traces the reactive graph with `analyze_reactive_graph()`, and writes the new app with `generate_mcp_app()`. This example keeps both files: `original-app.R` is the input, `app.R` is the generated result.
+
+The input is a textbook `fluidPage` dashboard:
 
 ```{r}
-# Generated output uses mcp_* components throughout
+# original-app.R
+ui <- fluidPage(
+  titlePanel("Simple Dashboard"),
+  sidebarLayout(
+    sidebarPanel(
+      selectInput("dataset", "Dataset:", c("mtcars", "iris")),
+      numericInput("obs", "Observations:", 10, min = 1, max = 50)
+    ),
+    mainPanel(textOutput("summary_text"), tableOutput("data_table"))
+  )
+)
+```
+
+The generated output uses shinymcp components, with the inputs and outputs mapped across:
+
+```{r}
+# app.R (generated)
 ui <- htmltools::tagList(
   mcp_select("dataset", "Dataset:", c("mtcars", "iris")),
   mcp_numeric_input("obs", "Observations:", value = 10, min = 1, max = 50),
@@ -211,22 +347,24 @@ ui <- htmltools::tagList(
 )
 ```
 
+The converter reads structure, not meaning: it can see that `summary_text` depends on `dataset` and `obs`, but it can't know what your numbers are supposed to be. Treat the result as a first draft and review the generated tool body before you ship it. The [automatic conversion](https://jameshwade.github.io/shinymcp/articles/automatic-conversion.html) article covers the full workflow.
+
 ```{r}
 shinymcp::preview_app(system.file("examples", "converted-dashboard", package = "shinymcp"))
 ```
 
-See `vignette("automatic-conversion")` for the full conversion workflow. When not to use the conversion pipeline: it infers structure but not domain logic. Review the generated tool bodies before shipping; the function bodies are mechanical translations and may need hand-tuning for complex apps.
+Full app: [`inst/examples/converted-dashboard/`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/converted-dashboard).
 
-## 9. serve-to-client — register with a real MCP client
+## 9. serve-to-client — call your tool from a real assistant
 
-The `serve(app, type = "stdio")` call turns the app into a stdio MCP server. You register it in your client's config and the client launches it as a subprocess. After that, the `greet` tool appears in the client's tool list and calling it renders the card inline.
+Previewing runs the app on your own machine. The point of MCP is to call your R tool from an assistant you already use. `serve(app, type = "stdio")` turns the app into a server that a client launches as a subprocess and talks to over standard input and output.
 
 ```{r}
 app <- mcp_app(ui = ..., tools = list(...), name = "shinymcp-demo")
 serve(app, type = "stdio")
 ```
 
-To connect this to Claude Desktop or VS Code, find the absolute path to `serve.R` and follow the instructions in `inst/examples/serve-to-client/README.md`. The key step is adding a `mcpServers` entry that points to this file:
+You register that script in the client's configuration. For Claude Desktop, add an entry under `mcpServers` pointing at the file:
 
 ```json
 {
@@ -239,11 +377,15 @@ To connect this to Claude Desktop or VS Code, find the absolute path to `serve.R
 }
 ```
 
-When not to use this pattern: for local iteration and UI development, `preview_app()` is faster. Switch to stdio once the tool contract is settled and you want to test the end-to-end client experience.
+Restart the client and the tool appears in its tool list; ask it to greet someone and the card renders inline. The example's [README](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/serve-to-client/README.md) gives the exact steps for both Claude Desktop and VS Code, including where each one keeps its config.
 
-## 10. shinychat-card — surface a card in shinychat
+While you're still designing the tool, `preview_app()` is the faster loop. Switch to stdio once the contract is settled and you want to test the real end-to-end experience.
 
-`as_shinychat_tool()` wraps an `mcp_app()` object as a shinychat tool result. When an LLM calls the tool, shinychat renders the card inline in the chat UI. `mcp_result_plot()` packages a base64 PNG with an alt-text string so the result is portable to non-visual clients.
+Full example: [`inst/examples/serve-to-client/`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/serve-to-client).
+
+## 10. shinychat-card — render tool calls as cards in a chat
+
+If you're building a chat interface in Shiny with [shinychat](https://posit-dev.github.io/shinychat/), `as_shinychat_tool()` turns an MCP App into a tool the model can call, and renders the result as a card inside the conversation. It's the bridge between an LLM that decides *when* to call the tool and the card that shows *what* it returned.
 
 ```{r}
 card_app <- mcp_app(
@@ -254,14 +396,14 @@ card_app <- mcp_app(
   ),
   tools = list(list(
     name = "inspect_dataset",
+    description = "Inspect a small built-in dataset",
     fun = function(dataset = "mtcars") {
-      # summary_text <- paste(capture.output(summary(get(dataset))), collapse = "\n")
+      data <- get(dataset, envir = asNamespace("datasets"))
       list(
-        summary = summary_text,
-        plot = mcp_result_plot(function() { ... }, text = paste("Scatter plot for", dataset))
+        summary = paste(capture.output(summary(data)), collapse = "\n"),
+        plot = mcp_result_plot(function() plot(data), text = paste("Scatter for", dataset))
       )
-    },
-    ...
+    }
   )),
   name = "shinychat-card-demo"
 )
@@ -272,28 +414,33 @@ inspect_dataset <- as_shinychat_tool(
   summary = function(raw_result) raw_result$summary,
   title = "Dataset Inspector"
 )
+
+# in the server:
+client <- ellmer::chat("openai/gpt-4.1-nano")
+client$register_tool(inspect_dataset)
 ```
+
+Two details carry the example. `mcp_result_plot()` packages the image together with alt text, so the result is meaningful even to a client that can't show pictures. And `value_fn` and `summary` let you separate what the *model* reads back (a compact summary it can reason about) from what the *human* sees (the full card) — a distinction that matters once a model is acting on the result.
 
 ```{r}
 shiny::runApp(system.file("examples", "shinychat-card", package = "shinymcp"))
 ```
 
-When not to use this pattern: if you are not building a chat UI with shinychat, you do not need `as_shinychat_tool()`. The plain MCP tool registered with `serve()` or `mcp_host_server()` is enough.
+This one is only for shinychat apps. Outside that setting, serving the tool or hosting it in Shiny (next) is enough.
 
-## 11. embed-in-shiny — host a card in a dashboard
+Full app: [`inst/examples/shinychat-card/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/shinychat-card/app.R).
 
-`mcp_host_ui()` and `mcp_host_server()` let you embed any `mcp_app()` object directly inside a Shiny dashboard as a sandboxed iframe. Define the app once, then use it either as a client-facing MCP server or as an embedded review panel; the same object works in both contexts.
+## 11. embed-in-shiny — Shiny as the review surface
+
+Sometimes you want a person to see exactly what the agent would see, inside a familiar dashboard. `mcp_host_ui()` and `mcp_host_server()` embed any `mcp_app()` object into a Shiny app as a sandboxed iframe running the real tool. You define the app once and use the same object two ways: served to a client, or hosted here for review.
 
 ```{r}
 greet_app <- mcp_app(ui = ..., tools = list(...), name = "greet")
 
 ui <- bslib::page_sidebar(
   title = "An MCP App embedded in Shiny",
-  sidebar = bslib::sidebar(...),
-  bslib::card(
-    bslib::card_header("Embedded MCP App"),
-    mcp_host_ui("greet")
-  )
+  sidebar = bslib::sidebar("The card on the right is the same MCP App you would serve to a client."),
+  bslib::card(bslib::card_header("Embedded MCP App"), mcp_host_ui("greet"))
 )
 
 server <- function(input, output, session) {
@@ -303,73 +450,82 @@ server <- function(input, output, session) {
 shinyApp(ui, server)
 ```
 
+The `trigger` argument decides when the card calls its tool: `"change"` calls on every edit (good for a fast preview), while `"submit"` waits for an explicit apply (good when a call is expensive or a reviewer wants to control it). Because the host runs the real tool, the parent Shiny app can read the structured result back and react to it — the foundation for the capstone.
+
 ```{r}
 shiny::runApp(system.file("examples", "embed-in-shiny", package = "shinymcp"))
 ```
 
-When not to use this pattern: if you are deploying directly to an MCP client with no Shiny host involved, `serve(app, type = "stdio")` (example 9) is all you need. The Shiny host is for review surfaces, dashboards, and hybrid applications where a human oversees what the agent produced.
+For a deployment that talks only to an MCP client, you don't need a host; `serve()` from example 9 is enough. The host is for review surfaces and dashboards where a human stays in the loop.
 
-## 12. data-explorer — build inputs from a data frame
+Full app: [`inst/examples/embed-in-shiny/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/embed-in-shiny/app.R).
 
-When the schema of a data frame drives the UI, compute the input choices from the frame itself rather than hard-coding them. The auto-detection rule from example 3 still applies: the column names you use as select choices become the argument values, and the argument names match the element ids.
+## 12. data-explorer — build the inputs from the data
+
+When a data frame's columns drive the controls, computing the choices beats hard-coding them. The id-equals-argument rule from example 3 still holds; only the *source* of the choices changes.
 
 ```{r}
 numeric_cols <- names(data)[vapply(data, is.numeric, logical(1))]
 categorical_cols <- names(data)[vapply(
-  data,
-  function(x) is.character(x) || is.factor(x) || length(unique(x)) <= 10,
+  data, function(x) is.character(x) || is.factor(x) || length(unique(x)) <= 10,
   logical(1)
 )]
 
-# Build choices programmatically
 num_choices <- setNames(numeric_cols, gsub("_", " ", numeric_cols))
 
-# Feed them into standard shiny inputs
-shiny::selectInput("x_var", "X axis", num_choices)
-shiny::selectInput("y_var", "Y axis", num_choices, selected = numeric_cols[2])
+sidebar <- bslib::sidebar(
+  shiny::selectInput("x_var", "X axis", num_choices),
+  shiny::selectInput("y_var", "Y axis", num_choices, selected = numeric_cols[2]),
+  shiny::selectInput("color_var", "Color by", c("None" = "none", categorical_cols)),
+  shiny::selectInput("geom", "Plot type", c("point", "line", "bar", "boxplot", "histogram"))
+)
 ```
+
+The tool then takes `x_var`, `y_var`, `color_var`, and `geom` as plain strings and builds the plot to match. Swap in a different frame at the top and the whole UI re-derives itself. That flexibility is worth the extra code when the columns genuinely vary between deployments or users; for a fixed, well-known schema, hard-coded inputs read more clearly.
 
 ```{r}
 shinymcp::preview_app(system.file("examples", "data-explorer", package = "shinymcp"))
 ```
 
-When not to use this pattern: a fixed, well-understood schema is clearer hard-coded. Programmatic inputs are worth the extra code only when the columns genuinely change between deployments or users.
+Full app: [`inst/examples/data-explorer/app.R`](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/data-explorer/app.R).
 
-## 13. rpharma-hangout — capstone: multi-skill clinical app
+## 13. rpharma-hangout — the capstone
 
-The R/Pharma demo puts everything together. Two `mcp_app()` objects (a Safety Signal Scout and an Enrollment Rescue Simulator) run as selectable skill cards inside a clinical Shiny dashboard. Each produces a `mcp_result_text()` return with a `model_value` list; the parent Shiny app reads that structured data from `mcp_host_server()$last_raw_result()` without scraping the display. A contract inspector panel renders the tool's input schema live, and both cards are also registered with shinychat via `as_shinychat_tool()`.
+The R/Pharma demo puts the pieces together into a realistic, governed app. Two skill cards — a Safety Signal Scout and an Enrollment Rescue Simulator — run inside a clinical dashboard over synthetic trial data. Each skill is an ordinary `mcp_app()`, reachable three ways: served to an MCP client, hosted in the Shiny dashboard with `mcp_host_server()`, and registered with shinychat through `as_shinychat_tool()`. One definition, three homes.
+
+The new idea here is the *handoff*. Alongside the display content, each result carries a structured `model_value` that the parent app reads directly, without scraping the rendered card:
 
 ```{r}
-# Each skill card carries a structured model_value alongside display content
 list(
   memo = mcp_result_text(
     memo,
     model_value = list(
       widget = "Safety Signal Scout",
       decision = decision,
-      risk_ratio = rr,
-      ...
+      cohort = cohort,
+      risk_ratio = rr
     )
   ),
   evidence = mcp_result_table(evidence, text = "Aggregate AE evidence table."),
-  risk_plot = mcp_result_plot(function() { ... }, model_value = list(...), text = "...")
+  risk_plot = mcp_result_plot(draw_plot, model_value = rate_by_arm, text = "Event rate by arm.")
 )
 ```
+
+Two things make this safe to put in front of an agent. The result is *aggregate*: a decision, a risk ratio, an evidence table — never subject-level rows. And the parent reads the typed `model_value` from `mcp_host_server()$last_raw_result()`, so it reacts to data rather than parsing what's on screen. A contract inspector panel shows the tool's argument schema live, so a reviewer can see exactly what the agent is allowed to call.
 
 ```{r}
 shiny::runApp(system.file("examples", "rpharma-hangout", package = "shinymcp"))
 ```
 
-See `inst/examples/rpharma-hangout/README.md` for the full setup. The clinical data is synthetic; the patterns (approved skills, inspectable contracts, structured handoffs) apply to any regulated or high-stakes domain where a human needs to see exactly what the agent called and what it got back.
+The data is synthetic, but the structure — approved skills, inspectable contracts, aggregate handoffs — is the point in any regulated or high-stakes setting where someone needs to see exactly what the agent called and what it got back. When you don't need that oversight and the app covers a single skill, a lone `mcp_app()` served directly (example 9) is far less to build.
 
-When not to use this pattern: if you do not need human oversight of agent calls and the app covers a single skill, a single `mcp_app()` served directly (example 9) is far less setup than a multi-card dashboard with a shinychat integration.
+Full example and walkthrough: [`inst/examples/rpharma-hangout/`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/rpharma-hangout).
 
 ## Going further
 
-These examples keep the LLM out of the loop so they run offline. Two related packages build
-on the same R functions:
+These examples keep an LLM out of the loop so they run offline. Two related packages build on the same R functions:
 
-- [`{dsprrr}`](https://jameshwade.github.io/dsprrr/) fits prompts to data with DSPy-style
-  signatures, optimization, and tracing, so you improve a prompt with examples instead of by hand.
-- [`{deputy}`](https://jameshwade.github.io/deputy/) is an agent runtime: it lets a tool-using
-  agent call reviewed R functions, with permissions, hooks, and multi-agent coordination.
+- [`{dsprrr}`](https://jameshwade.github.io/dsprrr/) fits prompts to data with DSPy-style signatures, optimization, and tracing, so you improve a prompt with examples instead of by hand.
+- [`{deputy}`](https://jameshwade.github.io/deputy/) is an agent runtime: it lets a tool-using agent call reviewed R functions, with permissions, hooks, and multi-agent coordination.
+
+Together with shinymcp, they treat Shiny components as building blocks for agent-connected workflows rather than standalone dashboards.
