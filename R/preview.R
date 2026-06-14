@@ -4,7 +4,7 @@
 #'
 #' Starts a local HTTP server and opens the MCP App in a browser. A lightweight
 #' host page emulates the MCP Apps postMessage protocol so that tools are fully
-#' functional — inputs trigger tool calls, and outputs update in real time, just
+#' functional - inputs trigger tool calls, and outputs update in real time, just
 #' like they would inside Claude Desktop.
 #'
 #' @param app An [McpApp] object, or a path to a directory containing an MCP

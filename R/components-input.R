@@ -21,7 +21,7 @@ mcp_input <- function(tag, id = NULL) {
   tag_name <- tag$name %||% ""
 
   if (tolower(tag_name) %in% form_selectors) {
-    # Tag itself is a form element — stamp directly
+    # Tag itself is a form element - stamp directly
     resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
     if (is.null(resolved_id)) {
       rlang::abort(
@@ -60,7 +60,7 @@ mcp_input <- function(tag, id = NULL) {
           `data-shinymcp-input` = resolved_id
         )
       } else if (found$length() > 1) {
-        # First element has no id and there are siblings — stamp manually
+        # First element has no id and there are siblings - stamp manually
         stamped <- htmltools::tagAppendAttributes(
           first_el,
           `data-shinymcp-input` = resolved_id
@@ -78,7 +78,7 @@ mcp_input <- function(tag, id = NULL) {
     }
   }
 
-  # No form element found — stamp the tag itself (e.g., radio group container)
+  # No form element found - stamp the tag itself (e.g., radio group container)
   resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
   if (is.null(resolved_id)) {
     rlang::abort(

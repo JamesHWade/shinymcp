@@ -47,3 +47,114 @@ test_that("complex app generates CONVERSION_NOTES.md", {
 
   expect_true(file.exists(file.path(out_dir, "CONVERSION_NOTES.md")))
 })
+
+test_that("every generated R file is syntactically valid R", {
+  fixtures <- list(
+    fixture_simple_app,
+    fixture_medium_app,
+    fixture_complex_app,
+    fixture_chained_reactive_app,
+    fixture_multi_reactive_deps_app
+  )
+  for (make_fixture in fixtures) {
+    app_dir <- make_fixture()
+    out_dir <- tempfile("mcp-out")
+    withr::defer({
+      unlink(app_dir, recursive = TRUE)
+      unlink(out_dir, recursive = TRUE)
+    })
+
+    ir <- parse_shiny_app(app_dir)
+    analysis <- analyze_reactive_graph(ir)
+    generate_mcp_app(analysis, ir, out_dir)
+
+    r_files <- list.files(out_dir, pattern = "\\.R$", full.names = TRUE)
+    expect_true(length(r_files) >= 1)
+    for (f in r_files) {
+      expect_silent(parse(file = f))
+    }
+  }
+})
+
+test_that("extract_arg_code collapses multi-line deparse to one parseable string", {
+  # A wide value whose deparse wraps across lines must not leak a character
+  # vector into sprintf(), which would recycle it into broken R.
+  wide <- list(
+    value = str2lang(paste0("c(", paste(1:200, collapse = ", "), ")"))
+  )
+  code <- extract_arg_code(wide, "value")
+
+  expect_length(code, 1)
+  expect_silent(parse(text = sprintf("f(value = %s)", code)))
+})
+
+test_that("validate_generated_r aborts on unparseable generated code", {
+  good <- tempfile(fileext = ".R")
+  bad <- tempfile(fileext = ".R")
+  withr::defer(unlink(c(good, bad)))
+
+  writeLines("x <- 1", good)
+  writeLines("x <- function( {", bad)
+
+  expect_silent(validate_generated_r(good))
+  expect_error(
+    validate_generated_r(bad),
+    class = "shinymcp_error_generation"
+  )
+})
+
+test_that("generated tools.R sources and its tools are invocable", {
+  skip_if_not_installed("ellmer")
+
+  app_dir <- fixture_simple_app()
+  out_dir <- tempfile("mcp-out")
+  withr::defer({
+    unlink(app_dir, recursive = TRUE)
+    unlink(out_dir, recursive = TRUE)
+  })
+
+  ir <- parse_shiny_app(app_dir)
+  analysis <- analyze_reactive_graph(ir)
+  generate_mcp_app(analysis, ir, out_dir)
+
+  env <- new.env(parent = globalenv())
+  source(file.path(out_dir, "tools.R"), local = env)
+
+  expect_true(exists("tools", envir = env))
+  tools <- get("tools", envir = env)
+  expect_gte(length(tools), 1)
+
+  # Invoke the generated tool the way McpApp$call_tool() does.
+  result <- do.call(tools[[1]], list(x = "a"))
+  expect_match(as.character(result), "a")
+})
+
+test_that("generated tool bodies carry the original render logic as a comment", {
+  app_dir <- fixture_simple_app()
+  out_dir <- tempfile("mcp-out")
+  withr::defer({
+    unlink(app_dir, recursive = TRUE)
+    unlink(out_dir, recursive = TRUE)
+  })
+
+  ir <- parse_shiny_app(app_dir)
+  analysis <- analyze_reactive_graph(ir)
+  generate_mcp_app(analysis, ir, out_dir)
+
+  tools_code <- paste(
+    readLines(file.path(out_dir, "tools.R")),
+    collapse = "\n"
+  )
+  expect_match(tools_code, "Original logic for output 'result'")
+  expect_match(tools_code, "You chose:")
+})
+
+test_that("generate_tools output is stable for the simple app", {
+  app_dir <- fixture_simple_app()
+  withr::defer(unlink(app_dir, recursive = TRUE))
+
+  ir <- parse_shiny_app(app_dir)
+  analysis <- analyze_reactive_graph(ir)
+
+  expect_snapshot(cat(generate_tools(analysis$tool_groups)))
+})

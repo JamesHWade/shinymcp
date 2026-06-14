@@ -37,8 +37,39 @@ generate_mcp_app <- function(analysis, ir, output_dir) {
     writeLines(notes, file.path(output_dir, "CONVERSION_NOTES.md"))
   }
 
+  # Fail loudly at write time rather than letting unparseable generated code
+  # degrade silently downstream in convert_app().
+  for (f in c("ui.R", "tools.R", "server.R", "app.R")) {
+    validate_generated_r(file.path(output_dir, f))
+  }
+
   cli::cli_alert_success("Generated MCP App in {.path {output_dir}}")
   invisible(output_dir)
+}
+
+#' Validate that a generated file is syntactically valid R
+#'
+#' Parses (without evaluating) a generated file and raises a structured
+#' generation error naming the file if it is not valid R. Catching this here
+#' turns a whole class of code-generation bugs from silent into loud.
+#'
+#' @param path Path to a generated `.R` file.
+#' @return The path, invisibly.
+#' @noRd
+validate_generated_r <- function(path) {
+  tryCatch(
+    parse(file = path),
+    error = function(e) {
+      shinymcp_error_generation(
+        c(
+          "Generated file {.path {basename(path)}} is not valid R.",
+          "x" = conditionMessage(e),
+          "i" = "This is a shinymcp code-generation bug. Please report it at {.url https://github.com/JamesHWade/shinymcp/issues}."
+        )
+      )
+    }
+  )
+  invisible(path)
 }
 
 #' Generate HTML for MCP App UI
@@ -219,6 +250,33 @@ generate_tools <- function(tool_groups) {
   paste(lines, collapse = "\n")
 }
 
+#' Render captured output logic as commented R for the user to port
+#'
+#' The generated tool body keeps an executable placeholder so the file still
+#' parses and runs, but emitting the original `render*()` expression as a
+#' comment turns a blind scaffold into fill-in-the-blank.
+#'
+#' @param output_targets List of output definitions, optionally carrying a
+#'   `render_expr` captured during analysis.
+#' @return Character vector of comment lines (possibly empty).
+#' @noRd
+render_logic_comment <- function(output_targets) {
+  lines <- character()
+  for (out in output_targets) {
+    expr <- out$render_expr
+    if (is.null(expr)) {
+      next
+    }
+    deparsed <- deparse(expr, width.cutoff = 500)
+    lines <- c(
+      lines,
+      sprintf("    # Original logic for output '%s':", out$id),
+      paste0("    # ", deparsed)
+    )
+  }
+  lines
+}
+
 #' Generate a single ellmer::tool() definition
 #' @param group A tool group definition
 #' @return Character vector of R code lines
@@ -258,6 +316,19 @@ generate_tool_definition <- function(group) {
     logical(1)
   ))
 
+  # Surface the original render logic as a comment so the user can port it.
+  render_logic <- render_logic_comment(group$output_targets)
+  plot_placeholder <- if (length(render_logic) > 0) {
+    render_logic
+  } else {
+    "    # TODO: Insert plot logic from original render function here"
+  }
+  compute_placeholder <- if (length(render_logic) > 0) {
+    render_logic
+  } else {
+    "    # TODO: Insert computation logic from original render function here"
+  }
+
   # Build function body
   if (has_plot) {
     body_lines <- c(
@@ -265,7 +336,7 @@ generate_tool_definition <- function(group) {
       "    tmp <- tempfile(fileext = \".png\")",
       "    grDevices::png(tmp, width = 800, height = 600)",
       "    on.exit(unlink(tmp), add = TRUE)",
-      "    # TODO: Insert plot logic from original render function here",
+      plot_placeholder,
       "    plot(1, main = \"Placeholder\")",
       "    grDevices::dev.off()",
       "    raw <- readBin(tmp, \"raw\", file.info(tmp)$size)",
@@ -273,7 +344,7 @@ generate_tool_definition <- function(group) {
     )
   } else {
     body_lines <- c(
-      "    # TODO: Insert computation logic from original render function here",
+      compute_placeholder,
       sprintf("    paste(\"Result for:\", %s)", param_list)
     )
   }
@@ -521,7 +592,12 @@ extract_arg_code <- function(args, name, default = "NULL") {
   if (is.null(val)) {
     return(default)
   }
-  tryCatch(deparse(val, width.cutoff = 500), error = function(e) default)
+  # deparse() can return a multi-element character vector for wide or
+  # multi-line values; collapse so callers always get one parseable string.
+  tryCatch(
+    paste(deparse(val, width.cutoff = 500), collapse = " "),
+    error = function(e) default
+  )
 }
 
 #' Extract choices argument as R code

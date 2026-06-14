@@ -1,5 +1,10 @@
 # Parse Shiny apps into intermediate representation
 
+# Namespaces whose `pkg::fn()` calls are treated as the bare Shiny construct.
+# Calls from any other namespace keep their qualified name so a foreign
+# `mypkg::selectInput()` is not mistaken for a Shiny input.
+shiny_namespaces <- c("shiny", "bslib", "shinyWidgets")
+
 # Known Shiny input function names
 shiny_input_fns <- c(
   "selectInput",
@@ -472,8 +477,16 @@ call_name <- function(expr) {
   if (is.name(fn)) {
     as.character(fn)
   } else if (is.call(fn) && identical(fn[[1]], as.name("::"))) {
-    # pkg::fn case
-    as.character(fn[[3]])
+    pkg <- as.character(fn[[2]])
+    bare <- as.character(fn[[3]])
+    # Shiny-family calls collapse to their bare name so detection works;
+    # foreign namespaces stay qualified so they are not mistaken for Shiny
+    # constructs (e.g. mypkg::selectInput()).
+    if (pkg %in% shiny_namespaces) {
+      bare
+    } else {
+      paste0(pkg, "::", bare)
+    }
   } else {
     ""
   }

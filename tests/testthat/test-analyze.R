@@ -40,6 +40,29 @@ test_that("complex app generates warnings", {
   expect_type(analysis$warnings, "character")
 })
 
+test_that("analysis warns precisely about unmodeled reactive state", {
+  app_dir <- fixture_complex_app() # uses reactiveValues()
+  withr::defer(unlink(app_dir, recursive = TRUE))
+
+  ir <- parse_shiny_app(app_dir)
+  analysis <- analyze_reactive_graph(ir)
+
+  expect_true(any(grepl("reactive state", analysis$warnings)))
+})
+
+test_that("server_call_names resolves bare and namespaced calls", {
+  body <- quote({
+    rv <- reactiveValues(n = 0)
+    out <- shiny::eventReactive(input$go, rv$n)
+    mod <- moduleServer("m", function(input, output, session) NULL)
+  })
+  used <- server_call_names(body)
+
+  expect_true(all(
+    c("reactiveValues", "eventReactive", "moduleServer") %in% used
+  ))
+})
+
 test_that("chained reactives produce correct transitive input deps", {
   app_dir <- fixture_chained_reactive_app()
   withr::defer(unlink(app_dir, recursive = TRUE))

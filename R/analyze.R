@@ -19,9 +19,13 @@ analyze_reactive_graph <- function(ir) {
   # Find connected components
   components <- find_connected_components(graph)
 
+  # Capture each output's render expression so generated tools can carry the
+  # original logic rather than only a placeholder.
+  output_deps <- find_output_dependencies(ir$server_body, ir$reactives)
+
   # Map each component to a tool group
   tool_groups <- lapply(components, function(comp) {
-    make_tool_group(comp, ir)
+    make_tool_group(comp, ir, output_deps)
   })
 
   warnings <- check_unresolvable_patterns(ir)
@@ -298,7 +302,7 @@ find_connected_components <- function(graph) {
 #' @param ir The ShinyAppIR object
 #' @return A tool group list
 #' @noRd
-make_tool_group <- function(component, ir) {
+make_tool_group <- function(component, ir, output_deps = list()) {
   input_nodes <- component[grepl("^input:", component)]
   output_nodes <- component[grepl("^output:", component)]
   reactive_nodes <- component[grepl("^reactive:", component)]
@@ -317,14 +321,20 @@ make_tool_group <- function(component, ir) {
     }
   })
 
-  # Gather structured output info
+  # Gather structured output info, attaching the captured render expression
+  # so the generator can surface the original logic.
   output_targets <- lapply(output_ids, function(id) {
     idx <- which(vapply(ir$outputs, function(out) out$id == id, logical(1)))
-    if (length(idx) > 0) {
+    target <- if (length(idx) > 0) {
       ir$outputs[[idx[1]]]
     } else {
       list(id = id, type = "unknown")
     }
+    dep <- output_deps[[id]]
+    if (!is.null(dep) && !is.null(dep$render_expr)) {
+      target$render_expr <- dep$render_expr
+    }
+    target
   })
 
   # Build a descriptive name from outputs
@@ -416,7 +426,57 @@ check_unresolvable_patterns <- function(ir) {
     )
   }
 
+  # Server constructs the converter does not model yet. Naming them turns a
+  # silently empty or partial conversion into an explicit note.
+  used <- server_call_names(ir$server_body)
+  if (any(c("moduleServer", "callModule") %in% used)) {
+    warnings <- c(
+      warnings,
+      "App uses Shiny modules (moduleServer/callModule), which the converter does not expand. Tool groups for module contents will be missing."
+    )
+  }
+  state_fns <- intersect(
+    c("reactiveValues", "reactiveVal", "eventReactive"),
+    used
+  )
+  if (length(state_fns) > 0) {
+    warnings <- c(
+      warnings,
+      sprintf(
+        "App uses reactive state (%s), which the converter does not model. Affected outputs may convert to empty tools.",
+        paste(state_fns, collapse = ", ")
+      )
+    )
+  }
+
   warnings
+}
+
+#' Collect the function names called anywhere in a server body
+#'
+#' Walks an expression tree and returns the unique call names (via
+#' [call_name()], so `shiny::reactiveVal` resolves to `reactiveVal`).
+#'
+#' @param expr A server body expression (or list of expressions).
+#' @return Character vector of unique call names.
+#' @noRd
+server_call_names <- function(expr) {
+  found <- character()
+  walk <- function(e) {
+    if (is.call(e)) {
+      nm <- call_name(e)
+      if (nzchar(nm)) {
+        found[[length(found) + 1L]] <<- nm
+      }
+    }
+    if (is.call(e) || is.list(e) || is.pairlist(e)) {
+      for (part in as.list(e)) {
+        walk(part)
+      }
+    }
+  }
+  tryCatch(walk(expr), error = function(e) NULL)
+  unique(found)
 }
 
 #' Print method for ReactiveAnalysis

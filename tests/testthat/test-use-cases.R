@@ -31,7 +31,10 @@ test_that("use-case examples build and return formatted MCP results", {
   revenue <- format_tool_result(
     apps$revenue$call_tool("forecast_revenue", list())
   )
-  expect_named(revenue$structuredContent, c("summary", "forecast", "arr_plot"))
+  expect_setequal(
+    setdiff(names(revenue$structuredContent), "__shinymcp_types__"),
+    c("summary", "forecast", "arr_plot")
+  )
   expect_match(revenue$structuredContent$summary, "ARR")
   expect_match(revenue$structuredContent$forecast, "<table")
   expect_true(nzchar(revenue$structuredContent$arr_plot))
@@ -39,8 +42,8 @@ test_that("use-case examples build and return formatted MCP results", {
   experiment <- format_tool_result(
     apps$experiment$call_tool("plan_experiment", list())
   )
-  expect_named(
-    experiment$structuredContent,
+  expect_setequal(
+    setdiff(names(experiment$structuredContent), "__shinymcp_types__"),
     c("summary", "design", "power_plot")
   )
   expect_match(experiment$structuredContent$summary, "Run for about")
@@ -49,7 +52,10 @@ test_that("use-case examples build and return formatted MCP results", {
   incident <- format_tool_result(
     apps$incident$call_tool("triage_incident", list())
   )
-  expect_named(incident$structuredContent, c("status", "briefing", "runbook"))
+  expect_setequal(
+    setdiff(names(incident$structuredContent), "__shinymcp_types__"),
+    c("status", "briefing", "runbook")
+  )
   expect_match(incident$structuredContent$status, "Response target")
   expect_match(incident$structuredContent$runbook, "<table")
 })

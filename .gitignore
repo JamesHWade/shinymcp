@@ -13,3 +13,6 @@ slides_files/
 # Local tooling / publish metadata (machine-specific, not shared)
 .positai/
 .posit/
+
+.gepa_cache/
+libs/

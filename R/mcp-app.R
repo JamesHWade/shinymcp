@@ -303,12 +303,25 @@ McpApp <- R6::R6Class(
           )
         }
 
-        # Generate an outputSchema from declared tool_outputs. Only declared
-        # tools get one: per the MCP spec a tool with an outputSchema MUST
-        # return conforming structuredContent, and we can't verify that for
-        # arbitrary tools (e.g. ones returning bare strings).
+        # Surface tool annotation hints (readOnlyHint, etc.) so hosts can
+        # decide auto-run vs confirm. ellmer stores these snake_case; the MCP
+        # wire shape is camelCase.
+        annotations <- normalize_tool_annotations(tool_annotations_of(tool))
+        if (!is.null(annotations)) {
+          def$annotations <- annotations
+        }
+
+        # Generate an outputSchema from declared tool_outputs. Only tools whose
+        # output ids we know get one: per the MCP spec a tool with an
+        # outputSchema MUST return conforming structuredContent. We can verify
+        # this for tools declared via `tool_outputs` and for auto-generated
+        # tools (which carry `.output_ids` and return a named list of strings),
+        # but not for arbitrary tools returning bare values.
         if (is.null(def$outputSchema)) {
           declared_outputs <- private$.tool_outputs[[def$name]]
+          if (is.null(declared_outputs) && is.list(tool)) {
+            declared_outputs <- tool[[".output_ids"]]
+          }
           if (!is.null(declared_outputs)) {
             def$outputSchema <- build_output_schema(
               declared_outputs,

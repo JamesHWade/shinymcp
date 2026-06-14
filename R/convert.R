@@ -93,11 +93,16 @@ convert_app <- function(
   ui_file <- file.path(output_dir, "ui.R")
   tools_file <- file.path(output_dir, "tools.R")
 
+  problems <- character()
+
   # Source UI definition (creates `ui` variable)
   tryCatch(
     source(ui_file, local = app_env),
     error = function(e) {
-      cli::cli_warn("Could not source ui.R: {e$message}")
+      problems <<- c(
+        problems,
+        sprintf("ui.R did not load: %s", conditionMessage(e))
+      )
     }
   )
 
@@ -106,14 +111,19 @@ convert_app <- function(
     tryCatch(
       source(tools_file, local = app_env),
       error = function(e) {
-        cli::cli_warn("Could not source tools.R: {e$message}")
+        problems <<- c(
+          problems,
+          sprintf("tools.R did not load: %s", conditionMessage(e))
+        )
       }
     )
   }
 
-  ui <- if (exists("ui", envir = app_env)) {
+  has_ui <- exists("ui", envir = app_env)
+  ui <- if (has_ui) {
     get("ui", envir = app_env)
   } else {
+    problems <- c(problems, "no UI object was produced")
     htmltools::tags$div("Conversion produced no UI")
   }
   tools <- if (exists("tools", envir = app_env)) {
@@ -128,7 +138,16 @@ convert_app <- function(
     name = basename(normalizePath(path))
   )
 
-  cli::cli_alert_success("Conversion complete!")
+  # Report honestly: only claim success when the app actually materialized.
+  if (length(problems) > 0) {
+    names(problems) <- rep("*", length(problems))
+    cli::cli_warn(c(
+      "Conversion finished with problems; the generated app may be incomplete:",
+      problems
+    ))
+  } else {
+    cli::cli_alert_success("Conversion complete!")
+  }
 
   if (ir$complexity == "complex") {
     cli::cli_alert_warning(
@@ -391,10 +410,14 @@ scaffold_input_schema_type <- function(type) {
 #' @noRd
 scaffold_tool_outputs <- function(group, args) {
   arg_text <- if (length(args) > 0) {
-    paste(
-      sprintf("%s=%s", names(args), vapply(args, as.character, character(1))),
-      collapse = ", "
+    # Inputs such as multi-select, slider ranges, and checkbox groups deliver
+    # length > 1 values, so format each argument with a length-safe collapse.
+    formatted <- vapply(
+      args,
+      function(v) paste(format(v), collapse = ", "),
+      character(1)
     )
+    paste(sprintf("%s=%s", names(args), formatted), collapse = ", ")
   } else {
     "defaults"
   }
@@ -415,8 +438,8 @@ scaffold_tool_outputs <- function(group, args) {
       plot = ,
       image = mcp_result_plot(
         function() {
-          plot.new()
-          text(0.5, 0.5, note, cex = 0.9)
+          graphics::plot.new()
+          graphics::text(0.5, 0.5, note, cex = 0.9)
         },
         text = note
       ),

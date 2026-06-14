@@ -17,3 +17,15 @@
 ^CODE_OF_CONDUCT\.md$
 ^bluesky-posts\.md$
 ^shinymcp-logo\.png$
+^slides_files$
+^inst/examples/rpharma-hangout/talk$
+^inst/examples/rpharma-hangout/renv\.lock$
+^design$
+\.DS_Store$
+^\.roborev\.toml$
+^\.positai$
+^inst/examples/rpharma-hangout/\.posit$
+^AGENTS\.md$
+^_brand\.yml$
+^index\.md$
+^append\.env$

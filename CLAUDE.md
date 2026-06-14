@@ -17,27 +17,45 @@ Key capabilities:
 
 ## Directory Structure
 
+There are two complementary directions: **convert** Shiny apps into MCP Apps,
+and **host** (embed) MCP Apps inside a running Shiny app.
+
 ```
 shinymcp/
 ├── R/
 │   ├── shinymcp-package.R     # Package-level docs
-│   ├── parse.R                # Shiny app AST parser → ShinyAppIR
-│   ├── analyze.R              # Reactive graph → tool group clusters
-│   ├── generate.R             # Code generator (HTML + tools.R + server.R)
-│   ├── convert.R              # Top-level convert_app() entry point
+│   │   # Convert pipeline (Shiny -> MCP App)
+│   ├── parse.R                # Shiny app AST parser -> ShinyAppIR
+│   ├── detect.R               # Classify rendered tags as inputs/outputs
+│   ├── analyze.R              # Reactive graph -> tool group clusters
+│   ├── generate.R             # Code generator (ui.R + tools.R + server.R + app.R)
+│   ├── convert.R              # Top-level convert_app() + scaffold tools
+│   │   # Runtime
 │   ├── mcp-app.R              # McpApp R6 class (runtime)
+│   ├── as-mcp-app.R           # as_mcp_app()/as_mcp_apps() coercion surface
+│   ├── results.R              # mcp_result_*() typed results + shinychat tools
 │   ├── components-input.R     # mcp_select(), mcp_text_input(), mcp_input(), mcp_output()
 │   ├── components-output.R    # mcp_plot(), mcp_text(), mcp_table()
+│   ├── bind-mcp.R             # bindMcp() pipe for annotating Shiny tags
+│   ├── mcp-tool-module.R      # mcp_tool_module(): wrap a Shiny module as a tool
+│   │   # Serving + resources
 │   ├── js-bridge.R            # JS bridge config generation + injection
-│   ├── serve.R                # MCP server with tools + ui:// resources
+│   ├── serve.R                # MCP server (stdio + HTTP) with tools + ui:// resources
 │   ├── mcp-resources.R        # Resource protocol handler
-│   ├── utils.R                # Internal utilities
+│   │   # Host (embed MCP Apps in Shiny)
+│   ├── host-base.R            # Transport-agnostic host protocol logic
+│   ├── host-shiny.R           # mcp_host_ui()/mcp_host_server()/mcp_embed()
+│   ├── preview.R              # preview_app(): local httpuv preview host
+│   │   # Shared
+│   ├── utils.R                # Internal utilities + format_tool_result()
 │   └── errors.R               # Custom error classes
 ├── inst/
-│   ├── js/shinymcp-bridge.js  # MCP Apps JS bridge (~300 lines)
+│   ├── js/shinymcp-bridge.js  # MCP Apps JS bridge (iframe side, ~970 lines)
+│   ├── js/shinymcp-host.js    # Host-side bridge (Shiny embedding)
 │   ├── templates/app.html     # HTML skeleton template
-│   ├── skills/                # Deputy skill for AI conversion
-│   └── examples/              # Example MCP Apps
+│   ├── preview/host.html      # preview_app() host shell
+│   ├── skills/                # convert-shiny-app skill for AI conversion
+│   └── examples/              # Example MCP Apps and host apps
 ├── tests/testthat/            # Unit tests (testthat edition 3)
 └── man/                       # Auto-generated roxygen2 docs
 ```
@@ -130,8 +148,13 @@ The self-contained bridge (`inst/js/shinymcp-bridge.js`):
 
 ## Dependencies
 
-**Core** (Imports): R6, htmltools, jsonlite, cli, rlang
-**Optional** (Suggests): ellmer, mcptools, shiny, base64enc, httpuv, testthat, deputy, knitr
+**Core** (Imports): cli, htmltools, jsonlite, methods, R6, rlang, stats, utils
+**Optional** (Suggests): base64enc, bslib, ellmer, ggplot2, grDevices, httpuv,
+knitr, mcptools, palmerpenguins, rmarkdown, scales, shiny, shinychat,
+testthat, withr
+
+Suggests must be guarded at every call site (`rlang::check_installed()` or
+`requireNamespace()`), since R CMD check builds without them.
 
 ## Issue Tracking
 
@@ -164,3 +187,29 @@ When ending a work session, complete ALL steps below. Work is NOT complete until
 5. **Clean up** - Clear stashes, prune remote branches
 6. **Verify** - All changes committed AND pushed
 7. **Hand off** - Provide context for next session
+
+## Landing the Plane (Session Completion)
+
+**When ending a work session**, you MUST complete ALL steps below. Work is NOT complete until `git push` succeeds.
+
+**MANDATORY WORKFLOW:**
+
+1. **File issues for remaining work** - Create issues for anything that needs follow-up
+2. **Run quality gates** (if code changed) - Tests, linters, builds
+3. **Update issue status** - Close finished work, update in-progress items
+4. **PUSH TO REMOTE** - This is MANDATORY:
+   ```bash
+   git pull --rebase
+   bd sync
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
+5. **Clean up** - Clear stashes, prune remote branches
+6. **Verify** - All changes committed AND pushed
+7. **Hand off** - Provide context for next session
+
+**CRITICAL RULES:**
+- Work is NOT complete until `git push` succeeds
+- NEVER stop before pushing - that leaves work stranded locally
+- NEVER say "ready to push when you are" - YOU must push
+- If push fails, resolve and retry until it succeeds

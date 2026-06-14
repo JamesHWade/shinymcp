@@ -9,6 +9,21 @@ test_that("parse_shiny_app extracts inputs from simple app", {
   expect_equal(ir$inputs[[1]]$type, "select")
 })
 
+test_that("call_name bare-names Shiny family but qualifies foreign namespaces", {
+  expect_equal(call_name(quote(selectInput("x", "l", c("a")))), "selectInput")
+  expect_equal(
+    call_name(quote(shiny::selectInput("x", "l", c("a")))),
+    "selectInput"
+  )
+  expect_equal(
+    call_name(quote(mypkg::selectInput("x", "l"))),
+    "mypkg::selectInput"
+  )
+
+  expect_true(is_input_call(quote(shiny::selectInput("x", "l", c("a")))))
+  expect_false(is_input_call(quote(mypkg::selectInput("x", "l"))))
+})
+
 test_that("parse_shiny_app extracts outputs from simple app", {
   app_dir <- fixture_simple_app()
   withr::defer(unlink(app_dir, recursive = TRUE))

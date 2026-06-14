@@ -351,7 +351,9 @@ render_table_fragment <- function(x) {
 
   data <- tryCatch(as.data.frame(x), error = function(...) NULL)
   if (is.null(data)) {
-    return(render_html_fragment(htmltools::tags$pre(capture.output(print(x)))))
+    return(render_html_fragment(htmltools::tags$pre(
+      utils::capture.output(print(x))
+    )))
   }
 
   header <- htmltools::tags$thead(
@@ -546,7 +548,7 @@ mcp_result_text_fallback <- function(x) {
           render_html_fragment(x$value)
         ))),
         table = paste(
-          capture.output(utils::head(as.data.frame(x$value))),
+          utils::capture.output(utils::head(as.data.frame(x$value))),
           collapse = "\n"
         ),
         plot = "[plot]",
@@ -567,7 +569,10 @@ mcp_result_text_fallback <- function(x) {
     return(paste(parts[nzchar(parts)], collapse = "\n\n"))
   }
 
-  paste(capture.output(str(x, give.attr = FALSE)), collapse = "\n")
+  paste(
+    utils::capture.output(utils::str(x, give.attr = FALSE)),
+    collapse = "\n"
+  )
 }
 
 #' @noRd
@@ -577,6 +582,48 @@ mcp_result_structured_content <- function(result) {
   }
 
   NULL
+}
+
+#' Map each typed output id to its render type for the bridge
+#'
+#' Plain (non-`shinymcp_result`) values are skipped: they render as text and
+#' need no type hint.
+#'
+#' @param result A named list keyed by output id.
+#' @return A named list of `id -> type`, or an empty list.
+#' @noRd
+mcp_result_structured_types <- function(result) {
+  if (!is.list(result) || is.null(names(result))) {
+    return(list())
+  }
+  types <- list()
+  for (id in names(result)) {
+    value <- result[[id]]
+    if (is_mcp_result(value)) {
+      types[[id]] <- mcp_result_output_type(value)
+    }
+  }
+  types
+}
+
+#' Build a native MCP image content block for a plot result
+#'
+#' Returns a one-element list with an `image` content block (raw base64 PNG)
+#' so text-only and model-only hosts can see generated plots, or an empty
+#' list for non-plot results.
+#'
+#' @param x A typed result (or any value).
+#' @return A list of zero or one content blocks.
+#' @noRd
+mcp_result_image_content <- function(x) {
+  if (!is_mcp_result(x) || !identical(x$kind, "plot")) {
+    return(list())
+  }
+  data <- mcp_result_patch_value(x)
+  if (!is.character(data) || length(data) != 1 || !nzchar(data)) {
+    return(list())
+  }
+  list(list(type = "image", data = data, mimeType = "image/png"))
 }
 
 #' Build a shinychat-friendly tool result with a live embedded card
