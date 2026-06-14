@@ -101,6 +101,10 @@ there. That is correct: it is waiting for a client to speak to it on stdin.
 Press Ctrl-C to get your prompt back. If instead you get an error, fix that now.
 A client cannot do anything with a server that will not start.
 
+That snippet is written for macOS and Linux shells. On Windows, use
+`where.exe Rscript` (or `Get-Command Rscript` in PowerShell) to find Rscript, and
+run the `system.file()` call in R to get the path to `serve.R`.
+
 You will reuse one thing in all three clients: the absolute path to `serve.R`.
 Copy the output of the `system.file()` call above and keep it handy. The
 examples below write it as `/ABSOLUTE/PATH/TO/serve.R`.
@@ -142,7 +146,7 @@ greeting updates, because each edit is another `tools/call` to your R function.
 > If `command` is bare `Rscript` and nothing happens, Claude is probably
 > launched with a `PATH` that does not include your R. Replace `"Rscript"` with
 > the absolute path, for example `"/opt/homebrew/bin/Rscript"` on Apple silicon.
-> `which Rscript` prints the path to use.
+> `which Rscript` prints the path to use (`where.exe Rscript` on Windows).
 
 ## VS Code
 
@@ -263,8 +267,8 @@ package: install shinymcp and ellmer into the library that this `Rscript` uses,
 which you can check with `Rscript -e '.libPaths()'`.
 
 **"command not found" or silence.** The client's `PATH` differs from your
-shell's. Use the absolute path to `Rscript` (from `which Rscript`) as the command
-in the config.
+shell's. Use the absolute path to `Rscript` (from `which Rscript`, or
+`where.exe Rscript` on Windows) as the command in the config.
 
 **The tool runs but errors.** Read the client's MCP logs. Your server writes
 diagnostics to standard error, and the client surfaces them there: VS Code under
@@ -272,8 +276,8 @@ diagnostics to standard error, and the client surfaces them there: VS Code under
 folder, Goose in its session output.
 
 **Edits to the config do nothing.** Most clients read their config at startup.
-Restart Claude Desktop, restart or re-Start the VS Code server, start a fresh
-Goose session.
+Restart Claude Desktop, start the VS Code server again, and start a fresh Goose
+session.
 
 ## Where to go next
 
