@@ -1,4 +1,4 @@
-# bindMcp() — pipe operator for annotating Shiny elements for MCP exposure
+# bindMcp() - pipe operator for annotating Shiny elements for MCP exposure
 #
 # Stamps data-shinymcp-* attributes on Shiny input/output tags so the
 # JS bridge and McpApp can discover them. Works as a pipe:

@@ -18,7 +18,9 @@ Imports:
     jsonlite,
     methods,
     R6,
-    rlang
+    rlang,
+    stats,
+    utils
 Suggests:
     base64enc,
     bslib,

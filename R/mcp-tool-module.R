@@ -1,4 +1,4 @@
-# mcp_tool_module() — wrap a Shiny module as an MCP App
+# mcp_tool_module() - wrap a Shiny module as an MCP App
 #
 # Mirrors shinychat's chat_tool_module() for the MCP runtime.
 # Takes a standard Shiny module (ui + server) and creates an McpApp.
@@ -11,7 +11,7 @@
 #' If a `handler` is provided, the tool is fully functional; otherwise, a stub
 #' handler is generated as a placeholder.
 #'
-#' This mirrors `shinychat::chat_tool_module()` for the MCP runtime — the
+#' This mirrors `shinychat::chat_tool_module()` for the MCP runtime - the
 #' same module can be used in both contexts.
 #'
 #' @param module_ui A Shiny module UI function that accepts an `id` argument
@@ -136,7 +136,7 @@ mcp_tool_module <- function(
   ui <- annotate_module_ui(ui, detected_inputs, detected_outputs)
 
   if (!is.null(handler)) {
-    # User-provided handler — use ellmer if arguments are provided
+    # User-provided handler - use ellmer if arguments are provided
     if (!is.null(arguments)) {
       rlang::check_installed("ellmer", reason = "for typed tool arguments")
       tool <- ellmer::tool(

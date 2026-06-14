@@ -211,7 +211,7 @@ extract_shiny_ui <- function(app) {
   }
 
   if (is.function(ui)) {
-    # UI can be a function(req) — try with NULL, then with no args
+    # UI can be a function(req) - try with NULL, then with no args
     ui <- tryCatch(
       ui(NULL),
       error = function(e) {
