@@ -1,4 +1,4 @@
-# embed-in-shiny — Shiny as the review surface for an MCP App.
+# embed-in-shiny: Shiny as the review surface for an MCP App.
 #
 # Define the MCP App once (the same object you would serve to a client), then host
 # it inside a Shiny dashboard with mcp_host_ui()/mcp_host_server(). The card runs

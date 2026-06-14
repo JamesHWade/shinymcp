@@ -1,7 +1,7 @@
 # serve-to-client
 
 Every other example previews locally. This one shows the point of MCP: calling your
-R tool from a real client. The server is `serve.R` — an ordinary `mcp_app()` ending in
+R tool from a real client. The server is `serve.R`, an ordinary `mcp_app()` ending in
 `serve(app, type = "stdio")`. A client launches that script and talks to it over stdio.
 
 Find the absolute path to `serve.R`:
@@ -58,6 +58,6 @@ You need `Rscript` on your `PATH` (check with `which Rscript`) and the `shinymcp
 ## Troubleshooting
 
 - Nothing appears: confirm `Rscript <path-to-serve.R>` runs without error in a terminal
-  (it will wait on stdin — that is correct; press Ctrl-C to exit).
+  (it will wait on stdin, which is correct; press Ctrl-C to exit).
 - "command not found": use the absolute path to `Rscript`.
 - Tool errors: check the client's MCP logs for the server's stderr.

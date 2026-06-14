@@ -1,4 +1,4 @@
-# hello-mcp-minimal — the smallest possible MCP App.
+# hello-mcp-minimal: the smallest possible MCP App.
 #
 # One input, one tool, one output. No theme, no plot. This is the shape every
 # other example builds on: an `ui` of mcp_* components, a list of ellmer tools

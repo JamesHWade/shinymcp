@@ -1,4 +1,4 @@
-# serve-to-client/serve.R — an MCP server you can call from a real client.
+# serve-to-client/serve.R: an MCP server you can call from a real client.
 #
 # This is the same kind of mcp_app() as the other examples; the difference is how
 # you run it. Instead of previewing it locally, you register this file as a stdio
