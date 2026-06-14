@@ -32,15 +32,8 @@ preview_examples <- list(
   ),
   "bslib-inputs" = c("ellmer", "httpuv", "bslib", "shiny"),
   "bind-mcp-demo" = c("ellmer", "httpuv", "bslib", "shiny", "base64enc"),
-  "multi-tool" = c("ellmer", "httpuv", "base64enc"),
-  "module-tool" = c(
-    "ellmer",
-    "httpuv",
-    "bslib",
-    "shiny",
-    "shinychat",
-    "base64enc"
-  ),
+  "multi-tool" = c("ellmer", "httpuv", "shiny", "base64enc"),
+  "module-tool" = c("ellmer", "httpuv", "bslib", "shiny", "base64enc"),
   "converted-dashboard" = c("ellmer", "httpuv"),
   "data-explorer" = c(
     "ellmer",

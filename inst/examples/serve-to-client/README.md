@@ -10,8 +10,9 @@ Find the absolute path to `serve.R`:
 system.file("examples", "serve-to-client", "serve.R", package = "shinymcp")
 ```
 
-You need `Rscript` on your `PATH` (check with `which Rscript`) and the `shinymcp` and
-`ellmer` packages installed in the library that `Rscript` uses.
+You need `Rscript` on your `PATH` (check with `which Rscript`, or `where Rscript` on
+Windows) and the `shinymcp` and `ellmer` packages installed in the library that `Rscript`
+uses.
 
 ## Claude Desktop
 

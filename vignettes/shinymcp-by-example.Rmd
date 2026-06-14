@@ -374,7 +374,7 @@ You register that script in the client's configuration. For Claude Desktop, add 
 }
 ```
 
-Restart the client and the tool appears in its tool list; ask it to greet someone and the card renders inline. The example's [README](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/serve-to-client/README.md) gives the exact steps for both Claude Desktop and VS Code, including where each one keeps its config.
+Restart the client and the tool appears in its tool list; ask it to greet someone and the card renders inline. VS Code uses a slightly different shape, a top-level `servers` key instead of `mcpServers`. The example's [README](https://github.com/JamesHWade/shinymcp/blob/main/inst/examples/serve-to-client/README.md) gives the exact steps for both clients, including where each one keeps its config.
 
 While you're still designing the tool, `preview_app()` is the faster loop. Switch to stdio once the contract is settled and you want to test the end-to-end experience.
 
