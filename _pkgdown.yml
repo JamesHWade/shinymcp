@@ -48,6 +48,8 @@ navbar:
           href: articles/use-shinymcp-with-shinychat.html
         - text: MCP Apps Protocol
           href: articles/mcp-apps-protocol.html
+        - text: Add to Claude, VS Code, or Goose
+          href: articles/adding-to-a-client.html
         - text: Debugging shinymcp
           href: articles/debugging-shinymcp.html
 
