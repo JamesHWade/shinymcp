@@ -1,0 +1,309 @@
+# Adding your app to Claude Desktop, VS Code, or Goose
+
+Up to now you have previewed your app with
+[`preview_app()`](https://jameshwade.github.io/shinymcp/reference/preview_app.md).
+That opens a browser window that stands in for an AI assistant, so you
+can click the inputs and watch the card update. It is a good rehearsal.
+It is still a rehearsal.
+
+The reason MCP exists is the next step: a real assistant, running on
+your machine, calls your R code and shows the result in the
+conversation. No browser tab of your own, no server you babysit. You
+write the tool, register it once, and the assistant does the rest.
+
+This chapter connects one app to three clients: Claude Desktop, VS Code,
+and Goose. The app is the same in every case. What changes is a few
+lines in a config file. Once you have done it once, the other two take a
+minute each.
+
+## What a client actually talks to
+
+An MCP client does not load your package, and it does not call a web
+service you host. It launches a command and talks to that command’s
+standard input and output. The messages are
+[JSON-RPC](https://www.jsonrpc.org/specification): after an `initialize`
+handshake, the client sends `tools/list` to learn what your app offers
+and `tools/call` to run a tool. A client that supports MCP UI also reads
+the app’s `ui://` resource to get the card’s HTML. Your job is to
+provide a command that speaks that protocol.
+
+In shinymcp the command is `Rscript` and the script is a few lines that
+build an app and call
+[`serve()`](https://jameshwade.github.io/shinymcp/reference/serve.md).
+That is the whole server. There is no daemon to keep alive and no port
+to remember, because the client starts the process when it needs your
+tools and stops it when it is done.
+
+Two facts follow from this, and they explain most of what can go wrong
+later:
+
+1.  The client runs `Rscript`, so `Rscript` has to be on a `PATH` the
+    client can see, and the R library it uses has to contain shinymcp
+    and ellmer.
+2.  The client passes your script as a file path, so that path has to be
+    absolute. A relative path is meaningless to a program the client
+    launched from somewhere else.
+
+## The server you will connect
+
+shinymcp ships a small example built for exactly this. Find it on disk
+with:
+
+``` r
+
+system.file("examples", "serve-to-client", "serve.R", package = "shinymcp")
+```
+
+Open that file and you will see an ordinary
+[`mcp_app()`](https://jameshwade.github.io/shinymcp/reference/mcp_app.md)
+with one tool, ending in a single new line:
+
+``` r
+
+library(shinymcp)
+
+app <- mcp_app(
+  ui = htmltools::tagList(
+    mcp_text_input("name", "Your name", value = "world"),
+    mcp_text("greeting")
+  ),
+  tools = list(
+    ellmer::tool(
+      fun = function(name = "world") {
+        list(greeting = paste0("Hello, ", name, "!"))
+      },
+      name = "greet",
+      description = "Greet a person by name",
+      arguments = list(
+        name = ellmer::type_string("The name to greet")
+      )
+    )
+  ),
+  name = "shinymcp-demo"
+)
+
+serve(app, type = "stdio")
+```
+
+The only line that is new is the last one. `serve(app, type = "stdio")`
+reads JSON-RPC from standard input and writes responses to standard
+output, which is the channel every client in this chapter uses.
+([`serve()`](https://jameshwade.github.io/shinymcp/reference/serve.md)
+can also run over HTTP; that is for a later section.)
+
+Before you touch any client, confirm the script runs:
+
+``` bash
+which Rscript
+Rscript "$(Rscript -e 'cat(system.file("examples","serve-to-client","serve.R",package="shinymcp"))')"
+```
+
+The second command will print a line about serving over stdio and then
+sit there. That is correct: it is waiting for a client to speak to it on
+stdin. Press Ctrl-C to get your prompt back. If instead you get an
+error, fix that now. A client cannot do anything with a server that will
+not start.
+
+That snippet is written for macOS and Linux shells. On Windows, use
+`where.exe Rscript` (or `Get-Command Rscript` in PowerShell) to find
+Rscript, and run the
+[`system.file()`](https://rdrr.io/r/base/system.file.html) call in R to
+get the path to `serve.R`.
+
+You will reuse one thing in all three clients: the absolute path to
+`serve.R`. Copy the output of the
+[`system.file()`](https://rdrr.io/r/base/system.file.html) call above
+and keep it handy. The examples below write it as
+`/ABSOLUTE/PATH/TO/serve.R`.
+
+## Claude Desktop
+
+Claude Desktop keeps its MCP servers in a JSON file. You can edit it
+through the app or open it directly.
+
+1.  In the app, go to **Settings, Developer, Edit Config**. Or open the
+    file yourself:
+
+    - macOS:
+      `~/Library/Application Support/Claude/claude_desktop_config.json`
+    - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+2.  Add your server under `mcpServers`:
+
+    ``` json
+    {
+      "mcpServers": {
+        "shinymcp-demo": {
+          "command": "Rscript",
+          "args": ["/ABSOLUTE/PATH/TO/serve.R"]
+        }
+      }
+    }
+    ```
+
+    If the file already has other servers, add `shinymcp-demo` alongside
+    them rather than replacing the block.
+
+3.  Quit Claude Desktop and open it again. Config changes are read at
+    startup, so a reload is not optional.
+
+Now ask Claude to greet someone. It finds the `greet` tool, calls it,
+and the card renders inline in the conversation. Type a name into the
+card and the greeting updates, because each edit is another `tools/call`
+to your R function.
+
+> If `command` is bare `Rscript` and nothing happens, Claude is probably
+> launched with a `PATH` that does not include your R. Replace
+> `"Rscript"` with the absolute path, for example
+> `"/opt/homebrew/bin/Rscript"` on Apple silicon. `which Rscript` prints
+> the path to use (`where.exe Rscript` on Windows).
+
+## VS Code
+
+VS Code can read MCP servers from a per-workspace file, which is handy
+because the server then travels with the project you put it in.
+
+1.  Create `.vscode/mcp.json` in your workspace:
+
+    ``` json
+    {
+      "servers": {
+        "shinymcp-demo": {
+          "type": "stdio",
+          "command": "Rscript",
+          "args": ["/ABSOLUTE/PATH/TO/serve.R"]
+        }
+      }
+    }
+    ```
+
+    Two things differ from Claude Desktop: the key is `servers`, not
+    `mcpServers`, and each server names its `type` explicitly.
+
+2.  Open `.vscode/mcp.json` and click **Start** on the server, or run
+    **MCP: List Servers** from the Command Palette and start it from
+    there.
+
+3.  Open Copilot Chat and switch it to **Agent** mode. The `greet` tool
+    is now in the tool list, and the agent can call it.
+
+VS Code calls the tool and shows you its result. Whether it draws the
+interactive card depends on its MCP UI support; the tool itself works
+either way.
+
+## Goose
+
+[Goose](https://block.github.io/goose/) calls MCP servers “extensions.”
+You can add one with the `goose configure` wizard or by editing the
+config file. The wizard writes the same file, so it pays to read it
+once.
+
+Goose’s config lives at:
+
+- macOS and Linux: `~/.config/goose/config.yaml`
+- Windows: `%APPDATA%\Block\goose\config\config.yaml`
+
+Add your server under `extensions`:
+
+``` yaml
+extensions:
+  shinymcp-demo:
+    type: stdio
+    enabled: true
+    name: shinymcp-demo
+    cmd: Rscript
+    args:
+      - /ABSOLUTE/PATH/TO/serve.R
+    timeout: 300
+```
+
+A few field names are particular to Goose. The command key is `cmd`, not
+`command`. `enabled: true` is what actually turns the extension on.
+`timeout` is in seconds and gives the R process room to start and
+answer.
+
+If you prefer the wizard, run `goose configure`, choose **Add
+Extension**, then **Command-line Extension**, and give it `Rscript` as
+the command with the absolute path to `serve.R` as the argument. It
+writes the same block for you.
+
+Start a Goose session and the `greet` tool is available. As with VS
+Code, Goose runs the tool and shows the result; the card renders where
+Goose supports MCP UI.
+
+## Will the card actually render?
+
+The answer is not the same for every client.
+
+Your app has two layers. The lower layer is the tool: a function that
+takes arguments and returns a named list. Every MCP client in this
+chapter can list and call it, and that contract is stable across all of
+them. The upper layer is the card: the HTML interface served as a
+`ui://` resource, with the JavaScript bridge that reads inputs and
+patches outputs. A client only draws that card if it implements the MCP
+UI part of the spec.
+
+Today Claude Desktop renders the card inline. VS Code and Goose reliably
+call the tool and show its result, and their UI support is improving. So
+when you test a new client and see the greeting as text rather than a
+live card, the connection is working. You are looking at the lower layer
+doing its job while the upper layer waits for the host to catch up.
+
+So write your tool so its return value reads well as plain text. The
+card is a better experience where you can get it, and the plain result
+works everywhere else.
+
+## When stdio is not enough
+
+Everything above uses `type = "stdio"`, where the client owns the R
+process and each client gets its own. That is the right default for a
+tool you run on your own machine.
+
+[`serve()`](https://jameshwade.github.io/shinymcp/reference/serve.md)
+also speaks HTTP:
+
+``` r
+
+serve(app, type = "http", port = 8080)
+```
+
+This starts a long-running server that accepts JSON-RPC over POST on
+`127.0.0.1`. That suits a shared or remote deployment where you would
+rather run one R process than have every client spawn its own, though
+reaching it from another machine means putting a proxy in front. It is a
+different operational shape: you manage the process, the port, and the
+network, and clients connect to an MCP endpoint rather than launching a
+command. Reach for it when you have outgrown a local script, not before.
+
+## Troubleshooting
+
+When a client shows nothing, work from the process outward.
+
+**The server will not start on its own.** Run `Rscript /path/to/serve.R`
+in a terminal. If that errors, no client can help. The usual cause is a
+missing package: install shinymcp and ellmer into the library that this
+`Rscript` uses, which you can check with `Rscript -e '.libPaths()'`.
+
+**“command not found” or silence.** The client’s `PATH` differs from
+your shell’s. Use the absolute path to `Rscript` (from `which Rscript`,
+or `where.exe Rscript` on Windows) as the command in the config.
+
+**The tool runs but errors.** Read the client’s MCP logs. Your server
+writes diagnostics to standard error, and the client surfaces them
+there: VS Code under **MCP: List Servers** then the server’s output,
+Claude Desktop in its logs folder, Goose in its session output.
+
+**Edits to the config do nothing.** Most clients read their config at
+startup. Restart Claude Desktop, start the VS Code server again, and
+start a fresh Goose session.
+
+## Where to go next
+
+You now have a working loop: write a tool, point a client at it, call it
+from a conversation. The other vignettes fill in what goes inside that
+loop. [shinymcp by
+example](https://jameshwade.github.io/shinymcp/articles/shinymcp-by-example.md)
+walks through the components and patterns one at a time, and [Converting
+Shiny Apps to MCP
+Apps](https://jameshwade.github.io/shinymcp/articles/converting-shiny-apps.md)
+shows how to turn an app you already have into one of these.

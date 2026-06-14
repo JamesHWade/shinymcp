@@ -2,6 +2,8 @@
 
 ### All vignettes
 
+- [Adding your app to Claude Desktop, VS Code, or
+  Goose](https://jameshwade.github.io/shinymcp/articles/adding-to-a-client.md):
 - [Automatic Shiny App
   Conversion](https://jameshwade.github.io/shinymcp/articles/automatic-conversion.md):
 - [Choose the right migration
