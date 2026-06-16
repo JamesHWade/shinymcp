@@ -1,0 +1,18 @@
+{
+  "model": "gpt-4o-mini",
+  "optimizer": "GEPA",
+  "population_size": 8,
+  "generations": 4,
+  "n_train": 10,
+  "n_test": 6,
+  "before_score": 0.6667,
+  "after_score": 0.8333,
+  "before_scores": [1, 1, 0, 0, 1, 1],
+  "after_scores": [1, 1, 1, 0, 1, 1],
+  "before_preds": ["urgent", "low", "low", "normal", "low", "urgent"],
+  "after_preds": ["urgent", "low", "normal", "normal", "low", "urgent"],
+  "test_ticket": ["Quick question - I really love the app - but I literally cannot log in right now.", "Absolutely disgraceful!! The hero image on your homepage looks blurry!!!", "The page is a bit sluggish today, but I still got my work done.", "Hi team, no big deal - but none of our saved dashboards will open, they all error out.", "Would be nice to have keyboard shortcuts eventually.", "I can't complete any payments - the button just does nothing."],
+  "test_truth": ["urgent", "low", "normal", "urgent", "low", "urgent"],
+  "baseline_instructions": "Classify how urgent this support ticket is: urgent, normal, or low.",
+  "evolved_instructions": "Evaluate the support ticket and classify its urgency as 'urgent', 'normal', or 'low'. Use 'urgent' for issues that completely block functionality, 'normal' for issues that hinder usability but allow workarounds or are how-to questions, and 'low' for minor suggestions or non-critical feedback. Consider the overall impact on user experience when making your classification."
+}

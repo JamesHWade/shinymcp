@@ -1,0 +1,650 @@
+---
+title: "dsprrr"
+subtitle: "Fitting prompts to data, the way you fit a model"
+author: "James Wade"
+date: "2026-06-16"
+date-format: "[R/Pharma genAI Day] · MMMM D, YYYY"
+brand: _brand.yml
+format:
+  revealjs:
+    theme: [default, clinical.scss]
+    slide-number: c/t
+    center: false
+    incremental: false
+    code-line-numbers: true
+    syntax-highlighting: github
+    code-overflow: wrap
+    width: 1280
+    height: 720
+    footer: "dsprrr · R/Pharma genAI Day"
+    transition: fade
+    title-slide-attributes:
+      data-background-color: "#0e1622"
+    include-in-header:
+      text: |
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,500;0,600;0,700;1,500&family=Public+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+---
+
+## Building blocks you may already use
+
+```{=html}
+<style>
+/* dsprrr-only additions; clinical.scss is shared, so nothing here edits it.
+   Kept inside the first slide (not at the top of the doc) so it does not
+   render as an empty leading slide. */
+
+/* retitle the oversized ghost mark on the title slide (SCSS hardcodes "MCP") */
+#title-slide::after { content: "dsp" !important; }
+
+/* hex ecosystem row */
+.hexrow {
+  display: flex; justify-content: center; align-items: flex-start;
+  gap: 1.7rem; margin: 1.5rem 0 0.4rem; flex-wrap: wrap;
+}
+.hexcard { display: flex; flex-direction: column; align-items: center; width: 160px; text-align: center; }
+.hexcard img {
+  height: 140px; width: auto;
+  filter: drop-shadow(0 6px 14px rgba(23,32,51,.18));
+}
+.hexcard .nm {
+  font-family: "IBM Plex Mono", monospace; font-weight: 600;
+  font-size: .76em; color: #172033; margin-top: .55rem;
+}
+.hexcard .role { font-size: .6em; color: #4b5a6e; line-height: 1.25; margin-top: .18rem; }
+
+/* before/after scoreboard (slide "Did it actually get better?") */
+.scoreboard { display: flex; justify-content: center; align-items: center; gap: 1.5rem; margin: 0.5rem 0 0.45rem; }
+.scorebox {
+  text-align: center; padding: 0.55rem 1.2rem; border-radius: 12px;
+  background: #fff; border: 1px solid #d7e1ec;
+  box-shadow: 0 6px 16px rgba(23,32,51,.08); min-width: 210px;
+}
+.scorebox .lbl {
+  font-family: "IBM Plex Mono", monospace; font-size: .58em;
+  text-transform: uppercase; letter-spacing: .09em; color: #4b5a6e;
+}
+.scorebox .val { font-family: "Spectral", serif; font-weight: 700; font-size: 2.1em; line-height: 1; margin-top: .15rem; }
+.scorebox .sub { font-size: .56em; color: #4b5a6e; margin-top: .25rem; }
+.scorebox.before .val { color: #4b5a6e; }
+.scorebox.after  .val { color: #087443; }
+.scorearrow { font-size: 2.2em; color: #ff7518; font-weight: 700; }
+
+/* "Did it actually get better?": shrink the 6-row table so it + the scoreboard fit the frame */
+.score-slide table { font-size: 0.62em; }
+.score-slide table td { padding: 0.2em 0.6em; }
+.score-slide table th { padding: 0.26em 0.6em; }
+
+/* "Hand off to vitals": give the long connector label room to stay on one line */
+.vitals-handoff .dgm-arr { max-width: 210px; }
+.vitals-handoff .dgm-arr .lab { white-space: nowrap; }
+
+/* "The prompt GEPA wrote": center the short Before box against the tall After box */
+.what-wrote .columns { align-items: center; }
+</style>
+```
+
+```{=html}
+<div class="hexrow">
+  <div class="hexcard"><img src="logos/ellmer.png" alt="ellmer hex logo"><div class="nm">ellmer</div><div class="role">Talk to any LLM — structured output, tool calls</div></div>
+  <div class="hexcard"><img src="logos/shinychat.svg" alt="shinychat hex logo"><div class="nm">shinychat</div><div class="role">A chat UI for Shiny</div></div>
+  <div class="hexcard"><img src="logos/btw.png" alt="btw hex logo"><div class="nm">btw</div><div class="role">Hand your R context to the model</div></div>
+  <div class="hexcard"><img src="logos/ragnar.png" alt="ragnar hex logo"><div class="nm">ragnar</div><div class="role">Retrieval (RAG) over your documents</div></div>
+  <div class="hexcard"><img src="logos/vitals.png" alt="vitals hex logo"><div class="nm">vitals</div><div class="role">Evaluate LLM outputs</div></div>
+</div>
+```
+
+. . .
+
+[Each of these still runs on a prompt you wrote and tuned by hand.]{.takeaway}
+
+::: {.notes}
+Open on common ground. Most of this room either uses these or is evaluating
+them. ellmer is the base — talk to any provider, get structured output. The
+other four build on it: shinychat for a chat UI, btw to feed the model your R
+context, ragnar for retrieval, vitals for evaluation. These are good starting
+points; I'm not here to replace them. The point I want to plant: every one of
+these still runs on a prompt you wrote and tuned by hand. That hand-tuning is
+the gap dsprrr fills. Keep this slide short — it's the on-ramp.
+:::
+
+# The trouble with hand-tuning {.section-divider background-color="#1b2f44"}
+
+## How we build an LLM feature today
+
+- Write a prompt. Run a few inputs. Eyeball the outputs. Tweak the wording. Repeat.
+- It breaks when you switch models, or the provider ships a new version
+- No held-out test set, so you grade on the examples you happened to look at
+- You can't say what you changed, or why it helped
+
+. . .
+
+[Eyeballing a few outputs isn't a measurement you can defend.]{.takeaway}
+
+::: {.notes}
+Name the workflow honestly, because everyone in the room has lived it. The
+costs are real: prompts are fragile across models, you grade on the examples
+you happened to look at, and there's no record of what you changed. For a
+regulated audience the last two bullets sting the most — no held-out
+evaluation and no audit trail. Land on the line: "seems to work" is not a
+metric. That's the hinge into the next slide.
+:::
+
+## You already know this workflow
+
+It's just modeling. R users do it every day.
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-flow">
+    <div class="dgm-node is-blue"><span class="k">DECLARE</span><span class="t">a model</span><span class="s">inputs → output</span></div>
+    <div class="dgm-arr"><span class="lab">fit</span><span class="ln"></span></div>
+    <div class="dgm-node"><span class="k">FIT</span><span class="t">to data</span></div>
+    <div class="dgm-arr green"><span class="lab">score</span><span class="ln"></span></div>
+    <div class="dgm-node is-green"><span class="k">EVALUATE</span><span class="t">on held-out data</span></div>
+    <div class="dgm-arr"><span class="lab">choose</span><span class="ln"></span></div>
+    <div class="dgm-node is-orange"><span class="k">COMPARE</span><span class="t">with a metric</span></div>
+  </div>
+</div>
+```
+
+. . .
+
+[dsprrr runs the same loop on the prompt. You fit it to data, like any other model.]{.takeaway}
+
+::: {.notes}
+This is the reframe that makes everything else feel familiar. You declare a
+model, fit it to data, evaluate on held-out data, and compare candidates with
+a metric. That's how this room already works — clinical models, ML models, all
+of it. dsprrr applies the same discipline to the prompt. Nothing here is a new
+mindset; it's the mindset you already trust, pointed at a new object.
+:::
+
+# What dsprrr adds {.section-divider background-color="#1b2f44"}
+
+## Three pieces, on top of ellmer
+
+dsprrr ports the **DSPy** idea (Stanford NLP) to R.
+
+:::: {.cardgrid}
+::: {.gcard}
+[01]{.gnum}[Signature]{.gtitle}[Typed inputs and an output. The interface for the task.]{.gbody}
+:::
+::: {.gcard data-accent="green"}
+[02]{.gnum}[Module]{.gtitle}[A reusable program: predict, reason, retrieve, or act.]{.gbody}
+:::
+::: {.gcard data-accent="orange"}
+[03]{.gnum}[Optimizer]{.gtitle}[Improve the prompt with data and a metric.]{.gbody}
+:::
+::::
+
+. . .
+
+[Signatures, modules, and optimizers, all built on ellmer.]{.takeaway}
+
+::: {.notes}
+Credit the lineage in one line: this is DSPy's idea, ported to R. Three pieces.
+A signature declares the contract. A module is the reusable program behind it —
+and there's a zoo of them. An optimizer improves the prompt from data. And it's
+all on ellmer, so you keep every provider and structured-output feature you
+already have. Don't dwell; the next three slides make each piece concrete.
+:::
+
+## Signature — declare the contract
+
+```r
+library(dsprrr)
+library(ellmer)   # the LLM layer dsprrr builds on
+
+# inputs -> a typed output. No prompt text yet.
+triage <- signature(
+  "ticket -> urgency: enum('urgent', 'normal', 'low')"
+)
+```
+
+- The signature is the **interface**: typed, immutable.
+- The prompt lives *behind* it — swap or optimize it without touching the contract.
+
+. . .
+
+[Declare the interface once; optimize the prompt behind it.]{.takeaway}
+
+::: {.notes}
+A signature is a typed input-to-output contract written in one line. Here a
+ticket goes in, and a constrained enum comes out — the model cannot return
+anything off-menu. Notice there's no prompt here. That separation is the whole
+point: the interface is stable, the prompt is a parameter you get to optimize.
+This is the same instinct as separating a model's formula from its fitted
+coefficients.
+:::
+
+## Module — a reusable, optimizable unit
+
+```r
+clf <- module(triage, type = "predict")
+
+run(clf, ticket = "I can't log in at all.", .llm = chat_openai())
+#> "urgent"
+```
+
+A module wraps a signature with a strategy — same signature, different reasoning. The first four are `module(type = ...)`; RAG has its own constructor:
+
+:::: {.cardgrid}
+::: {.gcard}
+[ ]{.gnum}[predict]{.gtitle}[Direct structured prediction.]{.gbody}
+:::
+::: {.gcard}
+[ ]{.gnum}[chain_of_thought]{.gtitle}[Reason step by step first.]{.gbody}
+:::
+::: {.gcard}
+[ ]{.gnum}[react]{.gtitle}[Call tools in a loop.]{.gbody}
+:::
+::: {.gcard}
+[ ]{.gnum}[program_of_thought]{.gtitle}[Generate and run R code.]{.gbody}
+:::
+::: {.gcard data-accent="green"}
+[ ]{.gnum}[rag_module()]{.gtitle}[Retrieve, then answer — with ragnar.]{.gbody}
+:::
+::::
+
+::: {.notes}
+A module pairs the signature with a strategy. The simplest is predict —
+structured prediction. But the same signature can be wrapped in chain-of-thought
+for reasoning, ReAct for tool use, program-of-thought to write and run R, or RAG
+to retrieve first. The strategy is swappable; the contract doesn't change. For
+today we stay with predict, because the interesting part isn't the strategy —
+it's how we improve the prompt.
+:::
+
+# Optimize with data {.section-divider background-color="#1b2f44"}
+
+## To improve it with data, you need two things
+
+::: {.columns}
+::: {.column width="50%"}
+**A metric** — what "good" means, as code
+
+```r
+metric <- metric_with_feedback(
+  function(pred, expected) {
+    ok <- tolower(pred) ==
+          tolower(expected$urgency)
+    list(
+      score = as.numeric(ok),
+      # feedback carries the *why* — GEPA reflects on it
+      feedback = if (ok) "Correct."
+        else paste0("Expected '", expected$urgency,
+                    "': urgency follows impact, not tone.")
+    )
+  },
+  field = "urgency"
+)
+```
+:::
+::: {.column width="50%"}
+**Labeled examples** — the data
+
+```r
+trainset <- dsp_trainset(
+  ticket = c(
+    "I can't log in at all.",
+    "Typo on your pricing page!!!",
+    "How do I export to CSV?"
+  ),
+  urgency = c("urgent", "low", "normal")
+)
+```
+:::
+:::
+
+[The metric defines what "good" means. The examples carry the convention.]{.takeaway}
+
+::: {.notes}
+Optimization needs two inputs. First, a metric: a function that says what good
+means. With metric_with_feedback it can also return a sentence explaining a
+failure — keep that in mind, it matters in two slides. Second, labeled
+examples: dsp_trainset is just a data frame of inputs and the right answers.
+Notice the examples encode a convention — urgency by usability, not tone — that
+a generic prompt won't guess. Writing down what "good" means is the work, and
+it's work this audience already does for every analysis.
+:::
+
+## Compile the prompt against your data
+
+```r
+# mutation_rate = 1, crossover_rate = 0 -> each candidate is a single
+# reflective rewrite (full config in talk/scripts/gepa-demo.R)
+tp <- GEPA(metric = metric, generations = 4L,
+           mutation_rate = 1, crossover_rate = 0, seed = 42)
+
+optimized <- compile(tp, clf, trainset, .llm = chat_openai())
+```
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-flow">
+    <div class="dgm-node is-blue"><span class="k">PROMPT</span><span class="t">current instruction</span></div>
+    <div class="dgm-arr green"><span class="lab">evaluate</span><span class="ln"></span></div>
+    <div class="dgm-node"><span class="k">FAILURES</span><span class="t">what it got wrong</span></div>
+    <div class="dgm-arr"><span class="lab">reflect</span><span class="ln"></span></div>
+    <div class="dgm-node is-orange"><span class="k">REWRITE</span><span class="t">a better instruction</span><span class="s">repeat</span></div>
+  </div>
+</div>
+```
+
+::: {.note-orange}
+GEPA here is "GEPA-lite": reflective instruction evolution, a faithful but simplified take on the paper (Agrawal et al., 2025).
+:::
+
+::: {.notes}
+GEPA is the optimizer. It evaluates the current prompt, collects the examples it
+got wrong along with the metric's feedback, and asks the model to reflect on why
+they failed — then rewrites the instruction. It repeats that over a few
+generations, keeping the best. You stop editing the prompt; the metric's feedback
+on the failed cases drives the rewrite. Be honest on the footnote — this is a
+simplified GEPA, and the package documents exactly how. Then: let's see what it
+actually wrote.
+:::
+
+## The prompt GEPA wrote {.what-wrote}
+
+::: {.columns}
+::: {.column width="50%"}
+**Before** — hand-written
+
+::: {.note-blue}
+"Classify how urgent this support ticket is: urgent, normal, or low."
+:::
+:::
+::: {.column width="50%"}
+**After** — GEPA, from the failures
+
+::: {.note-green}
+"Evaluate the support ticket and classify its urgency as 'urgent', 'normal', or 'low'. Use **'urgent'** for issues that completely block functionality, **'normal'** for issues that hinder usability but allow workarounds or are how-to questions, and **'low'** for minor suggestions or non-critical feedback. Consider the overall impact on user experience when making your classification."
+:::
+:::
+:::
+
+. . .
+
+[I didn't write the prompt on the right. GEPA did, from the cases it got wrong.]{.takeaway}
+
+::: {.notes}
+This is the slide to slow down on. On the left is the prompt I wrote — vague, no
+rubric. On the right is what GEPA produced after reflecting on the training
+failures. Read the right one out loud: it has learned the convention from the
+data — that urgency is about whether the product works, not how angry the
+customer sounds — without me ever stating it. Nobody typed that prompt; GEPA
+derived the rubric from the training labels.
+:::
+
+## Did it actually get better? {.score-slide}
+
+```{=html}
+<div class="scoreboard">
+  <div class="scorebox before"><div class="lbl">Before · hand-written</div><div class="val">67%</div><div class="sub">4 / 6 on held-out test</div></div>
+  <div class="scorearrow">→</div>
+  <div class="scorebox after"><div class="lbl">After · GEPA-compiled</div><div class="val">83%</div><div class="sub">5 / 6 on held-out test</div></div>
+</div>
+```
+
+| held-out ticket (tone vs. usability) | truth | before | after |
+|---|---|---|---|
+| "…I literally cannot log in right now" | urgent | urgent ✓ | urgent ✓ |
+| "Disgraceful!! the homepage image is blurry!!!" | low | low ✓ | low ✓ |
+| "sluggish today, but I still got my work done" | normal | low ✗ | **normal ✓** |
+| "no big deal… dashboards all error out" | urgent | normal ✗ | normal ✗ |
+| "keyboard shortcuts would be nice someday" | low | low ✓ | low ✓ |
+| "I can't complete any payments" | urgent | urgent ✓ | urgent ✓ |
+
+::: {style="color:#455468; margin-top:.6rem; font-size:.8em;"}
+Real run · gpt-4o-mini · same examples, same metric · `talk/scripts/gepa-demo.R`
+:::
+
+::: {.notes}
+Same model, same held-out tickets, same metric — the only thing that changed is
+the prompt, and the prompt changed itself. Walk the table: every row is a
+tone/usability conflict. The flip is the "sluggish but I got my work done" row —
+baseline panicked and called it low/urgent by feel; the compiled prompt grades by
+the rubric and calls it normal. Be honest about the last miss: "no big deal…
+dashboards all error out" is still wrong — a real outage written in a calm voice,
+genuinely hard. That's the point: this is measurable, reproducible improvement,
+not magic. Real numbers from the script in the repo, not a mock-up.
+:::
+
+## GEPA is one of many
+
+:::: {.cardgrid}
+::: {.gcard}
+[01]{.gnum}[LabeledFewShot]{.gtitle}[Add k labeled demos to the prompt.]{.gbody}
+:::
+::: {.gcard}
+[02]{.gnum}[BootstrapFewShot]{.gtitle}[Harvest demos from runs that passed.]{.gbody}
+:::
+::: {.gcard}
+[03]{.gnum}[MIPROv2]{.gtitle}[Bayesian search over instructions + demos.]{.gbody}
+:::
+::: {.gcard}
+[04]{.gnum}[COPRO]{.gtitle}[Coordinate ascent on instructions.]{.gbody}
+:::
+::: {.gcard}
+[05]{.gnum}[KNNFewShot]{.gtitle}[Pick demos by similarity to the input.]{.gbody}
+:::
+::: {.gcard data-accent="orange"}
+[06]{.gnum}[GEPA]{.gtitle}[Reflective instruction evolution.]{.gbody}
+:::
+::::
+
+. . .
+
+[Pick an optimizer like you'd pick a tuning strategy.]{.takeaway}
+
+::: {.notes}
+GEPA is one choice. LabeledFewShot just adds demos; BootstrapFewShot harvests
+demos from runs that actually passed; MIPROv2 searches instructions and demos
+jointly; COPRO and GEPA evolve the instructions; KNNFewShot picks demos by
+similarity. Same interface, different search strategy — exactly like choosing
+between grid search, random search, or Bayesian tuning. Honesty note: GEPA here
+is simplified relative to the paper, and that's documented in the package, not
+hidden.
+:::
+
+# Inspecting and reproducing {.section-divider background-color="#1b2f44"}
+
+## Every call is traced
+
+```r
+inspect_history(n = 1)        # the exact prompt + response
+get_last_trace()              # inputs, output, tokens, cost
+export_traces(clf)            # a tidy tibble for audit / analysis
+```
+
+- The exact prompt the model saw, captured at the time of the call.
+- Tokens and cost per call, in a record you can hand to a reviewer.
+
+. . .
+
+[The prompt is just a tibble you can read.]{.takeaway}
+
+::: {.notes}
+Optimization is only trustworthy if you can see what happened. Every call is
+traced: the exact prompt sent, the response, the inputs, the token counts, the
+cost. inspect_history shows it interactively; export_traces hands you a tidy
+tibble. For a regulated workflow that's the difference between "the model said
+so" and an inspectable record. The prompt isn't a black box — it's data.
+:::
+
+## Reproducible and portable
+
+The compiled prompt and demos are just data. Pin them; restore them.
+
+```r
+board <- pins::board_folder("pins")
+pin_module_config(board, "triage", optimized)   # save the compiled config
+
+config <- pins::pin_read(board, "triage")
+clf    <- restore_module_config(config)          # ready to run — no re-optimization
+```
+
+- Caching (memory + disk): the same input doesn't cost tokens twice.
+- Switch models by re-compiling against your data.
+
+. . .
+
+[When the model changes, you re-fit against the same data.]{.takeaway}
+
+::: {.notes}
+A compiled module is just data — the instruction, the demos, the config. Pin it
+to a board (local folder, S3, Posit Connect) and restore it in another session
+with no re-optimization. Caching means repeated inputs don't re-spend tokens,
+which also makes results reproducible. And when a provider ships a new model,
+you don't rewrite prompts by hand — you re-run compile against your data. The
+maintenance story is "re-fit," not "start over."
+:::
+
+## Hand off to vitals {.vitals-handoff}
+
+```r
+# the same module becomes a vitals solver
+solver <- as_vitals_solver(clf, .llm = chat_openai())
+
+# or bring a vitals scorer back in as a dsprrr metric
+m <- as_dsprrr_metric(vitals_scorer)
+```
+
+```{=html}
+<div class="dgm">
+  <div class="dgm-flow">
+    <div class="dgm-node is-green"><span class="k">DSPRRR</span><span class="t">your module</span></div>
+    <div class="dgm-arr"><span class="lab">as_vitals_solver()</span><span class="ln"></span></div>
+    <div class="dgm-node is-blue"><span class="k">VITALS</span><span class="t">Task + scorers</span></div>
+    <div class="dgm-arr green"><span class="lab">writes</span><span class="ln"></span></div>
+    <div class="dgm-node"><span class="k">LOG</span><span class="t">Inspect log viewer</span></div>
+  </div>
+</div>
+```
+
+[Optimize in dsprrr, evaluate in vitals. The same module does both.]{.takeaway}
+
+::: {.notes}
+Close the loop back to the first slide. vitals was one of the five hexes. Your
+dsprrr module converts straight into a vitals solver, so the eval framework your
+team already trusts scores the thing you just optimized — and writes logs the
+Inspect viewer can open. It goes both ways: a vitals scorer can come back in as
+a dsprrr metric. The packages are designed to compose, not compete.
+:::
+
+# When & why {.section-divider background-color="#1b2f44"}
+
+## Reach for dsprrr when…
+
+:::: {.cardgrid}
+::: {.gcard}
+[01]{.gnum}[You have labels + a metric]{.gtitle}[Classification, extraction, QA — anything you can score.]{.gbody}
+:::
+::: {.gcard}
+[02]{.gnum}[The convention is in the data]{.gtitle}[A rule your examples follow, but you'd struggle to state.]{.gbody}
+:::
+::: {.gcard}
+[03]{.gnum}[Multi-step pipelines]{.gtitle}[RAG, or reason → act, that you want to optimize together.]{.gbody}
+:::
+::: {.gcard data-accent="green"}
+[04]{.gnum}[Requirements change]{.gtitle}[Re-compile against new data instead of re-writing prompts.]{.gbody}
+:::
+::: {.gcard data-accent="orange"}
+[05]{.gnum}[It has to be reviewable]{.gtitle}[Production work that needs evaluation and an audit trail.]{.gbody}
+:::
+::::
+
+::: {.notes}
+The "when" the room came for. Reach for dsprrr when you can score the task and
+you have labels — classification, extraction, QA. Especially when the
+convention lives in the data, not your head, like the urgency rubric. When you
+have multi-step pipelines worth optimizing as a whole. When requirements drift
+and you'd rather re-fit than re-write. And when the work has to survive review —
+evaluation plus traces. If several of these are true, the up-front cost of
+writing a metric and labeling examples is worth it.
+:::
+
+## Don't reach for it when…
+
+::: {style="border-left:5px solid #ff7518; padding-left:1.1rem; font-size:1.05em;"}
+- A **one-off prompt** that won't change → just use ellmer
+- **Early exploration**, before you understand the task
+- **No labels and no metric** → nothing to optimize against
+- It **already works well enough** → not worth the overhead
+:::
+
+. . .
+
+[Start by writing down what "good" means. The optimization comes after.]{.takeaway}
+
+::: {.notes}
+Be equally clear about when not to. A one-off prompt that won't change doesn't
+need any of this — use ellmer directly. Early exploration is for learning the
+task by hand; optimize later. With no labels and no metric there's nothing to
+optimize against, and if the baseline already works perfectly the ROI is zero.
+The honest entry point isn't "install dsprrr" — it's "write down what good
+means." Once you've done that, the rest follows.
+:::
+
+## Where dsprrr fits
+
+```{=html}
+<div class="dgm dgm-fan">
+  <div class="dgm-fan__src">
+    <div class="dgm-flow">
+      <div class="dgm-node is-green"><span class="k">ELLMER</span><span class="t">talk to the model</span></div>
+      <div class="dgm-arr"><span class="lab">optimize</span><span class="ln"></span></div>
+      <div class="dgm-node is-blue"><span class="k">DSPRRR</span><span class="t">compile the prompt</span></div>
+    </div>
+  </div>
+  <div class="dgm-fan__hub"></div>
+  <div class="dgm-fan__targets">
+    <div class="row"><span class="spur"></span><div class="dgm-node"><span class="k">EVALUATE</span><span class="t">vitals</span></div></div>
+    <div class="row"><span class="spur"></span><div class="dgm-node"><span class="k">RETRIEVE</span><span class="t">ragnar</span></div></div>
+    <div class="row"><span class="spur"></span><div class="dgm-node"><span class="k">DELIVER</span><span class="t">shinychat · shinymcp</span></div></div>
+  </div>
+</div>
+```
+
+> The same building blocks from slide one, now with a prompt you optimize against data.
+
+::: {.notes}
+Tie it together. ellmer talks to the model; dsprrr compiles the prompt on top of
+it; vitals evaluates it; ragnar feeds it documents; shinychat and shinymcp
+deliver it to people. These aren't competitors — they're the building blocks
+from the first slide, and dsprrr is the layer that makes the prompt something
+you optimize instead of hand-tune. That's the through-line of this whole
+hangout: components you can wire into agent-connected workflows.
+:::
+
+# Close {.section-divider background-color="#1b2f44"}
+
+## The loop, one more time
+
+::: {style="color:#39729e; font-weight:700; font-size:1.12em;"}
+- Declare the contract with a **signature**
+- Make "good" measurable with a **metric** + a few labeled examples
+- Have an **optimizer** rewrite the prompt, and trace every call
+- **Re-compile** when the model or the data changes
+:::
+
+- **Install:** `pak::pak("JamesHWade/dsprrr")` (GitHub; experimental)
+- **Docs:** [jameshwade.github.io/dsprrr](https://jameshwade.github.io/dsprrr/)
+- **This demo:** `talk/scripts/gepa-demo.R`
+
+. . .
+
+::: {style="color:#ff7518; font-weight:700; font-size:1.25em; margin-top:1rem;"}
+A prompt is just another thing you fit to data.
+:::
+
+::: {.notes}
+Recap the loop one last time: signature, metric plus examples, optimizer, trace,
+re-compile. Point them at the install and docs, and at the exact script that
+produced today's numbers so they can reproduce it. Then the one line I want them
+to leave with: stop hand-tuning, compile your prompts. Hand off to deputy /
+shinymcp from here.
+:::
