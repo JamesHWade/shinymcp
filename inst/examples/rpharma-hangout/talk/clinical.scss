@@ -148,24 +148,13 @@ $code-color: $ink;
 #title-slide {
   @include grid-texture(rgba(255,255,255,0.05), 52px);
   text-align: left;
-  padding: 0 7% 0 8%;
+  padding: 2.6em 7% 0 8%;
 }
-#title-slide::before {           // top accent band
+#title-slide::before {           // top accent band, pinned to the slide top
   content: "";
   position: absolute; left: 0; right: 0; top: 0;
   height: 8px;
   background: linear-gradient(90deg, $blue 0%, $orange 55%, $green 100%);
-}
-#title-slide::after {            // oversized ghost "?" signal mark
-  content: "?";
-  position: absolute; right: 4%; top: 38%;
-  transform: translateY(-50%);
-  font-family: $presentation-heading-font;
-  font-weight: 600;
-  font-size: 16em;
-  line-height: 1;
-  color: rgba($orange, 0.16);
-  pointer-events: none;
 }
 #title-slide .title {
   font-family: $presentation-heading-font;
@@ -197,7 +186,28 @@ $code-color: $ink;
   text-transform: uppercase;
   color: #7e93ab;
 }
-#title-slide .author { color: #c9d6e6; }
+// Quarto centers the authors row by default — pull it back to the left edge so
+// it lines up under the title/subtitle instead of floating mid-slide.
+#title-slide .quarto-title-authors {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.25em;
+  margin: 1.4em 0 0;
+  padding: 0;
+  text-align: left;
+}
+#title-slide .quarto-title-author,
+#title-slide .quarto-title-author-name,
+#title-slide .quarto-title-author-name p {
+  text-align: left;
+  justify-content: flex-start;
+  margin: 0;
+}
+#title-slide .author,
+#title-slide .quarto-title-author-name { color: #c9d6e6; }
+#title-slide .date { margin-top: 1.1em; }
 
 // ---------------------------------------------------------------
 //  Section dividers (# {.section-divider}): dark, full-bleed.
