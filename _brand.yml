@@ -1,0 +1,30 @@
+color:
+  palette:
+    blue: "#39729e"
+    orange: "#ff7518"
+    green: "#087443"
+    ink: "#172033"
+    muted: "#455468"
+    light: "#f6f8fb"
+  foreground: "#172033"
+  background: "#f6f8fb"
+  primary: "#39729e"
+  secondary: "#ff7518"
+  success: "#087443"
+
+typography:
+  fonts:
+    - family: Inter
+      source: google
+    - family: JetBrains Mono
+      source: google
+  base:
+    family: Inter
+  headings:
+    family: Inter
+    weight: 700
+    color: "#172033"
+  monospace:
+    family: JetBrains Mono
+  link:
+    color: "#39729e"

@@ -1,0 +1,339 @@
+<script>
+(function () {
+  "use strict";
+
+  var SPEC = {
+    Adelie: { n: 146, bill_length_mm: [38.8, 2.7], bill_depth_mm: [18.3, 1.2], flipper_length_mm: [190, 6.5], body_mass_g: [3700, 460] },
+    Chinstrap: { n: 68, bill_length_mm: [48.8, 3.3], bill_depth_mm: [18.4, 1.1], flipper_length_mm: [196, 7.1], body_mass_g: [3733, 384] },
+    Gentoo: { n: 119, bill_length_mm: [47.5, 3.1], bill_depth_mm: [15.0, 1.0], flipper_length_mm: [217, 6.5], body_mass_g: [5076, 504] }
+  };
+  var COLORS = { Adelie: "#ff7b4f", Chinstrap: "#8951a5", Gentoo: "#258a90" };
+  var LABELS = {
+    bill_length_mm: "Bill Length (mm)",
+    bill_depth_mm: "Bill Depth (mm)",
+    flipper_length_mm: "Flipper Length (mm)",
+    body_mass_g: "Body Mass (g)"
+  };
+
+  function mulberry32(a) {
+    return function () {
+      var t;
+      a |= 0;
+      a = (a + 0x6D2B79F5) | 0;
+      t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  var rng = mulberry32(616);
+
+  function gauss(m, sd) {
+    var u = 0;
+    var v = 0;
+    while (u === 0) u = rng();
+    while (v === 0) v = rng();
+    return m + sd * Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  }
+
+  function buildData() {
+    var data = [];
+    Object.keys(SPEC).forEach(function (sp) {
+      var s = SPEC[sp];
+      for (var i = 0; i < s.n; i++) {
+        data.push({
+          species: sp,
+          bill_length_mm: +gauss(s.bill_length_mm[0], s.bill_length_mm[1]).toFixed(1),
+          bill_depth_mm: +gauss(s.bill_depth_mm[0], s.bill_depth_mm[1]).toFixed(1),
+          flipper_length_mm: Math.round(gauss(s.flipper_length_mm[0], s.flipper_length_mm[1])),
+          body_mass_g: Math.round(gauss(s.body_mass_g[0], s.body_mass_g[1]) / 25) * 25
+        });
+      }
+    });
+    return data;
+  }
+
+  var DATA = buildData();
+
+  function fmt(v) {
+    return Math.abs(v) >= 100 ? Math.round(v).toString() : v.toFixed(1);
+  }
+
+  function quant(arr) {
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    var mean = a.reduce(function (s, v) { return s + v; }, 0) / a.length;
+    function q(p) {
+      var idx = p * (a.length - 1);
+      var lo = Math.floor(idx);
+      var hi = Math.ceil(idx);
+      return a[lo] + (a[hi] - a[lo]) * (idx - lo);
+    }
+    return { min: a[0], med: q(0.5), mean: mean, max: a[a.length - 1] };
+  }
+
+  function linreg(pts) {
+    var n = pts.length;
+    var sx = 0;
+    var sy = 0;
+    var sxx = 0;
+    var sxy = 0;
+    var d;
+    var m;
+    if (n < 2) return null;
+    pts.forEach(function (p) {
+      sx += p[0];
+      sy += p[1];
+      sxx += p[0] * p[0];
+      sxy += p[0] * p[1];
+    });
+    d = n * sxx - sx * sx;
+    if (d === 0) return null;
+    m = (n * sxy - sx * sy) / d;
+    return { m: m, b: (sy - m * sx) / n };
+  }
+
+  function subset(st) {
+    return st.species === "All" ? DATA : DATA.filter(function (d) { return d.species === st.species; });
+  }
+
+  function drawScatter(canvas, st) {
+    var ratio;
+    var w;
+    var h;
+    var ctx;
+    var data;
+    var xs;
+    var ys;
+    var pad;
+    var xmin;
+    var xmax;
+    var ymin;
+    var ymax;
+    var xr;
+    var yr;
+    var x0;
+    var x1;
+    var y0;
+    var y1;
+    var groups;
+
+    if (!canvas) return;
+    w = canvas.clientWidth;
+    h = canvas.clientHeight;
+    if (!w || !h) return;
+
+    ratio = window.devicePixelRatio || 1;
+    canvas.width = w * ratio;
+    canvas.height = h * ratio;
+    ctx = canvas.getContext("2d");
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+
+    data = subset(st);
+    xs = data.map(function (d) { return d[st.xVar]; });
+    ys = data.map(function (d) { return d[st.yVar]; });
+    pad = { l: 54, r: 14, t: 13, b: 38 };
+    xmin = Math.min.apply(null, xs);
+    xmax = Math.max.apply(null, xs);
+    ymin = Math.min.apply(null, ys);
+    ymax = Math.max.apply(null, ys);
+    xr = (xmax - xmin) || 1;
+    yr = (ymax - ymin) || 1;
+    x0 = xmin - xr * 0.06;
+    x1 = xmax + xr * 0.06;
+    y0 = ymin - yr * 0.08;
+    y1 = ymax + yr * 0.08;
+
+    function px(v) { return pad.l + ((v - x0) / (x1 - x0)) * (w - pad.l - pad.r); }
+    function py(v) { return h - pad.b - ((v - y0) / (y1 - y0)) * (h - pad.t - pad.b); }
+    function ticks(lo, hi, n) {
+      var vals = [];
+      for (var i = 0; i <= n; i++) vals.push(lo + ((hi - lo) / n) * i);
+      return vals;
+    }
+
+    ctx.strokeStyle = "#e6edf4";
+    ctx.fillStyle = "#94a3b5";
+    ctx.lineWidth = 1;
+    ctx.font = "10px 'IBM Plex Mono', monospace";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ticks(y0, y1, 3).forEach(function (v) {
+      var y = py(v);
+      ctx.beginPath();
+      ctx.moveTo(pad.l, y);
+      ctx.lineTo(w - pad.r, y);
+      ctx.stroke();
+      ctx.fillText(fmt(v), pad.l - 7, y);
+    });
+
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ticks(x0, x1, 4).forEach(function (v) {
+      ctx.fillText(fmt(v), px(v), h - pad.b + 6);
+    });
+
+    ctx.fillStyle = "#58667a";
+    ctx.font = "700 11px 'Public Sans', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    ctx.fillText(LABELS[st.xVar], pad.l + (w - pad.l - pad.r) / 2, h - 7);
+    ctx.save();
+    ctx.translate(15, pad.t + (h - pad.t - pad.b) / 2);
+    ctx.rotate(-Math.PI / 2);
+    ctx.fillText(LABELS[st.yVar], 0, 0);
+    ctx.restore();
+
+    groups = st.species === "All" ? ["Adelie", "Chinstrap", "Gentoo"] : [st.species];
+    groups.forEach(function (sp) {
+      var groupData = data.filter(function (d) { return d.species === sp; });
+      ctx.fillStyle = COLORS[sp];
+      groupData.forEach(function (d) {
+        ctx.globalAlpha = 0.75;
+        ctx.beginPath();
+        ctx.arc(px(d[st.xVar]), py(d[st.yVar]), 3.6, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.globalAlpha = 1;
+      if (st.trend) {
+        var fit = linreg(groupData.map(function (d) { return [d[st.xVar], d[st.yVar]]; }));
+        if (fit) {
+          ctx.strokeStyle = COLORS[sp];
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(px(x0), py(fit.m * x0 + fit.b));
+          ctx.lineTo(px(x1), py(fit.m * x1 + fit.b));
+          ctx.stroke();
+        }
+      }
+    });
+  }
+
+  function buildStats(st) {
+    var data = subset(st);
+    var sx = quant(data.map(function (d) { return d[st.xVar]; }));
+    var sy = quant(data.map(function (d) { return d[st.yVar]; }));
+    var counts = ["Adelie", "Chinstrap", "Gentoo"].map(function (sp) {
+      return [sp, data.filter(function (d) { return d.species === sp; }).length];
+    }).filter(function (c) { return c[1] > 0; });
+
+    function pad(s, n) {
+      s = String(s);
+      while (s.length < n) s = " " + s;
+      return s;
+    }
+    function rpad(s, n) {
+      s = String(s);
+      while (s.length < n) s += " ";
+      return s;
+    }
+    function shortLabel(k) {
+      return LABELS[k].replace(/ \(.*/, "");
+    }
+    function row(k, s) {
+      return rpad(shortLabel(k), 14) + " min " + pad(fmt(s.min), 5) + " med " + pad(fmt(s.med), 5) + " mean " + pad(fmt(s.mean), 5) + " max " + pad(fmt(s.max), 5);
+    }
+
+    return [
+      "Observations: " + data.length + " penguins",
+      row(st.xVar, sx),
+      row(st.yVar, sy),
+      "species       " + counts.map(function (c) { return c[0] + ":" + c[1]; }).join("   ")
+    ].join("\n");
+  }
+
+  function readState(frame) {
+    var st = {};
+    Array.prototype.forEach.call(frame.querySelectorAll("[data-k]"), function (el) {
+      var key = el.getAttribute("data-k");
+      st[key] = el.type === "checkbox" ? el.checked : el.value;
+    });
+    return {
+      species: st.species || "All",
+      xVar: st.xVar || "flipper_length_mm",
+      yVar: st.yVar || "body_mass_g",
+      trend: !!st.trend
+    };
+  }
+
+  function initMock(frame) {
+    var canvas;
+    var running;
+    var stats;
+    var applied;
+    var desired;
+    var timer = null;
+
+    if (frame.dataset.slideMockReady) return;
+    frame.dataset.slideMockReady = "1";
+
+    canvas = frame.querySelector(".slide-mock-canvas");
+    running = frame.querySelector(".slide-mock-running");
+    stats = frame.querySelector(".slide-mock-stats");
+    applied = readState(frame);
+    desired = {
+      species: applied.species,
+      xVar: applied.xVar,
+      yVar: applied.yVar,
+      trend: applied.trend
+    };
+
+    function render() {
+      drawScatter(canvas, applied);
+      if (stats) stats.textContent = buildStats(applied);
+    }
+
+    function commit() {
+      if (running) running.hidden = false;
+      if (timer) window.clearTimeout(timer);
+      timer = window.setTimeout(function () {
+        applied = {
+          species: desired.species,
+          xVar: desired.xVar,
+          yVar: desired.yVar,
+          trend: desired.trend
+        };
+        if (running) running.hidden = true;
+        render();
+      }, 420);
+    }
+
+    Array.prototype.forEach.call(frame.querySelectorAll("[data-k]"), function (el) {
+      el.addEventListener("change", function () {
+        var key = el.getAttribute("data-k");
+        desired[key] = el.type === "checkbox" ? el.checked : el.value;
+        commit();
+      });
+    });
+
+    frame.slideMockRender = render;
+    render();
+    window.setTimeout(render, 80);
+  }
+
+  function initAll() {
+    Array.prototype.forEach.call(document.querySelectorAll(".slide-mock-frame"), initMock);
+    redrawAll();
+  }
+
+  function redrawAll() {
+    Array.prototype.forEach.call(document.querySelectorAll(".slide-mock-frame"), function (frame) {
+      if (typeof frame.slideMockRender === "function") frame.slideMockRender();
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initAll);
+  } else {
+    initAll();
+  }
+
+  window.addEventListener("load", initAll);
+  window.addEventListener("resize", redrawAll);
+  window.addEventListener("hashchange", function () { window.setTimeout(redrawAll, 80); });
+  document.addEventListener("slidechanged", function () { window.setTimeout(redrawAll, 80); });
+  window.setTimeout(initAll, 350);
+})();
+</script>

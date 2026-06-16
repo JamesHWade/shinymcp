@@ -148,24 +148,13 @@ $code-color: $ink;
 #title-slide {
   @include grid-texture(rgba(255,255,255,0.05), 52px);
   text-align: left;
-  padding: 0 7% 0 8%;
+  padding: 2.6em 7% 0 8%;
 }
-#title-slide::before {           // top accent band
+#title-slide::before {           // top accent band, pinned to the slide top
   content: "";
   position: absolute; left: 0; right: 0; top: 0;
   height: 8px;
   background: linear-gradient(90deg, $blue 0%, $orange 55%, $green 100%);
-}
-#title-slide::after {            // oversized ghost "?" signal mark
-  content: "?";
-  position: absolute; right: 4%; top: 38%;
-  transform: translateY(-50%);
-  font-family: $presentation-heading-font;
-  font-weight: 600;
-  font-size: 16em;
-  line-height: 1;
-  color: rgba($orange, 0.16);
-  pointer-events: none;
 }
 #title-slide .title {
   font-family: $presentation-heading-font;
@@ -197,7 +186,28 @@ $code-color: $ink;
   text-transform: uppercase;
   color: #7e93ab;
 }
-#title-slide .author { color: #c9d6e6; }
+// Quarto centers the authors row by default — pull it back to the left edge so
+// it lines up under the title/subtitle instead of floating mid-slide.
+#title-slide .quarto-title-authors {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 0.25em;
+  margin: 1.4em 0 0;
+  padding: 0;
+  text-align: left;
+}
+#title-slide .quarto-title-author,
+#title-slide .quarto-title-author-name,
+#title-slide .quarto-title-author-name p {
+  text-align: left;
+  justify-content: flex-start;
+  margin: 0;
+}
+#title-slide .author,
+#title-slide .quarto-title-author-name { color: #c9d6e6; }
+#title-slide .date { margin-top: 1.1em; }
 
 // ---------------------------------------------------------------
 //  Section dividers (# {.section-divider}): dark, full-bleed.
@@ -681,5 +691,874 @@ $code-color: $ink;
 // the short unlabeled trunk arrow between the source node and the branches
 .reveal .dgm-split > .dgm-arr { flex: 0 0 auto; width: 46px; min-width: 46px; }
 
+// ---- hub: many clients ⇄ one protocol ⇄ many tools -----------
+//  Mirrors the MCP "USB-C for AI" picture: a column of clients on
+//  the left, the protocol in the centre, a column of tools/data on
+//  the right, joined by bidirectional connectors.
+.reveal .dgm-hub {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+}
+.reveal .dgm-hub__side {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 0 1 auto;
+}
+.reveal .dgm-hub__side .cl {        // column label
+  font-family: $font-family-monospace;
+  font-size: 0.46em;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: $muted;
+  text-align: center;
+}
+.reveal .dgm-hub__side .row { display: flex; align-items: center; gap: 0; }
+.reveal .dgm-hub__side.right .row { flex-direction: row-reverse; }
+.reveal .dgm-hub__side .dgm-node { flex: 1 1 auto; min-width: 156px; }
+.reveal .dgm-hub__core { flex: 0 0 auto; align-self: center; margin: 0 0.2rem; }
+.reveal .dgm-hub__core .dgm-node { min-width: 116px; text-align: center; }
+.reveal .dgm-hub__core .dgm-node .k,
+.reveal .dgm-hub__core .dgm-node .t,
+.reveal .dgm-hub__core .dgm-node .s { text-align: center; }
+
+// bidirectional connector (an arrowhead on each end)
+.reveal .dgm-arr.bi { flex: 0 0 auto; min-width: 48px; max-width: 64px; }
+.reveal .dgm-arr.bi .ln::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: -5px;
+  border-right: 9px solid $blue;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.reveal .dgm-arr.bi.green .ln::before { border-right-color: $green; }
+
 // fragment punchlines spacing
 .reveal .fragment { transition: all 0.2s ease; }
+
+// =====================================================================
+//  Restored 2026-06-14 draft visuals (runtime-*, slide-mock-*, dgm-cycle,
+//  pills) — dropped when this file was condensed; needed by the longer
+//  talk draft. Verified non-overlapping with the classes above.
+// =====================================================================
+
+// ---- dgm-cycle (compact pipeline ring) ----
+.reveal .dgm-cycle {
+  gap: 0.55rem;
+  margin-top: 0.45em;
+}
+.reveal .dgm-cycle .dgm-flow {
+  max-width: 1040px;
+}
+.reveal .dgm-cycle .dgm-node {
+  min-width: 210px;
+  max-width: 280px;
+}
+.reveal .dgm-cycle .dgm-arr {
+  min-width: 96px;
+  max-width: 145px;
+}
+
+// ---------------------------------------------------------------
+//  Runtime architecture visuals
+// ---------------------------------------------------------------
+.reveal section.runtime-slide h2 {
+  margin-bottom: 0.42em;
+}
+.reveal .runtime-visual {
+  display: flex;
+  flex-direction: column;
+  gap: 0.58rem;
+  margin-top: 0.15em;
+  font-family: $font-family-sans-serif;
+}
+.reveal .runtime-track {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) 0.42fr minmax(0, 1fr) 0.42fr minmax(0, 1fr);
+  align-items: stretch;
+  gap: 0.38rem;
+}
+.reveal .runtime-card,
+.reveal .runtime-pane {
+  position: relative;
+  min-width: 0;
+  border: 1px solid $line;
+  border-top: 5px solid $blue;
+  border-radius: 8px;
+  background: $panel;
+  box-shadow: 0 10px 24px rgba(23, 32, 51, 0.07);
+}
+.reveal .runtime-card {
+  min-height: 126px;
+  padding: 0.72rem 0.78rem;
+  overflow: hidden;
+}
+.reveal .runtime-card::after {
+  content: "";
+  position: absolute;
+  right: -22px;
+  bottom: -26px;
+  width: 95px;
+  height: 95px;
+  border: 16px solid rgba($blue, 0.09);
+  border-radius: 999px;
+}
+.reveal .runtime-card span,
+.reveal .runtime-pane span {
+  position: relative;
+  z-index: 1;
+  display: block;
+  font-family: $font-family-monospace;
+  font-size: 0.46em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: $orange;
+}
+.reveal .runtime-card strong,
+.reveal .runtime-pane strong {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 0.18em;
+  font-family: $presentation-heading-font;
+  font-size: 0.94em;
+  line-height: 1.08;
+  color: $ink;
+}
+.reveal .runtime-card em {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 0.35em;
+  font-style: normal;
+  font-family: $font-family-monospace;
+  font-size: 0.47em;
+  line-height: 1.28;
+  color: $muted;
+}
+.reveal .runtime-card code,
+.reveal .runtime-pane code {
+  background: rgba($panel, 0.65);
+  color: $blue-deep;
+  font-size: 0.95em;
+}
+.reveal .runtime-card.is-blue { border-top-color: $blue; background: $blue-bg; }
+.reveal .runtime-card.is-orange { border-top-color: $orange; background: $orange-bg; }
+.reveal .runtime-card.is-green { border-top-color: $green; background: $green-bg; }
+.reveal .runtime-card.is-ink {
+  border-top-color: $orange;
+  background: $ink;
+}
+.reveal .runtime-card.is-ink strong { color: #f7fafc; }
+.reveal .runtime-card.is-ink em { color: #aebfd2; }
+.reveal .runtime-card.is-ink::after { border-color: rgba($orange, 0.16); }
+.reveal .runtime-wire {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  color: $blue-deep;
+}
+.reveal .runtime-wire::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  background: linear-gradient(90deg, $blue, $orange);
+}
+.reveal .runtime-wire::after {
+  content: "";
+  position: absolute;
+  right: -1px;
+  top: calc(50% - 5px);
+  border-left: 9px solid $orange;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+.reveal .runtime-wire b {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  max-width: 100%;
+  padding: 0.16em 0.34em;
+  border-radius: 5px;
+  background: $paper;
+  font-family: $font-family-monospace;
+  font-size: 0.39em;
+  line-height: 1.12;
+  text-align: center;
+  color: $muted;
+  overflow-wrap: anywhere;
+}
+.reveal .runtime-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.62rem;
+}
+.reveal .runtime-pane {
+  min-height: 210px;
+  padding: 0.72rem 0.85rem 0.62rem;
+}
+.reveal .runtime-pane.is-js { border-top-color: $orange; background: $orange-bg; }
+.reveal .runtime-pane.is-r { border-top-color: $green; background: $green-bg; }
+.reveal .runtime-pane.is-chat { border-top-color: $blue; background: $blue-bg; }
+.reveal .runtime-pane ul {
+  margin-top: 0.45em;
+  font-size: 0.62em;
+}
+.reveal .runtime-pane li {
+  margin: 0.18em 0;
+  padding-left: 1em;
+}
+.reveal .runtime-pane li::before {
+  width: 0.36em;
+  height: 0.36em;
+  top: 0.5em;
+}
+.reveal .runtime-loop {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.22rem;
+  align-items: stretch;
+}
+.reveal .runtime-loop i {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding: 0.28rem 0.44rem;
+  border-radius: 7px;
+  border: 1px solid rgba($blue, 0.24);
+  background: $panel;
+  font-family: $font-family-monospace;
+  font-size: 0.44em;
+  font-style: normal;
+  line-height: 1.16;
+  text-align: center;
+  color: $muted;
+}
+.reveal .runtime-loop i:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  right: -0.2rem;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left: 7px solid $blue;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  z-index: 2;
+}
+
+// ---------------------------------------------------------------
+//  Conversation deck utilities (slides-succinct.qmd)
+// ---------------------------------------------------------------
+.reveal section.hangout h2 {
+  font-size: 1.35em;
+  margin-bottom: 0.55em;
+}
+
+.reveal .conversation-hero {
+  position: relative;
+  min-height: 300px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 1.05rem 1.2rem 1.15rem;
+  border-radius: 10px;
+  background:
+    linear-gradient(135deg, rgba($blue, 0.08), rgba($orange, 0.05)),
+    $panel;
+  border: 1px solid $line;
+  border-left: 8px solid $orange;
+  box-shadow: 0 14px 34px rgba(23, 32, 51, 0.08);
+  overflow: hidden;
+}
+.reveal .conversation-hero::after {
+  content: "MCP";
+  position: absolute;
+  right: 0.25rem;
+  bottom: -0.25rem;
+  font-family: $font-family-monospace;
+  font-size: 4.4em;
+  font-weight: 600;
+  line-height: 1;
+  color: rgba($blue, 0.08);
+}
+.reveal .conversation-hero.compact { min-height: 245px; }
+.reveal .conversation-kicker {
+  font-family: $font-family-monospace;
+  font-size: 0.54em;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: $orange;
+  margin-bottom: 0.7em;
+}
+.reveal .conversation-claim {
+  max-width: 18ch;
+  font-family: $presentation-heading-font;
+  font-size: 1.82em;
+  font-weight: 600;
+  line-height: 1.03;
+  color: $ink;
+  letter-spacing: -0.006em;
+}
+.reveal .conversation-support {
+  max-width: 56ch;
+  margin-top: 0.9em;
+  font-size: 0.82em;
+  color: $muted;
+}
+
+.reveal section.mock-slide h2 {
+  margin-bottom: 0.38em;
+}
+.reveal .slide-mock-frame {
+  display: grid;
+  grid-template-rows: 38px minmax(0, 1fr);
+  box-sizing: border-box;
+  height: 555px;
+  padding-top: 18px;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba($blue, 0.28);
+  background: #fbfcfe;
+  box-shadow: 0 24px 54px rgba(23, 32, 51, 0.13);
+  font-family: $font-family-sans-serif;
+  color: $ink;
+}
+.reveal .slide-mock-bar {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.8rem;
+  background: #eef3f9;
+  border-bottom: 1px solid $line;
+}
+.reveal .slide-mock-dots {
+  display: flex;
+  gap: 0.3rem;
+}
+.reveal .slide-mock-dots i {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  display: block;
+}
+.reveal .slide-mock-dots i:nth-child(1) { background: #ec6a5e; }
+.reveal .slide-mock-dots i:nth-child(2) { background: #f4bf4f; }
+.reveal .slide-mock-dots i:nth-child(3) { background: #61c554; }
+.reveal .slide-mock-url {
+  margin-left: auto;
+  padding: 0.16rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba($blue, 0.18);
+  background: $panel;
+  font-family: $font-family-monospace;
+  font-size: 0.48em;
+  color: rgba($muted, 0.78);
+}
+.reveal .slide-mock-chat {
+  min-height: 0;
+  padding: 0.48rem 0.64rem 0.62rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.34rem;
+}
+.reveal .slide-mock-prompt {
+  align-self: flex-end;
+  max-width: 70%;
+  padding: 0.34rem 0.55rem;
+  border-radius: 12px 12px 4px 12px;
+  background: $blue;
+  color: #fff;
+  font-size: 0.53em;
+  line-height: 1.35;
+}
+.reveal .slide-mock-assistant {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 0.42rem;
+  min-height: 0;
+}
+.reveal .slide-mock-logo {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  background: linear-gradient(145deg, $blue, $green);
+  color: #fff;
+  font-family: $font-family-monospace;
+  font-size: 0.34em;
+  font-weight: 700;
+  letter-spacing: 0;
+  box-shadow: 0 6px 16px rgba($blue-deep, 0.2);
+}
+.reveal .slide-mock-body {
+  min-width: 0;
+}
+.reveal .slide-mock-body p {
+  margin: 0 0 0.26rem;
+  color: $ink;
+  font-size: 0.52em;
+  line-height: 1.32;
+}
+.reveal .slide-mock-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-bottom: 0.28rem;
+  padding: 0.13rem 0.4rem;
+  border-radius: 7px;
+  border: 1px solid $line;
+  background: #eef3f9;
+  font-family: $font-family-monospace;
+  font-size: 0.42em;
+  color: $muted;
+}
+.reveal .slide-mock-tool::before {
+  content: "";
+  width: 0.38rem;
+  height: 0.38rem;
+  border-radius: 999px;
+  background: $orange;
+  box-shadow: 0 0 0 3px rgba($orange, 0.12);
+}
+.reveal .slide-mock-tool code {
+  padding: 0;
+  background: transparent;
+  color: $blue-deep;
+  font-size: 1em;
+}
+.reveal .slide-mock-tool b {
+  color: $green;
+  font-weight: 700;
+}
+.reveal .slide-mock-app {
+  height: 360px;
+  overflow: hidden;
+  border-radius: 10px;
+  border: 1px solid rgba($blue, 0.25);
+  background: $panel;
+  box-shadow: 0 14px 32px rgba(23, 32, 51, 0.08);
+}
+.reveal .slide-mock-appbar {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.62rem;
+  border-bottom: 1px solid $line;
+  background: #eef3f9;
+}
+.reveal .slide-mock-appbar strong {
+  font-size: 0.54em;
+}
+.reveal .slide-mock-appbar span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.14rem 0.42rem;
+  border-radius: 999px;
+  background: $blue-bg;
+  color: $blue-deep;
+  font-family: $font-family-monospace;
+  font-size: 0.37em;
+  text-transform: uppercase;
+}
+.reveal .slide-mock-appbar span i {
+  width: 7px;
+  height: 7px;
+  display: block;
+  border-radius: 999px;
+  background: $green;
+}
+.reveal .slide-mock-appbody {
+  height: calc(100% - 36px);
+  display: grid;
+  grid-template-columns: 178px minmax(0, 1fr);
+}
+.reveal .slide-mock-controls {
+  padding: 0.55rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.42rem;
+  border-right: 1px solid $line;
+  background: #eef3f9;
+}
+.reveal .slide-mock-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.16rem;
+  margin: 0;
+}
+.reveal .slide-mock-controls label > span,
+.reveal .slide-mock-check span {
+  color: $muted;
+  font-size: 0.43em;
+  font-weight: 700;
+}
+.reveal .slide-mock-controls select {
+  width: 100%;
+  min-width: 0;
+  min-height: 33px;
+  padding: 0.12rem 0.34rem;
+  border: 1px solid rgba($blue, 0.22);
+  border-radius: 7px;
+  background: $panel;
+  color: $ink;
+  font-family: $font-family-sans-serif;
+  font-size: 0.44em;
+}
+.reveal .slide-mock-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 0.24rem !important;
+}
+.reveal .slide-mock-check input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: $blue;
+}
+.reveal .slide-mock-main {
+  min-width: 0;
+  padding: 0.46rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.38rem;
+}
+.reveal .slide-mock-panel {
+  overflow: hidden;
+  border-radius: 9px;
+  border: 1px solid $line;
+  background: $panel;
+}
+.reveal .slide-mock-panel.plot {
+  height: 172px;
+}
+.reveal .slide-mock-panel.stats {
+  height: 104px;
+}
+.reveal .slide-mock-panel-head {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  padding: 0 0.52rem;
+  border-bottom: 1px solid $line;
+  background: #eef3f9;
+  color: $muted;
+  font-size: 0.44em;
+  font-weight: 700;
+}
+.reveal .slide-mock-plot {
+  position: relative;
+  height: calc(100% - 28px);
+  background: $panel;
+}
+.reveal .slide-mock-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.reveal .slide-mock-running {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.32rem;
+  background: rgba(255, 255, 255, 0.78);
+  color: $muted;
+  font-family: $font-family-monospace;
+  font-size: 0.43em;
+}
+.reveal .slide-mock-running[hidden] {
+  display: none;
+}
+.reveal .slide-mock-running span {
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba($blue, 0.25);
+  border-top-color: $blue;
+  border-radius: 999px;
+  animation: slide-mock-spin 0.75s linear infinite;
+}
+.reveal .slide-mock-running code {
+  padding: 0;
+  background: transparent;
+  color: $blue-deep;
+  font-size: 1em;
+}
+@keyframes slide-mock-spin {
+  to { transform: rotate(360deg); }
+}
+.reveal .slide-mock-plot .p {
+  position: absolute;
+  left: var(--x);
+  top: var(--y);
+  width: 9px;
+  height: 9px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  opacity: 0.78;
+}
+.reveal .slide-mock-plot .p.teal { background: #258a90; }
+.reveal .slide-mock-plot .p.orange { background: #ff7b4f; }
+.reveal .slide-mock-plot .p.purple { background: #8951a5; }
+.reveal .slide-mock-plot .x-label,
+.reveal .slide-mock-plot .y-label {
+  position: absolute;
+  color: $muted;
+  font-weight: 700;
+  font-size: 0.38em;
+  line-height: 1;
+}
+.reveal .slide-mock-plot .x-label {
+  left: 50%;
+  bottom: 5px;
+  transform: translateX(-50%);
+}
+.reveal .slide-mock-plot .y-label {
+  left: -0.92rem;
+  top: 50%;
+  transform: translateY(-50%) rotate(-90deg);
+  transform-origin: center;
+  white-space: nowrap;
+}
+.reveal .slide-mock-panel pre {
+  margin: 0;
+  padding: 0.35rem 0.52rem;
+  border: 0;
+  border-radius: 0;
+  background: $panel !important;
+  color: $ink;
+  font-family: $font-family-monospace;
+  font-size: 0.36em;
+  line-height: 1.42;
+  white-space: pre;
+}
+
+.reveal .pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.85rem;
+}
+.reveal .pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.28em 0.58em;
+  border-radius: 999px;
+  background: $panel;
+  border: 1px solid $line;
+  font-family: $font-family-monospace;
+  font-size: 0.58em;
+  color: $muted;
+}
+.reveal .pill.blue { border-color: rgba($blue, 0.45); color: $blue-deep; background: $blue-bg; }
+.reveal .pill.orange { border-color: rgba($orange, 0.45); color: $ink; background: $orange-bg; }
+.reveal .pill.green { border-color: rgba($green, 0.45); color: #1e3a2b; background: $green-bg; }
+
+.reveal .conversation-split,
+.reveal .limits-board {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin: 0.35em 0 0.65em;
+}
+.reveal .conversation-panel,
+.reveal .limit-yes,
+.reveal .limit-no {
+  padding: 0.85rem 0.95rem;
+  background: $panel;
+  border: 1px solid $line;
+  border-top: 5px solid $blue;
+  border-radius: 8px;
+  box-shadow: 0 9px 22px rgba(23, 32, 51, 0.06);
+}
+.reveal .conversation-panel h3 {
+  margin-top: 0;
+  margin-bottom: 0.45em;
+  font-size: 0.95em;
+}
+.reveal .conversation-panel.is-warn,
+.reveal .limit-no { border-top-color: $orange; background: $orange-bg; }
+.reveal .conversation-panel.is-good,
+.reveal .limit-yes { border-top-color: $green; background: $green-bg; }
+.reveal .limit-yes,
+.reveal .limit-no {
+  min-height: 210px;
+  font-size: 0.88em;
+}
+
+.reveal .contract-stack {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 0.5em 0 1em;
+}
+.reveal .contract-layer {
+  position: relative;
+  min-height: 235px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 0.9rem;
+  border-radius: 10px;
+  background: $panel;
+  border: 1px solid $line;
+  box-shadow: 0 12px 30px rgba(23, 32, 51, 0.07);
+  overflow: hidden;
+}
+.reveal .contract-layer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: linear-gradient(135deg, rgba($blue, 0.07) 25%, transparent 25%, transparent 50%, rgba($blue, 0.07) 50%, rgba($blue, 0.07) 75%, transparent 75%, transparent);
+  background-size: 18px 18px;
+  opacity: 0.35;
+}
+.reveal .contract-layer::after {
+  position: absolute;
+  right: 0.65rem;
+  top: 0.35rem;
+  font-family: $font-family-monospace;
+  font-size: 2.6em;
+  font-weight: 600;
+  color: rgba($ink, 0.08);
+}
+.reveal .contract-layer.is-blue { border-top: 6px solid $blue; background: $blue-bg; }
+.reveal .contract-layer.is-orange { border-top: 6px solid $orange; background: $orange-bg; }
+.reveal .contract-layer.is-green { border-top: 6px solid $green; background: $green-bg; }
+.reveal .contract-layer.is-blue::after { content: "01"; }
+.reveal .contract-layer.is-orange::after { content: "02"; }
+.reveal .contract-layer.is-green::after { content: "03"; }
+.reveal .contract-layer strong {
+  position: relative;
+  display: block;
+  font-family: $presentation-heading-font;
+  font-size: 1.18em;
+  line-height: 1.05;
+}
+.reveal .contract-layer p,
+.reveal .contract-layer br + text {
+  position: relative;
+}
+
+.reveal .conversation-caption {
+  margin: 0.65em auto 0;
+  max-width: 760px;
+  text-align: center;
+  font-family: $font-family-monospace;
+  font-size: 0.56em;
+  color: $muted;
+}
+
+.reveal .model-value-card div.sourceCode {
+  margin-top: 0;
+  border-left-color: $green;
+}
+.reveal .model-value-card div.sourceCode::before {
+  content: "MODEL_VALUE";
+  font-size: 0.46em;
+}
+
+.reveal .equation-row {
+  display: grid;
+  grid-template-columns: 1fr 0.24fr 1fr;
+  align-items: stretch;
+  gap: 0.65rem;
+  margin: 0.45em 0;
+}
+.reveal .equation-block {
+  padding: 0.9rem;
+  min-height: 135px;
+  border-radius: 8px;
+  border: 1px solid $line;
+  border-left: 5px solid $muted;
+  background: $panel;
+  box-shadow: 0 8px 22px rgba(23, 32, 51, 0.05);
+  font-size: 0.82em;
+}
+.reveal .equation-block strong {
+  display: block;
+  font-family: $presentation-heading-font;
+  font-size: 1.18em;
+  margin-bottom: 0.25em;
+}
+.reveal .equation-block.is-blue { border-left-color: $blue; background: $blue-bg; }
+.reveal .equation-block.is-orange { border-left-color: $orange; background: $orange-bg; }
+.reveal .equation-block.is-green { border-left-color: $green; background: $green-bg; }
+.reveal .equation-arrow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: $font-family-monospace;
+  font-size: 0.66em;
+  font-weight: 600;
+  color: $orange;
+  text-transform: uppercase;
+}
+
+.reveal .live-checks,
+.reveal .proof-grid,
+.reveal .question-wall {
+  display: grid;
+  gap: 0.65rem;
+}
+.reveal .live-checks { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.reveal .proof-grid,
+.reveal .question-wall { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.reveal .live-check,
+.reveal .proof-item,
+.reveal .question-card {
+  padding: 0.78rem 0.85rem;
+  min-height: 150px;
+  border-radius: 8px;
+  background: $panel;
+  border: 1px solid $line;
+  border-top: 5px solid $blue;
+  box-shadow: 0 8px 22px rgba(23, 32, 51, 0.06);
+  font-size: 0.78em;
+}
+.reveal .live-check:nth-child(2),
+.reveal .question-card:nth-child(2) { border-top-color: $green; }
+.reveal .live-check:nth-child(3),
+.reveal .question-card:nth-child(3) { border-top-color: $orange; }
+.reveal .question-card {
+  min-height: 126px;
+  display: flex;
+  align-items: center;
+  font-family: $presentation-heading-font;
+  font-size: 1.04em;
+  line-height: 1.18;
+}
+
+@media (max-width: 900px) {
+  .reveal .conversation-split,
+  .reveal .limits-board,
+  .reveal .contract-stack,
+  .reveal .equation-row,
+  .reveal .live-checks,
+  .reveal .proof-grid,
+  .reveal .question-wall {
+    grid-template-columns: 1fr;
+  }
+  .reveal .conversation-claim { font-size: 1.4em; }
+  .reveal .contract-layer { min-height: 160px; }
+}
