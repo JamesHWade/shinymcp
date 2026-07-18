@@ -1,252 +1,356 @@
 # Path forward: shinymcp alongside Shiny's first-party MCP Apps support
 
-*Drafted July 2026 in response to rstudio/shiny PRs #4407/#4409/#4412/#4414/#4418
-(SEP-1865) and the Shiny team's `mcp/comparison-shinymcp.md`. Revised after a
-full codebase review and upstream survey; corrections from that review are
-folded in throughout and itemized in the appendix.*
+> - **Status:** Proposed strategy
+> - **Owner / decision-maker:** shinymcp maintainer
+>   [@JamesHWade](https://github.com/JamesHWade)
+> - **Execution system:** `bd`; create one epic with Track A/B/C child issues
+>   when this strategy is accepted
+> - **Last verified:** 2026-07-18
+> - **Code baseline:**
+>   [shinymcp `2221af7`](https://github.com/JamesHWade/shinymcp/commit/2221af7ce363f6eb39feafe8428a293fa7b9ad0d);
+>   [Shiny `mcp` branch `c394d5b`](https://github.com/rstudio/shiny/commit/c394d5b8bc46229938dbae1dcfca0ad45c5d3d71)
+> - **Review trigger:** 2026-08-15, or when
+>   [rstudio/shiny#4409](https://github.com/rstudio/shiny/pull/4409)
+>   changes state
 
-## Context
+## Decision summary
 
-The Shiny team has merged first-party MCP Apps support: the full Shiny runtime
-runs server-side and its websocket protocol is tunneled through MCP tools
-(`_shiny_send` / `_shiny_receive` / `_shiny_http`), so existing apps render in
-Claude and other MCP hosts unchanged. Their comparison doc concludes the two
-projects are "legitimately different products" whose overlap is
-"undifferentiated protocol plumbing, which is the natural place to converge."
+1. **Make one product promise.** shinymcp is the tool-first, sessionless way
+   to expose an R capability as an ordinary MCP tool and, in Apps-capable
+   clients, as an interactive card. It does not run a Shiny session per
+   viewer.
+2. **Route unchanged Shiny apps to Shiny.** Shiny's first-party path owns the
+   zero-rewrite, fully reactive "put this existing app in chat" job.
+   `convert_app()` remains useful when the desired result is intentionally
+   tool-first, sessionless, model-callable, or useful in text-only clients.
+3. **Converge protocol plumbing conditionally.** mcptools is the preferred
+   long-term home for generic MCP server behavior, but shinymcp does not delete
+   its server until a released mcptools backend passes the same contract suite
+   and has a rollback path.
+4. **Keep hosting secondary and trusted-local for now.** The current Shiny host
+   is a supported integration for locally constructed `McpApp` objects and a
+   useful upstream seed. Hosting arbitrary remote MCP Apps is a separate,
+   security-gated product decision, not an assumed next feature.
+5. **Sunset components, not the package by slogan.** Upstream a component when
+   a maintained replacement passes its contracts. Archive shinymcp only if
+   maintained replacements cover its tool-first authoring model, meaningful
+   non-Apps fallback, UI bridge, and conversion scaffolding.
 
-Two upstream facts make this plan concrete rather than speculative:
+## Upstream baseline
 
-1. **The mcptools convergence is already scoped — by the Shiny team.**
-   schloerke filed posit-dev/mcptools #115 (tracking) plus #116 (resources),
-   #117 (tool `_meta`), #118 (async tool handlers), #119 (embeddable JSON-RPC
-   dispatch), and #120 (non-blocking stdio) on July 13, explicitly so
-   frameworks "like Shiny and Plumber" can delegate protocol handling to
-   mcptools. Related pre-existing gaps: #103 (outputSchema), #104
-   (structuredContent). Shiny's `mcp/QUESTIONS.md` marks upstreaming as
-   *resolved via those issues*. We do not need to propose a shared core; we
-   need to show up to an invitation that already exists, with working code.
+As of 2026-07-18, the Shiny team has assembled experimental MCP Apps support
+on its `mcp` integration branch. The feature PRs
+([#4407](https://github.com/rstudio/shiny/pull/4407),
+[#4412](https://github.com/rstudio/shiny/pull/4412),
+[#4414](https://github.com/rstudio/shiny/pull/4414), and
+[#4418](https://github.com/rstudio/shiny/pull/4418)) are merged into that
+branch, while [#4409](https://github.com/rstudio/shiny/pull/4409), which
+promotes `mcp` to `main`, remains a draft. The feature is therefore not yet on
+Shiny's main branch or in a release.
 
-2. **The host/embed upstream path already exists — we opened it.**
-   posit-dev/shinychat #175 ("Support MCP Apps protocol for rendering
-   interactive UIs inline", filed February 2026 by @JamesHWade, referencing
-   shinymcp) has no linked PR or maintainer response yet. shinymcp's host code
-   is the natural reference implementation for our own issue.
+Shiny apps opt in with `mcpConfigure()`. Once enabled, the full Shiny runtime
+stays server-side. The iframe attempts a direct WebSocket when CSP and
+reachability allow it; otherwise WebSocket traffic falls back to the
+`_shiny_*` tool tunnel. HTTP side channels remain tunneled through
+`_shiny_http` in either mode. `registerMcpTool()` accepts `ellmer::ToolDef`
+objects. When `mcpConfigure(arguments = ...)` is declared, the generated
+`update_<appId>_app` tool can steer a running MCP-backed Shiny session by
+token. The durable distinction is therefore not "the model can drive only
+shinymcp"; it is shinymcp's request/response, text-capable tool contract versus
+Shiny's live per-viewer reactive session.
 
-rstudio/shiny #4409 (the integration PR) is still a draft with no reviews or
-assignees — the window for influencing the experimental API is open.
+Shiny's
+[`comparison-shinymcp.md`](https://github.com/rstudio/shiny/blob/c394d5b8bc46229938dbae1dcfca0ad45c5d3d71/mcp/comparison-shinymcp.md)
+gets that product split right: these are "legitimately different products,"
+and the overlap is "undifferentiated protocol plumbing." Treat the document as
+framing, not current API documentation; it predates the latest integration
+work.
 
-## Principles
+Barret Schloerke translated server convergence into concrete mcptools
+proposals:
+[#115](https://github.com/posit-dev/mcptools/issues/115) tracks
+[#116](https://github.com/posit-dev/mcptools/issues/116) (resources),
+[#117](https://github.com/posit-dev/mcptools/issues/117) (tool `_meta`),
+[#118](https://github.com/posit-dev/mcptools/issues/118) (async handlers),
+[#119](https://github.com/posit-dev/mcptools/issues/119) (embeddable
+dispatch), and [#120](https://github.com/posit-dev/mcptools/issues/120)
+(non-blocking stdio). These are useful proposals, but they are still open,
+unassigned, and without an accepted implementation sequence. Shiny's
+[`QUESTIONS.md`](https://github.com/rstudio/shiny/blob/c394d5b8bc46229938dbae1dcfca0ad45c5d3d71/mcp/QUESTIONS.md)
+records that the issues were filed; it does not establish a mcptools roadmap.
 
-1. **One plumbing, two products.** JSON-RPC dispatch, transports, and resource
-   handling should exist once in the R ecosystem (mcptools). The programming
-   models — Shiny's live-session tunnel and shinymcp's stateless tools — stay
-   distinct because they solve different problems.
-2. **Cede the "dashboard in chat" use case.** Zero-rewrite rendering of an
-   existing app belongs to shiny. shinymcp stops pitching `convert_app()` as
-   the way to get a dashboard into Claude; it becomes a scaffolding aid for
-   authoring tool-first apps.
-3. **Interoperate, don't parallel-build.** Where shiny grows a surface we need
-   (deployment discovery, CSP conventions, `registerMcpTool()`), we target it
-   rather than reimplementing it.
-4. **Be honest about what exists.** The review below found real gaps between
-   this plan's ambitions and today's code (remote hosting, async execution,
-   the size of the serve() delegation). Phases are gated on those gaps, not
-   written as if they were closed.
-5. **Name the sunset condition up front.** If Posit ships a first-party
-   stateless/tool mode and MCP App hosting for Shiny/shinychat, shinymcp's
-   remaining surface goes to zero; the right move then is to upstream what is
-   left and archive with a pointer.
+mcptools 1.0.0
+[shipped](https://github.com/posit-dev/mcptools/releases/tag/v1.0.0) before
+the
+[#115-#120 proposal set](https://github.com/posit-dev/mcptools/issues/115)
+was filed. Convergence therefore depends on a post-1.0.0 release, not the
+still-open
+[#112 release checklist](https://github.com/posit-dev/mcptools/issues/112).
 
-## What shinymcp is, going forward
+We also opened
+[posit-dev/shinychat#175](https://github.com/posit-dev/shinychat/issues/175)
+for hosting MCP Apps inside shinychat. It is a candidate upstream venue, not
+an agreed destination: there is no maintainer commitment or linked PR.
 
-**Typed R capabilities with a UI, plus MCP App hosting for Shiny.**
+## Route users by the job
 
-- Tools are the product; the interactive card is an enhancement. Results work
-  in every MCP client, including text-only ones (per-session capability
-  negotiation in `serve.R:398` / `utils.R:213` already withholds `_meta.ui`
-  from non-Apps clients automatically).
-- Stateless by design: no Shiny session per viewer, deployable anywhere an R
-  process runs, including stdio on a laptop.
-- The only R-side host for MCP Apps: embed apps inside Shiny and shinychat via
-  `mcp_embed()` / `mcp_host_ui()`. Today this hosts **local McpApp tools
-  only**; remote-server hosting is Phase 3 work (see gaps below).
+| User need | Recommended route |
+|---|---|
+| Render an existing, stateful Shiny app with full reactivity and minimal changes | Shiny's `mcpConfigure()` path once available in a supported Shiny release |
+| Expose a typed R function that remains useful in text-only clients and gains a UI in Apps hosts | Author an `mcp_app()` with shinymcp |
+| Transform an existing app into a sessionless, model-callable capability | Use `convert_app()` as a scaffold, then review and finish the generated tools |
+| Embed a locally authored, trusted `McpApp` in Shiny or shinychat | Use `mcp_host_ui()` / `mcp_host_server()` / `mcp_embed()` |
+| Render an arbitrary remote MCP App inside Shiny | Not supported today; follow the host discovery workstream below |
+
+This routing preserves conversion's real value without marketing it as the
+default way to place an unchanged dashboard in chat.
+
+## Product boundary
+
+### Core promise
+
+shinymcp lets an R author define an explicit tool contract once:
+
+- supported typed and named result contracts provide meaningful text and,
+  where supported, structured or image content;
+- an MCP Apps host can render a card over the same tool;
+- inputs and results cross a request/response boundary rather than depending
+  on a continuously live Shiny reactive session.
+
+"Sessionless" is deliberate. Tool handlers may capture process-local state or
+use durable storage, and the HTTP server keeps protocol session metadata.
+shinymcp does not promise pure or stateless functions; it promises no
+per-viewer Shiny runtime and an explicit tool interface.
+
+### Non-goals
+
+- Reproduce Shiny's live-session tunnel or compete on zero-rewrite app
+  fidelity.
+- Claim production remote deployment from the current HTTP server, which
+  binds to loopback and has no deployment, authentication, or TLS layer.
+- Load third-party HTML in the current trusted-local Shiny iframe.
+- Keep a bespoke MCP stdio/HTTP server after a released shared backend has
+  demonstrated parity and a safe migration.
 
 ## Component disposition
 
-| Component | Files | Disposition |
+| Area | Decision | Next proof |
 |---|---|---|
-| Convert pipeline | `parse.R`, `detect.R`, `analyze.R`, `generate.R`, `convert.R` | **Keep, reframe.** Scaffolding for tool-first apps and migration aid, not the headline. `generate.R` *already emits* `ellmer::tool()` source with typed arguments and `tool_annotations()`; remaining work is `registerMcpTool()` signature compatibility, not ellmer emission. |
-| Components + binding | `components-*.R`, `bind-mcp.R`, `mcp-tool-module.R` | **Keep.** Core authoring surface for the stateless model. |
-| Typed results | `results.R` | **Keep.** The three-faced result (`value` / `model_value` / `text`) is the graceful-degradation design the shiny team flagged for adoption; offer it upstream. The shinychat integration (`as_shinychat_tool()`, `ellmer::ContentToolResult`) already exists here. |
-| Runtime | `mcp-app.R`, `as-mcp-app.R` | **Keep.** Consider promoting `ellmer::ToolDef` from optional path to canonical tool format (see open questions) — today the default runtime format is a bespoke plain list and ellmer is Suggests-gated. |
-| JS bridge (iframe side) | `js-bridge.R`, `inst/js/shinymcp-bridge.js` | **Keep.** It is the stateless model's client; not redundant with shiny's tunnel bridge. |
-| Host / embed | `host-base.R`, `host-shiny.R`, `preview.R`, `inst/js/shinymcp-host.js` | **Keep, elevate — with eyes open.** The JS transport is promise-based end to end and implements the full protocol surface (`ui/initialize`, `tools/call`, `resources/read`, display modes, host-context/theme, teardown). But tool dispatch resolves only against local R functions, R-side execution is synchronous, and the iframe is `srcdoc`-only. Remote/tunneled hosting requires Phase 3 work. Long-term home may be shinychat (#175 — our issue). |
-| Resources protocol | `mcp-resources.R` | **Upstream to mcptools (#116).** Extractable at the design level; three internal helpers (`shinymcp_error_resource`, `coerce_resource_text`, `compact_list`) must travel with it. |
-| Server transports | `serve.R` (stdio + HTTP JSON-RPC dispatch) | **Delegate to mcptools — but this is more than "duplicated dispatch."** See the delegation inventory below. Public `serve()` API stays stable. |
+| Authoring components and bindings (`components-*.R`, `bind-mcp.R`, `mcp-tool-module.R`) | **Keep as core.** They express the tool-first UI contract. | External authored-app examples and stable input/output contract tests. |
+| Typed results (`results.R`) | **Keep and tighten.** `shinymcp_result` carries display `value`, `model_value`, and text fallback, but standard MCP serving currently uses display value plus text while the full three-representation path is used by shinychat. It is a candidate implementation of the graceful degradation Shiny highlighted, not yet a shared ecosystem contract. | Define and test the result semantics across native MCP, mcptools, and shinychat before proposing an upstream abstraction. |
+| Convert pipeline (`parse.R`, `detect.R`, `analyze.R`, `generate.R`, `convert.R`) | **Keep, reframe.** It is migration and scaffolding for an intentional tool-first rewrite, not the headline route for existing dashboards. | Generated output passes the same interop fixture as hand-authored tools; docs state where human review remains required. |
+| Runtime and tool formats (`mcp-app.R`, `as-mcp-app.R`) | **Keep with an adapter boundary.** There is no canonical format today: the runtime accepts both `ellmer::ToolDef` and plain-list tools. Do not make a third-party S7 class the internal representation without evidence. | Normalize both formats into one internal contract and compare rich schemas, annotations, calls, and results. |
+| Iframe bridge (`js-bridge.R`, `inst/js/shinymcp-bridge.js`) | **Keep.** It is the client for the sessionless model and is not redundant with Shiny's live-runtime bridge. | Track the stable MCP Apps spec and run host conformance tests. |
+| Trusted local host (`host-base.R`, `host-shiny.R`, `preview.R`, `inst/js/shinymcp-host.js`) | **Keep as a secondary integration.** It implements a substantial protocol subset for local `McpApp` objects, not a general remote host. | Document the supported subset and close lifecycle gaps such as timeouts, cancellation, and pending-request rejection on disposal. |
+| General remote host | **Discovery only.** The current implementation is not a hardened boundary for third-party HTML. | Threat model, ownership decision, raw MCP client API, and an end-to-end security design before implementation. |
+| Resources (`mcp-resources.R`) | **Contribute behavior and tests upstream.** `ResourceRegistry` is useful reference code, but [mcptools#116](https://github.com/posit-dev/mcptools/issues/116) proposes a different `mcp_resource()` shape. Do not assume a class transplant. | Agree on the upstream API, then contribute generic conformance tests and implementation pieces, including required helper behavior. |
+| MCP stdio/HTTP server (`serve.R`) | **Converge reversibly.** Preserve `serve()` while introducing a backend seam and differential tests. | A released mcptools backend passes the complete contract suite before becoming the default. |
 
-### The serve() delegation, honestly scoped
+## Server convergence: what is actually required
 
-The bespoke server layer carries shinymcp behavior beyond transports. For
-`serve()` to become a thin wrapper over mcptools without regressions, mcptools
-needs (mapped to schloerke's filed issues where one exists):
+The original plan mixed current behavior that must survive delegation with
+future capabilities needed only for embedding or remote hosting. They have
+different gates.
 
-| shinymcp behavior (today) | mcptools issue |
-|---|---|
-| `resources/list` / `resources/read` (`mcp-resources.R`) | #116 |
-| `_meta.ui` on tools in `tools/list` (`mcp-app.R:333`) | #117 |
-| `outputSchema` on tools (`mcp-app.R:307`) | #103 |
-| `structuredContent` in tool results | #104 |
-| Embeddable dispatch / streamable-HTTP session mgmt (`Mcp-Session-Id` lifecycle, `serve.R:160-294`) | #119 |
-| Non-blocking stdio (`serve.R:70-114`) | #120 |
-| Async tool handlers | #118 |
-| **Per-session capability negotiation** — record client MCP Apps support at `initialize`, conditionally attach/withhold `_meta.ui` per session (`serve.R:398`, `utils.R:213`) | **not filed — we should raise it** |
-| Protocol-version negotiation 2024-11-05 … 2025-11-25 (`utils.R:155`) | presumably in scope for mcptools core; verify |
+| Capability | shinymcp today | mcptools status | Roadmap role |
+|---|---|---|---|
+| Core protocol-version negotiation through `2025-11-25` | Implemented | Implemented in 1.0.0 | Covered; verify identical behavior in contract tests |
+| `resources/list` / `resources/read`, including resource `_meta` | Implemented | [#116](https://github.com/posit-dev/mcptools/issues/116) open | Delegation blocker |
+| Tool `_meta.ui`, visibility, and legacy compatibility | Metadata implemented; server and local-host enforcement have known edge cases | [#117](https://github.com/posit-dev/mcptools/issues/117) open | Delegation blocker |
+| `outputSchema` | Implemented for declared outputs | [#103](https://github.com/posit-dev/mcptools/issues/103) open | Delegation blocker |
+| `structuredContent` and typed image/text fallback | Implemented | Base `structuredContent` exists in 1.0.0; [#104](https://github.com/posit-dev/mcptools/issues/104) remains open | Parity test; clarify remaining upstream gap |
+| Access to `capabilities.extensions["io.modelcontextprotocol/ui"]` when producing `tools/list` | Stored per shinymcp session | No filed mcptools issue | Delegation blocker; raise explicitly |
+| HTTP server-session context for capability isolation | Basic POST/DELETE `Mcp-Session-Id` subset implemented | No filed server issue; [mcptools#119](https://github.com/posit-dev/mcptools/issues/119) does not cover it | Design requirement; exact mechanism may differ |
+| Embeddable JSON-RPC dispatch | Internal dispatcher exists | [#119](https://github.com/posit-dev/mcptools/issues/119) open | Useful convergence enabler, not proof of HTTP-session parity |
+| Async tool handlers | Not implemented | [#118](https://github.com/posit-dev/mcptools/issues/118) open | Future remote/tunnel host requirement, not current `serve()` parity |
+| Non-blocking stdio | Not implemented; `serve_stdio()` blocks on `readLines()` | [#120](https://github.com/posit-dev/mcptools/issues/120) open | Framework-embedding requirement, not current standalone `serve()` parity |
 
-The unfiled item is the important one: automatic graceful degradation is a
-shinymcp strength the shiny team explicitly flagged for adoption, and it lives
-in this layer. Raising it on #115 both protects the behavior through the
-migration and contributes the design upstream.
+The
+[MCP Apps 2026-01-26 specification](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx#clientserver-capability-negotiation)
+requires the Apps extension to be negotiated. That makes client-capability
+access a real server abstraction, not a shinymcp convenience.
 
-### What we bring in from shiny
+The parity suite must cover more than successful requests:
 
-- **`registerMcpTool()` / ellmer alignment** — make the generator's emitted
-  `ellmer::tool()` definitions drop-in registrable in a `mcpConfigure()`'d
-  app, and accept the same objects at runtime, so authors can mix models.
-- **Deployment discovery** — their deployment-record / Quarto-metadata URL
-  logic, if/when shinymcp targets Connect and shinyapps.io.
-- **Protocol conventions** — `_meta.ui.csp.*`, appId namespacing, and display
-  handling, so apps from either stack behave identically in hosts (including
-  ours). shinymcp already targets MCP Apps spec `2026-01-26` and core protocol
-  through `2025-11-25`; keep tracking theirs.
+- Apps-capable and text-only clients, including app-only and model-only tool
+  visibility enforcement;
+- nested `_meta.ui`, the deprecated flat resource key, CSP, permissions, and
+  extra resources;
+- input and output schemas, annotations, structured content, typed images,
+  meaningful text fallback, and error mapping;
+- stdio and HTTP behavior, protocol versions, session isolation, session
+  termination and eviction policy, notifications, and teardown;
+- the current compatibility policy for clients that skip `initialize`.
 
-### What we offer upstream
+There are visibility correctness issues to fix regardless of backend: the
+current non-Apps `tools/list` path can expose app-only tools after stripping
+nested visibility metadata, while the bundled local bridge and host can call
+model-only tools. The contract suite must specify and test both directions
+before the package claims complete graceful degradation.
 
-- `ResourceRegistry` + resource handlers → mcptools #116 (with the three
-  helper functions inlined).
-- Streamable-HTTP session management and dispatch experience → #119/#120.
-- Per-session capability negotiation / graceful degradation → raise on #115;
-  the three-faced `mcp_result_*()` design → shiny (their tools return "the app
-  is now displayed" to non-Apps hosts today).
-- Automatic input-state → `ui/update-model-context` reporting → shiny (theirs
-  is opt-in via `mcpUpdateModelContext()`).
-- Host implementation → shinychat #175, where we already made the case.
+## Workstreams
 
-## Phases
+These tracks run in parallel. Product work must not wait for upstream
+maintainers, and upstream uncertainty must not force remote-host scope.
 
-**Phase 0 — Engage on the open threads (now; #4409 is still a draft).**
-Comment on mcptools #115: shinymcp has working implementations for #116
-(resources), #119 (HTTP session dispatch), and field experience on #104/#103;
-raise the missing capability-negotiation item. Respond to
-`mcp/comparison-shinymcp.md` on rstudio/shiny agreeing with the convergence
-framing. Nudge shinychat #175 with an offer of the host implementation.
-Exit: maintainers aligned on where each piece lands.
+### Track A — Positioning and tool interoperability
 
-**Phase 1 — Upstream the plumbing.**
-PR the resources module against mcptools #116 (inline the three helpers).
-Contribute to or review the #117/#119/#120 work. Exit: mcptools release
-covering at least #116/#117/#119.
+Start now.
 
-**Phase 2 — Delegate, behind a stable API.**
-Rebuild `serve()` on mcptools; delete `serve_stdio()`/`serve_http()` and the
-bespoke dispatch. Gate: the delegation inventory above is covered upstream
-(especially capability negotiation) — if an item lags, keep only that shim
-locally and say so in NEWS. Move mcptools from Suggests toward a required
-dependency for serving. Exit: no transport code in shinymcp; tests green
-against the mcptools-backed server, including a text-only-client degradation
-test.
+1. Update the conversion-led metadata and routing:
+   - `DESCRIPTION`, `index.md`, and the README hero;
+   - `_pkgdown.yml` copy and grouping where needed;
+   - conversion and migration vignettes, plus a "shinymcp or Shiny?" guide;
+   - package/function documentation, `CLAUDE.md`, and the shipped conversion
+     skill.
+2. Keep the existing authored-tool-first quick start and make conversion a
+   clearly labeled migration path. Do not describe all current docs as
+   conversion-first; their information architecture is mixed.
+3. Build one pinned interop fixture that:
+   - creates an `ellmer::ToolDef` with primitive and rich argument schemas;
+   - serves it through shinymcp;
+   - registers the same object with Shiny's `registerMcpTool()`;
+   - compares `tools/list`, annotations, calls, structured results, and text
+     fallback.
+4. Fix or explicitly gate the known ToolDef gaps before calling it canonical:
+   - `mcp_tools()` adds UI metadata only to plain-list tools;
+   - the generated `server.R` uses list-style `tool$fun` access even though
+     generated tools are S7 ToolDefs;
+   - shinymcp's manual ToolDef-to-schema conversion loses richer ellmer schema
+     details.
+5. Short-term dependency policy:
+   - keep accepting both ToolDef and plain-list inputs;
+   - make ToolDef the preferred public authoring format where ellmer is
+     available;
+   - set the optional interop floor to ellmer >= 0.4.0;
+   - move ellmer to `Imports` only when a public default path requires it
+     unconditionally, not merely because Shiny accepts ToolDefs.
 
-**Phase 3 — Interoperate with shiny; make the host real for remote apps.**
-Three workstreams, ordered by effort:
+**Exit:** users can choose the right product from the docs in under a minute,
+and the same representative ToolDef has evidence-backed behavior in both
+runtimes. Until
+[rstudio/shiny#4409](https://github.com/rstudio/shiny/pull/4409) reaches
+`main`, the Shiny side is an opt-in, commit-pinned integration test rather
+than a stable CI dependency.
 
-1. *Tool interop (small):* verify/adjust the generator's emitted
-   `ellmer::tool()` defs against `registerMcpTool()` (shiny requires ellmer >=
-   0.4.0); add a round-trip test loading a converted app's tools in a
-   `mcpConfigure()`'d shiny app.
-2. *Remote hosting (medium):* extend the host to fetch `ui://` resources and
-   proxy `tools/call` to a remote MCP server — the JS side is already
-   promise-based and has an unused `appSrc` hook (`host.js:575`); the R side
-   needs an MCP client and async execution (promises/ExtendedTask —
-   mcptools #118 and ellmer's client work are relevant).
-3. *Tunnel hosting (stretch, gated on 2):* verify `mcp_embed()` against a
-   shiny-tunneled app. **Known-impossible today**: tunnel tools
-   (`_shiny_send`/`_shiny_receive`) would hit "Tool not found" in the local
-   dispatcher, and a long-polled `_shiny_receive` would block the
-   single-threaded R session. Requires remote proxying *and* async dispatch.
+### Track B — mcptools convergence
 
-Exit: (1) round-trip test passes; (2) a first-party or third-party remote MCP
-App renders inside a shinymcp host; (3) explicitly re-evaluated, not assumed.
+Engage upstream without making local progress contingent on a response.
 
-**Phase 4 — Reposition the package surface.**
-None of this has landed yet; today's docs are consistently convert-first and
-must all move together:
+1. Comment on
+   [mcptools#115](https://github.com/posit-dev/mcptools/issues/115) with:
+   - the parity matrix above;
+   - the missing client-extension and server-session requirements;
+   - an offer of resource and differential conformance tests.
+2. Ask whether the proposed resource API in
+   [mcptools#116](https://github.com/posit-dev/mcptools/issues/116) is accepted
+   before opening an implementation PR. Adapt shinymcp's behavior to that API
+   rather than upstreaming package-specific classes wholesale.
+3. Introduce an internal server-backend boundary while keeping `serve()` stable.
+4. Add mcptools as an opt-in backend and run native and mcptools backends
+   through the same contract suite.
+5. Make mcptools the default only after a released version passes parity.
+   Retain the native backend for one documented deprecation/rollback interval.
+6. Remove the bespoke MCP stdio/basic MCP-over-HTTP server only after the
+   default has survived that interval. Preview and Shiny-host transports remain
+   because they solve different jobs.
 
-- `DESCRIPTION` Title ("Convert Shiny Apps to MCP Apps") and Description →
-  tools-first framing.
-- README hero ("dashboard inside Claude Desktop", "Automatic conversion"
-  section) → tools-first + hosting; conversion demoted to a migration section.
-- `_pkgdown.yml` home text and reference grouping (Conversion Pipeline is
-  currently a top-level group) → reorder around authoring, results, hosting.
-- Vignettes: add "shinymcp vs. Shiny's built-in MCP support" mirroring and
-  cross-linking their comparison doc; reframe `automatic-conversion.Rmd` /
-  `converting-shiny-apps.Rmd` / `choose-the-right-migration-path.Rmd` to route
-  dashboard-in-chat readers to shiny.
+**Fallback:** if upstream has not accepted the required abstractions by the
+review date, keep the native backend, continue protocol conformance fixes, and
+revisit. Lack of upstream movement is not a blocker for shinymcp users.
 
-Exit: a user landing on either project's docs is routed correctly in under a
-minute.
+**Exit:** the public `serve()` contract is unchanged, a released shared backend
+passes the parity suite, and rollback has been exercised before native server
+removal.
 
-## What we explicitly stop doing
+### Track C — host ownership and remote-host discovery
 
-- Marketing conversion as the path to "your dashboard in chat."
-- Building session-like or tunnel-like features; anything stateful belongs to
-  shiny's model.
-- Maintaining bespoke transports once mcptools covers the delegation
-  inventory.
+Keep the existing trusted-local host useful while deciding whether a general
+host belongs here at all.
 
-## Success and sunset metrics
+1. Update
+   [shinychat#175](https://github.com/posit-dev/shinychat/issues/175) with a
+   runnable local-host demonstration and ask explicitly whether shinychat
+   maintainers want to own remote MCP App hosting.
+2. Document the current supported subset and limitations. The host handles
+   initialization, tool/resource calls, context and theme updates, display
+   changes, resize, ping, disposal, and teardown requests, but it does not
+   implement every MCP Apps method and advertises empty host capabilities.
+3. Before any third-party remote HTML is loaded, write and review a threat
+   model covering:
+   - origin isolation and the current
+     `sandbox="allow-scripts allow-same-origin"` trusted-content assumption;
+   - CSP and permission enforcement, navigation/open-link policy, and resource
+     limits;
+   - credentials, OAuth, secret isolation, tool allowlists, and per-user MCP
+     sessions;
+   - timeouts, cancellation, teardown, and rejection of pending requests.
+4. Define the missing raw MCP client surface. mcptools' public client currently
+   converts `tools/list` into ellmer tools and does not expose the raw
+   `_meta.ui` or a `resources/read` client API. A host needs raw tool metadata,
+   resource reads, generic calls, session lifecycle, and cancellation.
+5. Produce an architecture decision record choosing one of:
+   - contribute the general host to shinychat;
+   - implement a hardened host in shinymcp with a named maintainer and
+     demonstrated demand;
+   - keep trusted-local embedding only and defer remote support.
 
-Watch *what* users build, not download counts. Success: people authoring
-tool-first apps and embedding MCP Apps in Shiny. Sunset trigger: usage is
-dominated by dashboard conversion (that audience belongs upstream), or Posit
-ships first-party stateless tools + hosting — in which case, upstream the
-remainder and archive gracefully. If shinychat adopts the host code (#175),
-that is success, not sunset: the host graduating upstream is the plan working.
+Only after that decision should Shiny-tunneled hosting be reconsidered. It
+requires the remote proxy plus genuinely async `_shiny_receive`; it is not a
+committed stretch goal and should not pull shinymcp into building a second
+live-session architecture.
 
-## Open questions
+**Exit:** an ownership and security decision, not necessarily code.
 
-- **Canonical tool format.** Today the runtime default is a bespoke plain
-  list; `ellmer::ToolDef` is an optional Suggests-gated path, while the
-  generator, shinychat integration, and shiny's `registerMcpTool()` are all
-  ellmer-based. Promote ToolDef to the canonical format (ellmer to Imports)?
-  Leaning yes at the next breaking-change window; it collapses the dual
-  dispatch in `mcp-app.R` and makes interop free.
-- **Where the host lands.** shinychat #175 is our issue and the natural
-  destination. Decide after Phase 3 workstream 2 whether shinymcp keeps a
-  host or becomes shinychat's dependency for it.
-- **`mcpConfigure()` API stability.** Phase 3 targets an experimental surface
-  (#4409 unmerged); track breaking changes rather than pinning.
-- **mcptools timeline.** #115–#120 are days old with no maintainer response
-  yet; Phase 2 timing depends on their roadmap (a 1.0.0 milestone, #112, is
-  in flight).
+## Immediate upstream engagement
 
-## Appendix: corrections from the codebase review (July 2026)
+The first external actions are small and evidence-led:
 
-Findings that changed this document from its first draft:
+1. Comment on [rstudio/shiny#4409](https://github.com/rstudio/shiny/pull/4409)
+   agreeing with the complementary-product framing, correcting any stale
+   comparison points, and offering the interop fixture.
+2. Ask on [posit-dev/mcptools#115](https://github.com/posit-dev/mcptools/issues/115)
+   whether the resource/dispatch split is accepted and raise capability plus
+   server-session context.
+3. Update [posit-dev/shinychat#175](https://github.com/posit-dev/shinychat/issues/175)
+   with the local implementation, its trust boundary, and an explicit ownership
+   question.
 
-1. `generate.R` already emits `ellmer::tool()` source (typed arguments,
-   `tool_annotations()`); the first draft claimed this as new work.
-2. ellmer is optional (Suggests), and the default runtime tool format is a
-   plain list — "both projects use ellmer" was overstated; hence the canonical
-   tool format question.
-3. `mcp-resources.R` is extractable but depends on three internal helpers
-   that must move with it.
-4. The serve() → mcptools delegation is materially larger than "duplicated
-   dispatch": per-session capability negotiation, `_meta.ui`, `outputSchema`,
-   protocol-version negotiation, and HTTP session management all live in that
-   layer; one required capability (session-aware `_meta` withholding) has no
-   filed mcptools issue yet.
-5. The host cannot host remote or shiny-tunneled apps today: `srcdoc`-only
-   embedding, local-function-only tool dispatch (`host-base.R:136`), and
-   synchronous R execution. The JS layer is async-ready; the R layer is not.
-6. Upstream: the mcptools shared core was already scoped by schloerke
-   (#115–#120, July 13); shinychat #175 (our own issue, February) is the
-   host's upstream path; shiny #4409 remains an unreviewed draft.
+Exit when the comments are posted and the response—or lack of response—is
+recorded at the review date. "Maintainers aligned" is not a controllable
+milestone.
+
+## Evidence, review, and sunset
+
+At each review, record linked examples or a zero count for:
+
+- external repositories or known applications that author `mcp_app()` directly;
+- tools used from both Apps-capable and text-only clients;
+- converted apps still maintained after their initial scaffold;
+- independent trusted-local host adopters and remote-host requests;
+- contract-suite failures and protocol-maintenance changes by backend.
+
+Use that evidence for explicit continue/freeze decisions:
+
+- remote-host implementation remains frozen without an approved threat model,
+  a named long-term owner, and two independent prospective adopters with
+  concrete use cases;
+- conversion remains supported but receives new feature investment only when
+  at least one maintained converted app is observed across two consecutive
+  reviews;
+- native-server removal remains governed by released-backend parity and the
+  rollback interval, not adoption counts.
+
+Apply sunset decisions per component:
+
+- remove the native server only after released-backend parity, migration
+  documentation, and a rollback interval;
+- graduate host code upstream when a maintained upstream accepts ownership;
+- deprecate conversion only if its tool-first migration job has a maintained
+  replacement and no demonstrated users;
+- archive the package only when all differentiated contracts have maintained
+  homes.
+
+At each review date, record upstream state, evidence from users, contract-suite
+status, and the next reversible decision. Avoid letting transient issue status
+or hard-coded source line numbers become permanent strategy.
