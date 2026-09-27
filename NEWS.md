@@ -2,19 +2,8 @@
 
 This version reworks shinymcp around serving Shiny apps as they are, with
 their server functions running live in R, and rewrites the protocol layer,
-the page's JavaScript, the hosts, and the documentation.
-
-## Changes in behavior
-
-* `as_mcp_app()` runs a Shiny app's server function, one session per view
-  of the app, instead of building tools from its reactive graph. Given
-  `tools`, it uses them as before.
-* `serve()` and `preview_app()` serve a Shiny app object or an app
-  directory live. A path used to be converted with `convert_app()` first.
-* `convert_app()` writes `ui.R`, `tools.R`, and `app.R`; it no longer
-  writes `server.R`.
-* Model-facing text no longer says a plot or widget is "shown in the app":
-  a client may not show it.
+the page's JavaScript, the hosts, and the documentation. Code written for
+earlier versions needs changes.
 
 ## Serving Shiny apps
 
@@ -70,9 +59,9 @@ the page's JavaScript, the hosts, and the documentation.
 * Tool arguments from the model are checked against declared schemas;
   a missing or mistyped argument goes back to the model as a tool error.
 * `mcp_tool_result()` sets a result's text and structured data.
-* A tool that takes a button's id runs when the button is pressed, and no
-  longer whenever its other inputs change. The page doesn't run tools
-  annotated as changing something to fill in outputs.
+* A tool that takes a button's id runs when the button is pressed, not
+  whenever its other inputs change. The page doesn't run tools annotated
+  as changing something to fill in outputs.
 * `mcp_submit_button()` places the apply button for
   `mcp_app(trigger = "submit")`.
 * `mcp_app(www = )` writes a folder of scripts, stylesheets, and images
@@ -104,11 +93,12 @@ the page's JavaScript, the hosts, and the documentation.
 
 ## Rewriting apps as tools
 
-* `convert_app()`'s draft tools take typed arguments with the app's
-  defaults, carry the reactive expressions they use, and return their
-  outputs by id, so the draft runs straight away.
-* `mcp_tool_module()` no longer needs a module server when `handler` is
-  given.
+* `convert_app()` writes `ui.R`, `tools.R`, and `app.R`. Its draft tools
+  take typed arguments with the app's defaults, carry the reactive
+  expressions they use, and return their outputs by id, so the draft runs
+  straight away.
+* `mcp_tool_module()` serves a module's UI with its server function, or
+  with a `handler` function in its place.
 
 ## Documentation
 

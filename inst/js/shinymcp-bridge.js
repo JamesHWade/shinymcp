@@ -2212,8 +2212,8 @@
     each(document.querySelectorAll(".shiny-plot-output[id]"), function (el) { observer.observe(el); });
   }
 
-  // Results from older servers or hosts that drop _meta: strings keyed by
-  // output id.
+  // Hosts that drop _meta leave structured content: for a tool's result,
+  // values keyed by output id.
   function renderFromStructured(structured) {
     var outputs = {};
     each(keys(structured), function (id) {

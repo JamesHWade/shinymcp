@@ -66,11 +66,9 @@
 #' @param description What the app does, for the model. By default shinymcp
 #'   writes one from the inputs and outputs; a sentence about what the app
 #'   is *for* helps the model decide when to open it.
-#' @param tools Extra tools for the model, such as [ellmer::tool()] objects.
-#'   Passing `tools` without `live = TRUE` gives the older behavior: the
-#'   app's server function doesn't run, and your tools fill the outputs.
-#' @param live Whether to run the app's server function. `TRUE` unless
-#'   `tools` is given.
+#' @param tools More tools for the model, such as [ellmer::tool()] objects,
+#'   served next to the one that opens the app: a computation the model
+#'   should be able to run without opening it, say.
 #' @param tool_name Name of the tool that opens the app. Defaults to `name`
 #'   with anything other than letters, digits, `-` and `_` replaced.
 #' @param selective Whether only inputs and outputs marked with [bindMcp()]
@@ -120,7 +118,6 @@ as_mcp_app.shiny.appobj <- function(
   title = NULL,
   description = NULL,
   tools = NULL,
-  live = is.null(tools),
   tool_name = NULL,
   selective = NULL,
   version = "0.1.0",
@@ -149,13 +146,6 @@ as_mcp_app.shiny.appobj <- function(
       dir.exists(file.path(app_dir, "www"))
   ) {
     dots$www <- file.path(app_dir, "www")
-  }
-
-  if (!isTRUE(live)) {
-    return(do.call(
-      explicit_tools_app,
-      c(list(ui, tools, name, title, description, selective, version), dots)
-    ))
   }
 
   runtime <- ShinyRuntime$new(
@@ -326,46 +316,6 @@ start_in_dir <- function(app, dir) {
   app
 }
 
-#' The pre-runtime behaviour: explicit tools fill the Shiny UI's outputs
-#' @noRd
-explicit_tools_app <- function(
-  ui,
-  tools,
-  name,
-  title,
-  description,
-  selective,
-  version,
-  ...
-) {
-  if (length(tools) == 0) {
-    shinymcp_abort(
-      c(
-        "An app with {.code live = FALSE} needs {.arg tools}.",
-        "i" = "Pass the tools its UI calls, or leave {.arg live} as {.code TRUE} to run the Shiny server function."
-      ),
-      class = "shinymcp_error_validation"
-    )
-  }
-  if (is.null(selective)) {
-    selective <- has_any_mcp_annotations(ui)
-  }
-  inputs <- extract_inputs_from_tags(ui, selective = selective)
-  # Explicit tools define the interaction contract, but every output still
-  # needs its annotation so returned values can render.
-  outputs <- extract_outputs_from_tags(ui, selective = FALSE)
-  ui <- annotate_module_ui(ui, inputs, outputs)
-  mcp_app(
-    ui = ui,
-    tools = tools,
-    name = name,
-    title = title,
-    description = description,
-    version = version,
-    ...
-  )
-}
-
 # ---- Shiny app object helpers ----
 
 #' Extract the UI from a shiny.appobj
@@ -453,22 +403,4 @@ ui_from_http_handler <- function(app) {
     NULL
   }
   search(app$httpHandler, 0)
-}
-
-#' Check if any tag in the tree has MCP annotations
-#' @noRd
-has_any_mcp_annotations <- function(ui) {
-  found <- FALSE
-  walk_tag_tree(ui, function(tag) {
-    if (found) {
-      return()
-    }
-    if (
-      !is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-input")) ||
-        !is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-output"))
-    ) {
-      found <<- TRUE
-    }
-  })
-  found
 }

@@ -16,7 +16,6 @@ as_mcp_app(x, ...)
   title = NULL,
   description = NULL,
   tools = NULL,
-  live = is.null(tools),
   tool_name = NULL,
   selective = NULL,
   version = "0.1.0",
@@ -48,12 +47,9 @@ name. Defaults to the directory name for a path, otherwise
 writes one from the inputs and outputs; a sentence about what the app
 is \emph{for} helps the model decide when to open it.}
 
-\item{tools}{Extra tools for the model, such as \code{\link[ellmer:tool]{ellmer::tool()}} objects.
-Passing \code{tools} without \code{live = TRUE} gives the older behavior: the
-app's server function doesn't run, and your tools fill the outputs.}
-
-\item{live}{Whether to run the app's server function. \code{TRUE} unless
-\code{tools} is given.}
+\item{tools}{More tools for the model, such as \code{\link[ellmer:tool]{ellmer::tool()}} objects,
+served next to the one that opens the app: a computation the model
+should be able to run without opening it, say.}
 
 \item{tool_name}{Name of the tool that opens the app. Defaults to \code{name}
 with anything other than letters, digits, \code{-} and \verb{_} replaced.}

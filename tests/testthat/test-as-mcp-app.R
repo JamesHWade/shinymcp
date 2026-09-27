@@ -178,94 +178,11 @@ test_that("extra tools sit next to the runtime's tools", {
   app <- as_mcp_app(
     shiny::shinyApp(cars_ui(), cars_server),
     name = "cars",
-    tools = list(helper),
-    live = TRUE
+    tools = list(helper)
   )
   expect_s3_class(app$runtime(), "ShinyRuntime")
   expect_named(app$tools(), c("cars", "cars_view", "cylinder_counts"))
   expect_identical(app$call_tool("cylinder_counts")[["4"]], 11L)
-})
-
-test_that("tools without live = TRUE give the explicit-tools app", {
-  skip_if_not_installed("shiny")
-  ui <- shiny::fluidPage(
-    shiny::selectInput("x", "X:", c("a", "b")),
-    shiny::numericInput("n", "N:", 10),
-    shiny::textOutput("result")
-  )
-  server_ran <- FALSE
-  server <- function(input, output, session) {
-    server_ran <<- TRUE
-    output$result <- shiny::renderText(input$x)
-  }
-  tool <- list(
-    name = "my_tool",
-    description = "A custom tool",
-    fun = function(x = "a") list(result = paste("chose", x)),
-    inputSchema = list(
-      type = "object",
-      properties = list(x = list(type = "string"))
-    )
-  )
-  app <- as_mcp_app(
-    shiny::shinyApp(ui, server),
-    name = "explicit",
-    tools = list(tool)
-  )
-
-  expect_null(app$runtime())
-  expect_named(app$tools(), "my_tool")
-  expect_identical(
-    app$call_tool("my_tool", list(x = "b")),
-    list(result = "chose b")
-  )
-  expect_false(server_ran)
-  html <- app$html_resource()
-  expect_match(html, 'data-shinymcp-input="x"', fixed = TRUE)
-  expect_match(html, 'data-shinymcp-input="n"', fixed = TRUE)
-  expect_match(html, 'data-shinymcp-output="result"', fixed = TRUE)
-  expect_match(html, '"mode":"tools"', fixed = TRUE)
-})
-
-test_that("explicit tools respect marked inputs but still annotate every output", {
-  skip_if_not_installed("shiny")
-  ui <- shiny::fluidPage(
-    shiny::selectInput("x", "X:", c("a", "b")) |> bindMcp(),
-    shiny::numericInput("n", "N:", 10),
-    shiny::textOutput("result")
-  )
-  tool <- list(name = "my_tool", description = "d", fun = function(x = "a") {
-    list(result = x)
-  })
-  app <- as_mcp_app(
-    shiny::shinyApp(ui, function(input, output, session) NULL),
-    name = "explicit",
-    tools = list(tool)
-  )
-  html <- app$html_resource()
-  expect_match(html, 'data-shinymcp-input="x"', fixed = TRUE)
-  expect_no_match(html, 'data-shinymcp-input="n"', fixed = TRUE)
-  expect_match(html, 'data-shinymcp-output="result"', fixed = TRUE)
-
-  unmarked <- as_mcp_app(
-    shiny::shinyApp(ui, function(input, output, session) NULL),
-    name = "explicit",
-    tools = list(tool),
-    selective = FALSE
-  )
-  expect_match(
-    unmarked$html_resource(),
-    'data-shinymcp-input="n"',
-    fixed = TRUE
-  )
-})
-
-test_that("live = FALSE without tools is refused", {
-  skip_if_not_installed("shiny")
-  expect_error(
-    as_mcp_app(shiny::shinyApp(cars_ui(), cars_server), live = FALSE),
-    class = "shinymcp_error_validation"
-  )
 })
 
 # ---- Selective exposure (bindMcp()) ----
@@ -737,13 +654,4 @@ test_that("as_mcp_apps(split = 'manual') gives one card for the whole app", {
 
 test_that("as_mcp_apps() refuses other objects", {
   expect_error(as_mcp_apps(42), "must be a Shiny app path")
-})
-
-test_that("live = FALSE without tools says what's missing", {
-  skip_if_not_installed("shiny")
-  expect_error(
-    as_mcp_app(shiny::shinyApp(cars_ui(), cars_server), live = FALSE),
-    "needs `tools`",
-    class = "shinymcp_error_validation"
-  )
 })
