@@ -165,8 +165,9 @@ in place of Shiny's. It draws Shiny's inputs itself, and shows every kind of
 output: text, tables, plots and images, `renderUI()`, and htmlwidgets such
 as plotly, DT, reactable, and leaflet. Notifications, modal dialogs,
 `insertUI()`, tab changes (`updateTabsetPanel()`, `insertTab()`,
-`hideTab()`), downloads, and file uploads work, and `invalidateLater()` and
-`reactivePoll()` keep running while the app is open. Clicks, double clicks,
+`hideTab()`), downloads, and file uploads work. `invalidateLater()` and
+`reactivePoll()` keep running while the app is open, and an
+`ExtendedTask`'s result appears when the task finishes. Clicks, double clicks,
 hovers, and brushes on a plot (`plotOutput(click =, brush =)`) send what
 they send in a browser, so `nearPoints()` and `brushedPoints()` work.
 Select inputs are the browser's own; one whose choices stay on the server

@@ -2001,6 +2001,50 @@ test_that("plots carry their coordmap, for clicks and brushes", {
   expect_identical(nrow(seen$near), 1L)
 })
 
+test_that("a message's `values` isn't taken for a new `value`", {
+  skip_if_not_installed("shiny")
+  session <- shiny::MockShinySession$new()
+  session$setInputs(acc = "A")
+  # bslib's accordion_panel_open() sends `values`; `$value` would match it.
+  msg <- list(id = "acc", message = list(method = "open", values = list("B")))
+  expect_null(implied_input_value(msg, NULL, session))
+})
+
+test_that("an ExtendedTask's result arrives on a later tick", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  skip_if_not_installed("promises")
+  skip_if_not(
+    exists("ExtendedTask", envir = asNamespace("shiny")),
+    "shiny without ExtendedTask"
+  )
+  ui <- shiny::fluidPage(
+    shiny::actionButton("go", "Go"),
+    shiny::textOutput("result")
+  )
+  server <- function(input, output, session) {
+    task <- shiny::ExtendedTask$new(function() {
+      promises::promise(function(resolve, reject) {
+        later::later(function() resolve("done"), 0.2)
+      })
+    })
+    shiny::observeEvent(input$go, task$invoke())
+    output$result <- shiny::renderText(task$result())
+  }
+  app <- rt_app(ui, server, name = "task")
+  view <- rt_meta(rt_open(app))
+  res <- rt_update(app, view, list(go = 1), changed = "go")
+  meta <- rt_meta(res)
+  # While the task runs, the output is busy and the page is asked back.
+  expect_identical(meta$outputs$result$kind, "progress")
+  expect_true(meta$nextTick <= 500)
+
+  Sys.sleep(0.4)
+  res <- rt_update(app, meta, tick = TRUE)
+  expect_identical(rt_meta(res)$outputs$result$value, "done")
+  expect_null(rt_meta(res)$nextTick)
+})
+
 test_that("values set from JavaScript arrive as Shiny delivers them", {
   skip_if_not_installed("shiny")
   seen <- new.env()

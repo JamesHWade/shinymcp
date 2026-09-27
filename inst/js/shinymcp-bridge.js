@@ -65,6 +65,19 @@
     return JSON.stringify(a) === JSON.stringify(b);
   }
 
+  // The same input value after a trip through R, which turns a one-element
+  // array into a scalar and may turn a number into a string.
+  function sameInputValue(a, b) {
+    function scalar(x) {
+      return Array.isArray(x) && x.length === 1 ? x[0] : x;
+    }
+    a = scalar(a);
+    b = scalar(b);
+    if (sameValue(a, b)) return true;
+    return (typeof a === "number" || typeof a === "string") &&
+      (typeof b === "number" || typeof b === "string") && String(a) === String(b);
+  }
+
   function logWarn() {
     if (window.console && console.warn) {
       var args = ["[shinymcp]"].concat(Array.prototype.slice.call(arguments));
@@ -1190,17 +1203,22 @@
       // Shiny's update functions send `value`, some packages' `selected`.
       // Fall back to setValue() when that didn't take.
       set: function (v) {
-        if (sameValue(readBinding(binding, el), v)) return;
-        try {
-          binding.receiveMessage(el, { value: v, selected: v });
-        } catch (e) {
+        if (sameInputValue(readBinding(binding, el), v)) return;
+        function failed(e) {
           logWarn("input binding " + id + " couldn't take a value", e);
         }
-        if (!sameValue(readBinding(binding, el), v) && typeof binding.setValue === "function") {
+        try {
+          var done = binding.receiveMessage(el, { value: v, selected: v });
+          // bslib's bindings answer with a promise.
+          if (done && typeof done.then === "function") done.then(null, failed);
+        } catch (e) {
+          failed(e);
+        }
+        if (!sameInputValue(readBinding(binding, el), v) && typeof binding.setValue === "function") {
           try {
             binding.setValue(el, v);
           } catch (e) {
-            logWarn("input binding " + id + " couldn't take a value", e);
+            failed(e);
           }
         }
       },
@@ -1231,6 +1249,9 @@
       if (el.__shinymcpBound) return;
       el.__shinymcpBound = true;
       el.classList.add("shiny-bound-output");
+      // Shiny keeps the output's binding here; bslib's cards and sidebars
+      // read it when they resize. The page resizes plots itself.
+      if (window.jQuery) window.jQuery(el).data("shinyOutputBinding", { binding: {}, onResize: function () {} });
       shinyEvent(el, "shiny:bound", { binding: null, bindingType: "output" });
     });
   }
@@ -2245,7 +2266,7 @@
   // Outputs a server function defines without a render function
   // (`output$ready <- reactive(TRUE)`) carry it as `raw`.
   function recordOutputValue(id, payload) {
-    if (payload.kind === "keep") return;
+    if (payload.kind === "keep" || payload.kind === "progress") return;
     if (payload.raw !== undefined) {
       state.outputValues[id] = payload.raw;
     } else if (payload.kind === "clear" || payload.kind === "error") {
@@ -2265,7 +2286,7 @@
       shinyEvent(el, "shiny:error", { name: id, error: { message: String(e && e.message ? e.message : e) } });
       return;
     }
-    if (payload.kind === "keep") return;
+    if (payload.kind === "keep" || payload.kind === "progress") return;
     if (payload.kind === "error") {
       shinyEvent(el, "shiny:error", { name: id, error: { message: payload.value || "" } });
     } else {
@@ -2285,6 +2306,14 @@
   function renderInto(el, payload, id) {
     var kind = payload.kind || "text";
     if (kind === "keep") return;
+    // Waiting on a task in the session: keep what's shown, look busy.
+    if (kind === "progress") {
+      if (!hasClass(el, "recalculating")) {
+        el.classList.add("recalculating");
+        shinyEvent(el, "shiny:recalculating", { name: id });
+      }
+      return;
+    }
     var waiting = loadDeps(payload.deps);
     if (waiting) {
       el.classList.add("recalculating");

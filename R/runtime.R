@@ -624,11 +624,11 @@ ShinyRuntime <- R6::R6Class(
       changed <- inst$bounds[[public_id]] %||% list()
       # updateSelectInput() and friends replace the choices.
       if (
-        !is.null(message$options) &&
+        !is.null(message[["options"]]) &&
           spec$kind %in%
             c("select", "select-multiple", "radio", "checkbox-group")
       ) {
-        changed$choices <- as.character(option_values(message$options))
+        changed$choices <- as.character(option_values(message[["options"]]))
         inst$bounds[[public_id]] <- changed
         return(invisible())
       }
@@ -762,6 +762,11 @@ ShinyRuntime <- R6::R6Class(
     },
 
     settle = function(inst) {
+      # Callbacks that are due, such as a finished task's (ExtendedTask,
+      # promises), run first, so the flush below sees their results.
+      if (rlang::is_installed("later")) {
+        later::run_now(0)
+      }
       now <- as.numeric(Sys.time())
       elapsed <- max(0, (now - inst$clock) * 1000)
       inst$clock <- now
@@ -845,6 +850,11 @@ ShinyRuntime <- R6::R6Class(
       for (id in names(collected)) {
         inst$digests[[id]] <- collected[[id]]$digest
       }
+      inst$in_progress <- any(vapply(
+        collected,
+        function(o) isTRUE(o$progress),
+        logical(1)
+      ))
 
       inst$revision <- (inst$revision %||% 0L) + 1L
       payloads <- lapply(collected[changed], function(o) o$payload)
@@ -1165,6 +1175,11 @@ read_upload <- function(value) {
 #' @noRd
 next_tick <- function(inst) {
   due <- tryCatch(inst$session$nextTimer(), error = function(e) Inf)
+  # An output waits on a task (ExtendedTask) that finishes in the
+  # background: look again soon.
+  if (isTRUE(inst$in_progress)) {
+    due <- min(due, 500)
+  }
   if (!is.finite(due) || due > 3600 * 1000) {
     return(NULL)
   }
@@ -1450,11 +1465,11 @@ runtime_html_message <- function(message) {
   if (!is.list(message)) {
     return(message)
   }
-  if (!is.null(message$html)) {
-    message$html <- as.character(message$html)
+  if (!is.null(message[["html"]])) {
+    message[["html"]] <- as.character(message[["html"]])
   }
-  if (length(message$deps)) {
-    message$deps <- payload_dependencies(message$deps)
+  if (length(message[["deps"]])) {
+    message[["deps"]] <- payload_dependencies(message[["deps"]])
   }
   message
 }
@@ -1900,6 +1915,16 @@ session_error_message <- function(e) {
 #' @noRd
 runtime_error_entry <- function(e) {
   message <- cli::ansi_strip(conditionMessage(e))
+  # ExtendedTask$result() while the task runs: the output keeps what it
+  # shows, looks busy, and the page comes back for the result.
+  if (inherits(e, "shiny.output.progress")) {
+    return(list(
+      payload = list(kind = "progress"),
+      model = NULL,
+      text = "",
+      progress = TRUE
+    ))
+  }
   if (inherits(e, "shiny.output.cancel")) {
     return(list(payload = list(kind = "keep"), model = NULL, text = ""))
   }
@@ -1979,8 +2004,10 @@ implied_input_value <- function(msg, spec, session) {
   current <- shiny::isolate(session$input[[id]])
   kind <- spec$kind %||% guess_kind_from_message(message, current)
 
-  if (!is.null(message$value)) {
-    value <- message$value
+  # `[[` and not `$`: bslib's accordion sends `values`, which `$value`
+  # would match.
+  if (!is.null(message[["value"]])) {
+    value <- message[["value"]]
     # updateDateRangeInput() sends only the ends it changes.
     if (is.list(value) && any(c("start", "end") %in% names(value))) {
       now <- if (length(current) == 2) as.character(current) else c(NA, NA)
@@ -1993,8 +2020,8 @@ implied_input_value <- function(msg, spec, session) {
     )
     return(if (identical(new, current)) NULL else list(value = new))
   }
-  if (!is.null(message$options) && kind %in% c("select", "radio")) {
-    values <- option_values(message$options)
+  if (!is.null(message[["options"]]) && kind %in% c("select", "radio")) {
+    values <- option_values(message[["options"]])
     selected <- attr(values, "selected")
     new <- if (length(selected)) {
       selected[[1]]
@@ -2006,10 +2033,10 @@ implied_input_value <- function(msg, spec, session) {
     return(if (identical(new, current)) NULL else list(value = new))
   }
   if (
-    !is.null(message$options) &&
+    !is.null(message[["options"]]) &&
       kind %in% c("select-multiple", "checkbox-group")
   ) {
-    values <- option_values(message$options)
+    values <- option_values(message[["options"]])
     selected <- attr(values, "selected")
     new <- if (length(selected)) selected else intersect(current, values)
     if (length(new) == 0) {
@@ -2022,7 +2049,7 @@ implied_input_value <- function(msg, spec, session) {
 
 #' @noRd
 guess_kind_from_message <- function(message, current) {
-  if (!is.null(message$options)) {
+  if (!is.null(message[["options"]])) {
     return(if (length(current) > 1) "select-multiple" else "select")
   }
   if (is.logical(current)) {

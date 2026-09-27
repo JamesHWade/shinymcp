@@ -38,7 +38,11 @@ the page's JavaScript, the hosts, and the documentation.
   `reactive()` work.
 * `updateSelectizeInput(server = TRUE)` works: the page shows the first
   1,000 choices, with a search box for the rest.
-* `invalidateLater()` and `reactivePoll()` run while the app is open.
+* `invalidateLater()` and `reactivePoll()` run while the app is open, and
+  an `ExtendedTask`'s result appears when the task finishes.
+* bslib's inputs work: sidebars, accordions, navsets, switches, and task
+  buttons, including their `update_*()` and `accordion_panel_open()`
+  style functions.
 * `renderUI()`, `insertUI()`, modals, notifications, downloads, and
   `insertTab()`, `removeTab()`, `hideTab()`, and `showTab()` reach the page.
 * The app starts as `shiny::runApp()` would start it: `global.R`, the
