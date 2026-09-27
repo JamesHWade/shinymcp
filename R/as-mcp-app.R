@@ -107,6 +107,10 @@ as_mcp_app.shiny.appobj <- function(
   ...
 ) {
   rlang::check_installed("shiny", reason = "to serve a Shiny app as an MCP App.")
+  # A Shiny app from mcp_endpoint() already carries its MCP App.
+  if (inherits(x$mcpServer, "McpServer") && length(x$mcpServer$apps) == 1) {
+    return(x$mcpServer$apps[[1]])
+  }
   name <- name %||% "shiny-app"
   ui <- extract_shiny_ui(x)
 
@@ -206,7 +210,7 @@ source_app_file <- function(app_file) {
     source(app_file, local = env, chdir = TRUE),
     error = function(e) {
       shinymcp_abort(
-        c("Failed to load {.file {app_file}}.", "x" = conditionMessage(e)),
+        c("Failed to load {.file {app_file}}.", "x" = "{conditionMessage(e)}"),
         class = "shinymcp_error_validation",
         parent = e
       )
@@ -277,7 +281,7 @@ extract_shiny_ui <- function(app) {
       if (length(formals(ui)) == 0) ui() else ui(req),
       error = function(e) {
         shinymcp_abort(
-          c("Couldn't build the app's UI.", "x" = conditionMessage(e)),
+          c("Couldn't build the app's UI.", "x" = "{conditionMessage(e)}"),
           class = "shinymcp_error_validation",
           parent = e
         )

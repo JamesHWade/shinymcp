@@ -216,6 +216,9 @@ ShinyRuntime <- R6::R6Class(
         }
         return(wire_result(list(content = list(text_block("closed")))))
       }
+      if (identical(action, "data")) {
+        return(private$data_request(instance, arguments$output, arguments$body, context))
+      }
 
       page_inputs <- arguments$inputs %||% list()
       kinds <- arguments$kinds %||% list()
@@ -308,6 +311,7 @@ ShinyRuntime <- R6::R6Class(
       inst$digests <- character()
       inst$outputs <- character()
       inst$downloads <- list()
+      inst$data_objects <- list()
       inst$input_messages <- list()
       inst$notifications <- list()
       inst$modals <- list()
@@ -557,7 +561,10 @@ ShinyRuntime <- R6::R6Class(
       continued = FALSE,
       lost_view = NULL
     ) {
-      collected <- with_request_context(context, collect_runtime_outputs(inst, self$outputs))
+      collected <- with_request_context(
+        context,
+        collect_runtime_outputs(inst, self$outputs, skip_deps = context$skip_deps %||% character())
+      )
       changed <- if (all_outputs) {
         names(collected)
       } else {
@@ -622,6 +629,41 @@ ShinyRuntime <- R6::R6Class(
       wire_result(result)
     },
 
+    # A request from a widget for data kept in R, such as the rows of a
+    # server-side DT table (DT::renderDT(server = TRUE)). The page's request
+    # body is handed to the filter function the widget registered, as Shiny
+    # would hand it an HTTP request.
+    data_request = function(inst, name, body, context) {
+      obj <- if (!is.null(inst)) inst$data_objects[[name %||% ""]]
+      if (is.null(obj)) {
+        return(wire_result(list(
+          content = list(text_block(paste0("No data named '", name %||% "", "' in this view."))),
+          isError = TRUE
+        )))
+      }
+      raw_body <- charToRaw(enc2utf8(if (is_string(body)) body else ""))
+      req <- new.env(parent = emptyenv())
+      req$REQUEST_METHOD <- "POST"
+      req$PATH_INFO <- paste0("/dataobj/", name)
+      req$QUERY_STRING <- ""
+      req$HTTP_CONTENT_TYPE <- "application/x-www-form-urlencoded; charset=UTF-8"
+      req$rook.input <- list(read = function(...) raw_body, rewind = function() invisible(NULL))
+      response <- tryCatch(
+        with_request_context(context, with_mock_context(inst$session, obj$filter(obj$data, req))),
+        error = function(e) e
+      )
+      if (inherits(response, "error")) {
+        return(wire_result(tool_error_result(response)))
+      }
+      content <- response$content
+      text <- if (is.raw(content)) rawToChar(content) else paste(content, collapse = "\n")
+      Encoding(text) <- "UTF-8"
+      wire_result(list(
+        content = list(text_block(paste0("Data for ", name, "."))),
+        `_meta` = list(`shinymcp/view` = list(instance = inst$id, data = text))
+      ))
+    },
+
     images_enabled = function(context) {
       !identical(context$caller, "app") && !isFALSE(context$images)
     },
@@ -681,7 +723,7 @@ view_tool_schema <- function() {
   list(
     type = "object",
     properties = list(
-      action = list(type = "string", enum = I(c("update", "download", "close"))),
+      action = list(type = "string", enum = I(c("update", "download", "data", "close"))),
       instance = list(type = "string"),
       inputs = list(type = "object"),
       changed = list(type = "array", items = list(type = "string")),
@@ -691,6 +733,7 @@ view_tool_schema <- function() {
       revision = list(type = "integer"),
       host = list(type = "object"),
       output = list(type = "string"),
+      body = list(type = "string"),
       all = list(type = "boolean")
     )
   )
@@ -769,6 +812,22 @@ install_session_hooks <- function(session, inst) {
   }
   session$sendChangeTabVisibility <- function(message) {
     push("ui_changes", list(op = "tab-visibility", message = message))
+  }
+  # Widgets that keep data in R (DT's server-side tables) register it here
+  # and fetch it from the returned URL; the page routes that URL to the view
+  # tool.
+  # The URL has Shiny's own form, which widgets such as DT look for before
+  # they set up their requests.
+  session$registerDataObj <- function(name, data, filterFunc) {
+    inst$data_objects[[name]] <- list(data = data, filter = filterFunc)
+    paste0(
+      "session/",
+      gsub("[^a-z0-9]", "", tolower(inst$id)),
+      "/dataobj/",
+      utils::URLencode(name, reserved = TRUE),
+      "?w=&nonce=",
+      gsub("[^a-z0-9]", "", unique_id("n"))
+    )
   }
 
   invisible(session)
@@ -970,7 +1029,7 @@ strip_namespace <- function(specs, ns) {
 #' @return A named list (by public output id) of `payload` (for the page),
 #'   `model` (for the model), `text`, `digest`, and `image`.
 #' @noRd
-collect_runtime_outputs <- function(inst, specs) {
+collect_runtime_outputs <- function(inst, specs, skip_deps = character()) {
   dom_to_public <- stats::setNames(
     vapply(specs, function(s) s$id, character(1)),
     vapply(specs, function(s) s$dom_id %||% s$id, character(1))
@@ -1001,30 +1060,76 @@ collect_runtime_outputs <- function(inst, specs) {
       with_mock_context(inst$session, inst$session$getOutput(dom_id)),
       error = function(e) e
     )
-    out[[public_id]] <- runtime_output_entry(value, spec, dom_id)
+    out[[public_id]] <- runtime_output_entry(value, spec, dom_id, skip_deps)
   }
   out
 }
 
+#' The HTML dependencies of a rendered htmlwidget
+#'
+#' A widget's render function lists its dependencies in the JSON it returns,
+#' as paths Shiny serves them from (shiny::createWebDependency()). The page
+#' can't fetch those, so find each one's directory among Shiny's resource
+#' paths and rebuild a local dependency that can be inlined.
+#' @noRd
+widget_dependencies <- function(json) {
+  parsed <- tryCatch(
+    jsonlite::fromJSON(as.character(json), simplifyVector = FALSE),
+    error = function(e) NULL
+  )
+  web <- parsed$deps
+  if (length(web) == 0) {
+    return(list())
+  }
+  paths <- shiny::resourcePaths()
+  deps <- lapply(web, function(d) {
+    href <- d$src$href
+    if (!is_string(href)) {
+      return(NULL)
+    }
+    prefix <- sub("/.*$", "", href)
+    dir <- paths[prefix]
+    if (is.na(dir)) {
+      return(NULL)
+    }
+    rest <- sub("^[^/]*/?", "", href)
+    scripts <- d$script
+    if (is.list(scripts) && all(vapply(scripts, is.character, logical(1)))) {
+      scripts <- unlist(scripts)
+    }
+    htmltools::htmlDependency(
+      name = d$name,
+      version = d$version,
+      src = c(file = if (nzchar(rest)) file.path(dir[[1]], rest) else dir[[1]]),
+      script = scripts,
+      stylesheet = unlist(d$stylesheet),
+      head = d$head,
+      all_files = FALSE
+    )
+  })
+  Filter(Negate(is.null), deps)
+}
+
 #' Turn a render function's value into a page payload and a model value
 #' @noRd
-runtime_output_entry <- function(value, spec, dom_id) {
+runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
   type <- spec$type
   entry <- if (inherits(value, "error")) {
     runtime_error_entry(value)
   } else if (is.null(value)) {
     list(payload = list(kind = "clear"), model = NULL, text = "")
   } else if (inherits(value, "json")) {
-    # htmlwidgets: JSON with the widget's dependencies attached.
-    deps <- attr(value, "deps")
+    # htmlwidgets: the widget's JSON, whose dependencies the page may not
+    # have yet (plotly's library, for one, arrives with the first plot).
+    deps <- widget_dependencies(value)
+    deps <- Filter(function(d) !dependency_loaded(d, skip_deps), deps)
     list(
       payload = compact_list(list(
         kind = "widget",
         value = as.character(value),
-        deps = if (length(deps)) {
-          lapply(htmltools::resolveDependencies(deps), dependency_payload)
-        }
+        deps = if (length(deps)) lapply(deps, dependency_payload)
       )),
+      digest = rlang::hash(as.character(value)),
       model = "An interactive widget, shown in the app.",
       text = "An interactive widget, shown in the app."
     )
@@ -1092,7 +1197,9 @@ runtime_output_entry <- function(value, spec, dom_id) {
     list(payload = list(kind = "text", value = text), model = text, text = text)
   }
   entry$payload$dom <- dom_id
-  entry$digest <- rlang::hash(entry$payload)
+  # Widgets hash their JSON only, so whether their dependencies were sent
+  # doesn't count as a change.
+  entry$digest <- entry$digest %||% rlang::hash(entry$payload)
   entry
 }
 
@@ -1313,7 +1420,7 @@ format_snapshot_value <- function(x) {
   if (is.logical(x)) {
     return(tolower(paste(x, collapse = ", ")))
   }
-  paste(format(unlist(x)), collapse = ", ")
+  paste(as.character(unlist(x)), collapse = ", ")
 }
 
 #' The model context a view publishes

@@ -63,7 +63,7 @@ validate_generated_r <- function(path) {
       shinymcp_error_generation(
         c(
           "Generated file {.path {basename(path)}} is not valid R.",
-          "x" = conditionMessage(e),
+          "x" = "{conditionMessage(e)}",
           "i" = "This is a shinymcp code-generation bug. Please report it at {.url https://github.com/JamesHWade/shinymcp/issues}."
         )
       )

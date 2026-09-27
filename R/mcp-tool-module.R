@@ -82,7 +82,7 @@ mcp_tool_module <- function(
     module_ui(ns_id),
     error = function(e) {
       shinymcp_abort(
-        c("Couldn't render {.arg module_ui} with id {.val {ns_id}}.", "x" = conditionMessage(e)),
+        c("Couldn't render {.arg module_ui} with id {.val {ns_id}}.", "x" = "{conditionMessage(e)}"),
         class = "shinymcp_error_validation",
         parent = e
       )

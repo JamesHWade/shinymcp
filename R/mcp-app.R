@@ -272,7 +272,8 @@ McpApp <- R6::R6Class(
           raw,
           images = private$.images && !identical(context$caller, "app"),
           skip_deps = context$skip_deps %||% character(),
-          view = list(tool = name)
+          view = list(tool = name),
+          output_types = private$ui_outputs()
         ),
         error = tool_error_result
       )

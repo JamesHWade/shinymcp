@@ -249,11 +249,13 @@
     dirty: false,
     revision: 0,
     loadedDeps: {},
+    loadedNames: {},
     customHandlers: {},
     contextListeners: []
   };
   each(config.deps || [], function (key) {
     state.loadedDeps[key] = true;
+    state.loadedNames[String(key).replace(/@[^@]*$/, "")] = true;
   });
 
   // ---------------------------------------------------------------------------
@@ -1317,18 +1319,29 @@
     });
   }
 
+  // One output that fails to draw shouldn't stop the others.
   function renderOutputs(outputs) {
     each(keys(outputs), function (id) {
       var payload = outputs[id] || {};
       var el = findOutput(payload.dom || id);
       if (!el) return;
-      renderInto(el, payload, id);
+      safeRender(el, payload, id);
     });
+  }
+
+  function safeRender(el, payload, id) {
+    try {
+      renderInto(el, payload, id);
+    } catch (e) {
+      logWarn("couldn't draw output " + id, e);
+      el.textContent = "This output couldn't be drawn: " + (e && e.message ? e.message : e);
+      el.classList.add("shiny-output-error");
+    }
   }
 
   function renderSingle(payload) {
     var outputs = allOutputs();
-    if (outputs.length === 1) renderInto(outputs[0], payload, outputs[0].id);
+    if (outputs.length === 1) safeRender(outputs[0], payload, outputs[0].id);
   }
 
   function clearOutputError(el) {
@@ -1453,8 +1466,123 @@
     if (MODE === "shiny") scanInputs(root);
   }
 
+  // Widgets that keep their data in R (DT's server-side tables) fetch it
+  // with jQuery from a Shiny data URL, session/<token>/dataobj/<name>.
+  // Answer those requests through the view tool: the page can't reach R
+  // over the network.
+  var DATA_URL = /^session\/[a-z0-9]+\/dataobj\/([^?]+)/;
+  var dataTransportInstalled = false;
+
+  function installDataTransport() {
+    var $ = window.jQuery;
+    if (dataTransportInstalled || MODE !== "shiny" || !$ || !$.ajaxTransport) return;
+    dataTransportInstalled = true;
+    $.ajaxTransport("+*", function (options) {
+      var url = String(options.url || "");
+      var match = DATA_URL.exec(url);
+      if (!match) return undefined;
+      var aborted = false;
+      return {
+        send: function (headers, complete) {
+          var name = decodeURIComponent(match[1]);
+          // GET requests carry their parameters in the URL.
+          var query = url.indexOf("?") >= 0 ? url.slice(url.indexOf("?") + 1) : "";
+          var body = typeof options.data === "string" ? options.data : options.data ? $.param(options.data) : "";
+          if (!body) body = query;
+          callTool(config.runtime.viewTool, {
+            action: "data",
+            instance: state.instance,
+            output: name,
+            body: body
+          }).then(
+            function (result) {
+              if (aborted) return;
+              var view = viewMeta(result);
+              if (!result || result.isError || !view || typeof view.data !== "string") {
+                complete(500, "error", { text: resultText(result) || "No data." });
+                return;
+              }
+              complete(200, "success", { text: view.data }, "Content-Type: application/json");
+            },
+            function (err) {
+              if (!aborted) complete(500, "error", { text: err.message });
+            }
+          );
+        },
+        abort: function () {
+          aborted = true;
+        }
+      };
+    });
+  }
+
+  // htmlwidgets turn the JavaScript in a widget's options (htmlwidgets::JS())
+  // into functions with eval(), which the Content Security Policy of an MCP
+  // App forbids. Inline scripts are allowed, so evaluate through one.
+  var evalCount = 0;
+
+  function evalScript(code) {
+    var slot = "__shinymcpEval" + evalCount++;
+    var script = document.createElement("script");
+    script.textContent = "window." + slot + " = (" + code + "\n);";
+    document.head.appendChild(script);
+    document.head.removeChild(script);
+    var value = window[slot];
+    try {
+      delete window[slot];
+    } catch (e) {
+      window[slot] = undefined;
+    }
+    return value;
+  }
+
+  // The same walk as HTMLWidgets.evaluateStringMember(): a dotted path, with
+  // "\." for a dot inside a name.
+  function splitMemberPath(member) {
+    var parts = [];
+    var current = "";
+    var str = String(member);
+    for (var i = 0; i < str.length; i++) {
+      var ch = str.charAt(i);
+      if (ch === "\\" && str.charAt(i + 1) === ".") {
+        current += ".";
+        i++;
+      } else if (ch === ".") {
+        parts.push(current);
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    parts.push(current);
+    return parts;
+  }
+
+  function evaluateStringMember(obj, member) {
+    var parts = splitMemberPath(member);
+    for (var i = 0; i < parts.length; i++) {
+      var part = parts[i];
+      if (obj === null || typeof obj !== "object" || !(part in obj)) return;
+      if (i === parts.length - 1) {
+        if (typeof obj[part] === "string") obj[part] = evalScript(obj[part]);
+      } else {
+        obj = obj[part];
+      }
+    }
+  }
+
+  function patchHtmlwidgets() {
+    var hw = window.HTMLWidgets;
+    if (hw && !hw.__shinymcpPatched) {
+      hw.__shinymcpPatched = true;
+      hw.evaluateStringMember = evaluateStringMember;
+    }
+  }
+
   // Render an htmlwidget output from the JSON a Shiny render function sends.
   function renderWidget(el, json) {
+    installDataTransport();
+    patchHtmlwidgets();
     var data;
     try {
       data = JSON.parse(json);
@@ -1491,7 +1619,7 @@
       try {
         var code = typeof hook === "object" ? hook.code : hook;
         var extra = typeof hook === "object" ? [hook.data] : [];
-        var fn = (0, eval)("(" + code + ")");
+        var fn = evalScript(code);
         fn.apply(instance, [el, data.x].concat(extra));
       } catch (e) {
         logWarn("widget hook failed", e);
@@ -1499,12 +1627,15 @@
     });
   }
 
-  // HTML dependencies arrive with outputs that need them; load each once.
+  // HTML dependencies arrive with outputs that need them. Load each library
+  // once, whatever the version: a second copy of jQuery, say, would replace
+  // the first and drop the plugins attached to it.
   function loadDeps(deps) {
     each(deps || [], function (dep) {
       var key = dep.name + "@" + dep.version;
-      if (state.loadedDeps[key] || state.loadedDeps[dep.name + "@"]) return;
+      if (state.loadedDeps[key] || state.loadedNames[dep.name]) return;
       state.loadedDeps[key] = true;
+      state.loadedNames[dep.name] = true;
       var holder = document.createElement("div");
       holder.innerHTML = dep.head || "";
       each(Array.prototype.slice.call(holder.childNodes), function (node) {

@@ -210,9 +210,9 @@ is_tool_result <- function(x) {
 #' @return A list with `kind`, `render` (payload for the view), `model`
 #'   (model-facing value), `text`, and optionally `image` and `deps`.
 #' @noRd
-resolve_output <- function(value, skip_deps = character()) {
+resolve_output <- function(value, skip_deps = character(), hint = NULL) {
   if (!is_mcp_result(value)) {
-    value <- as_typed_result(value)
+    value <- as_typed_result(value, hint)
   }
   kind <- value$kind
   out <- switch(
@@ -244,8 +244,11 @@ resolve_output <- function(value, skip_deps = character()) {
 }
 
 #' Classify a plain R value returned by a tool
+#'
+#' `hint` is the type of the UI placeholder the value goes to, if known: a
+#' base64 string headed for an `mcp_plot()` is an image, not text.
 #' @noRd
-as_typed_result <- function(x) {
+as_typed_result <- function(x, hint = NULL) {
   if (is.null(x)) {
     return(new_mcp_result("text", "", NULL, ""))
   }
@@ -262,6 +265,9 @@ as_typed_result <- function(x) {
     return(mcp_result_plot(x))
   }
   if (is.character(x)) {
+    if (length(hint) == 1 && hint %in% c("plot", "image") && looks_like_image_data(x)) {
+      return(mcp_result_image(x))
+    }
     return(mcp_result_text(x))
   }
   if (is.atomic(x)) {
@@ -383,6 +389,32 @@ resolve_pdf_output <- function(value) {
   )
 }
 
+#' Is a string a data URI or base64 of a PNG, JPEG, GIF, or WebP image?
+#' @noRd
+looks_like_image_data <- function(x) {
+  is.character(x) &&
+    length(x) == 1 &&
+    !is.na(x) &&
+    (startsWith(x, "data:image/") || (nchar(x) > 64 && !is.na(sniff_image_mime(x))))
+}
+
+#' The image type of base64 data, from its first bytes
+#' @noRd
+sniff_image_mime <- function(x) {
+  prefixes <- c(
+    "iVBORw0KGgo" = "image/png",
+    "/9j/" = "image/jpeg",
+    "R0lGOD" = "image/gif",
+    "UklGR" = "image/webp"
+  )
+  for (prefix in names(prefixes)) {
+    if (startsWith(x, prefix)) {
+      return(prefixes[[prefix]])
+    }
+  }
+  NA_character_
+}
+
 #' Read a file path, raw vector, or base64 string as base64
 #' @noRd
 read_binary_input <- function(x, default_mime) {
@@ -397,7 +429,8 @@ read_binary_input <- function(x, default_mime) {
       mime <- sub("^data:([^;,]+).*$", "\\1", x)
       return(list(data = sub("^data:[^,]*,", "", x), mime = mime))
     }
-    return(list(data = x, mime = default_mime))
+    mime <- if (startsWith(default_mime, "image/")) sniff_image_mime(x) else NA_character_
+    return(list(data = x, mime = if (is.na(mime)) default_mime else mime))
   }
   shinymcp_abort(
     "Expected a file path, a raw vector, or a base64 string, not {.cls {class(x)}}.",
@@ -413,13 +446,16 @@ read_binary_input <- function(x, default_mime) {
 #' @param images Whether to add plot and image content blocks for the model.
 #' @param skip_deps HTML dependencies the view already loaded.
 #' @param view Extra fields for `_meta["shinymcp/view"]` (runtime state).
+#' @param output_types Named character vector of the UI's output types, so
+#'   plain values can be read the way their placeholder expects.
 #' @return A list ready to serialize as a `tools/call` result.
 #' @noRd
 build_tool_result <- function(
   raw,
   images = TRUE,
   skip_deps = character(),
-  view = NULL
+  view = NULL,
+  output_types = NULL
 ) {
   text <- NULL
   data <- NULL
@@ -452,7 +488,10 @@ build_tool_result <- function(
       result$structuredContent <- structured
     }
   } else {
-    entries <- lapply(outputs, resolve_output, skip_deps = skip_deps)
+    entries <- lapply(names(outputs), function(id) {
+      hint <- if (id %in% names(output_types)) output_types[[id]]
+      resolve_output(outputs[[id]], skip_deps = skip_deps, hint = hint)
+    })
     names(entries) <- names(outputs)
     content <- list(text_block(text %||% summarize_entries(entries)))
     if (images) {
@@ -589,7 +628,7 @@ render_html_payload <- function(x, skip_deps = character()) {
   }
   rendered <- htmltools::renderTags(x)
   deps <- htmltools::resolveDependencies(rendered$dependencies)
-  deps <- Filter(function(d) !dependency_key(d) %in% skip_deps, deps)
+  deps <- Filter(function(d) !dependency_loaded(d, skip_deps), deps)
   html <- rendered$html
   if (nzchar(rendered$head %||% "")) {
     html <- paste(rendered$head, html, sep = "\n")
@@ -603,6 +642,17 @@ render_html_payload <- function(x, skip_deps = character()) {
 #' @noRd
 dependency_key <- function(dep) {
   paste0(dep$name, "@", dep$version)
+}
+
+#' Does the page already have a dependency of this name?
+#'
+#' Any version counts, as in htmltools::resolveDependencies(): loading a
+#' second copy of a library (jQuery, say) over the first would drop the
+#' plugins attached to it.
+#' @param loaded Keys ("name@version") the page reported.
+#' @noRd
+dependency_loaded <- function(dep, loaded) {
+  length(loaded) > 0 && dep$name %in% sub("@[^@]*$", "", loaded)
 }
 
 #' An HTML dependency as inline markup the view can inject once

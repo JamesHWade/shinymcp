@@ -17,78 +17,62 @@
 #' @return The modified [htmltools::tag] with `data-shinymcp-input` stamped.
 #' @export
 mcp_input <- function(tag, id = NULL) {
-  form_selectors <- c("input", "select", "textarea", "button")
-  tag_name <- tag$name %||% ""
-
-  if (tolower(tag_name) %in% form_selectors) {
-    # Tag itself is a form element - stamp directly
-    resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
-    if (is.null(resolved_id)) {
-      rlang::abort(
-        cli::format_inline(
-          "Cannot determine input ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
-        ),
-        class = "shinymcp_error_validation"
-      )
-    }
-    tag <- htmltools::tagAppendAttributes(
-      tag,
-      `data-shinymcp-input` = resolved_id
-    )
-    return(tag)
+  if (inherits(tag, "shiny.tag") && is_input_element(tag)) {
+    return(stamp_input(tag, id %||% htmltools::tagGetAttribute(tag, "id")))
   }
 
-  # Find the first form-element descendant using tagQuery
+  # Otherwise the first input inside it. Groups (radio buttons, checkbox
+  # groups, date inputs) are matched as a whole, before the <input>s inside
+  # them.
   tq <- htmltools::tagQuery(tag)
-  for (sel in form_selectors) {
-    found <- tq$find(sel)
+  for (selector in c(INPUT_GROUP_SELECTORS, "select", "input", "textarea", "button")) {
+    found <- tq$find(selector)
     if (found$length() > 0) {
-      first_el <- found$selectedTags()[[1]]
-      el_id <- htmltools::tagGetAttribute(first_el, "id")
-      resolved_id <- id %||% el_id
-      if (is.null(resolved_id)) {
-        rlang::abort(
-          cli::format_inline(
-            "Cannot determine input ID. Provide {.arg id} or ensure the element has an {.field id} attribute."
-          ),
-          class = "shinymcp_error_validation"
-        )
-      }
-      # Target just the first element to avoid stamping siblings
-      if (!is.null(el_id) && found$length() > 1) {
-        tq$find(paste0("#", el_id))$addAttrs(
-          `data-shinymcp-input` = resolved_id
-        )
-      } else if (found$length() > 1) {
-        # First element has no id and there are siblings - stamp manually
-        stamped <- htmltools::tagAppendAttributes(
-          first_el,
-          `data-shinymcp-input` = resolved_id
-        )
-        # Rebuild the tree: replace children of the parent tag
-        result_tag <- tag
-        result_tag$children <- lapply(tag$children, function(child) {
-          if (identical(child, first_el)) stamped else child
-        })
-        return(result_tag)
-      } else {
-        found$addAttrs(`data-shinymcp-input` = resolved_id)
-      }
+      first <- found$selectedTags()[[1]]
+      resolved <- id %||% htmltools::tagGetAttribute(first, "id")
+      check_input_id(resolved)
+      found$filter(function(x, i) i == 1)$addAttrs(`data-shinymcp-input` = resolved)
       return(tq$allTags())
     }
   }
 
-  # No form element found - stamp the tag itself (e.g., radio group container)
-  resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
-  if (is.null(resolved_id)) {
-    rlang::abort(
-      cli::format_inline(
-        "Cannot determine input ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
-      ),
-      class = "shinymcp_error_validation"
+  stamp_input(tag, id %||% htmltools::tagGetAttribute(tag, "id"))
+}
+
+#' Shiny inputs whose value belongs to a container, not an <input>
+#' @noRd
+INPUT_GROUP_SELECTORS <- c(
+  ".shiny-input-radiogroup",
+  ".shiny-input-checkboxgroup",
+  ".shiny-date-input",
+  ".shiny-date-range-input"
+)
+
+#' @noRd
+is_input_element <- function(tag) {
+  if (tolower(tag$name %||% "") %in% c("input", "select", "textarea", "button")) {
+    return(TRUE)
+  }
+  classes <- strsplit(htmltools::tagGetAttribute(tag, "class") %||% "", "\\s+")[[1]]
+  any(sub("^\\.", "", INPUT_GROUP_SELECTORS) %in% classes)
+}
+
+#' @noRd
+stamp_input <- function(tag, id) {
+  check_input_id(id)
+  htmltools::tagAppendAttributes(tag, `data-shinymcp-input` = id)
+}
+
+#' @noRd
+check_input_id <- function(id, call = rlang::caller_env()) {
+  if (!is_string(id)) {
+    shinymcp_abort(
+      "Can't tell which input this is. Supply {.arg id}, or give the element an {.field id} attribute.",
+      class = "shinymcp_error_validation",
+      call = call
     )
   }
-  htmltools::tagAppendAttributes(tag, `data-shinymcp-input` = resolved_id)
+  invisible(id)
 }
 
 #' Mark an element as an MCP output

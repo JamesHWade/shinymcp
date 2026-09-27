@@ -146,6 +146,6 @@ start_local_server <- function(host, port, app) {
     }
   }
   shinymcp_abort(
-    c("Couldn't start a local server.", "x" = conditionMessage(last_error %||% simpleError("no free port")))
+    c("Couldn't start a local server.", "x" = "{conditionMessage(last_error %||% simpleError('no free port'))}")
   )
 }

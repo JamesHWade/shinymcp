@@ -1,8 +1,4 @@
-# Runnability checks for every rung of the "shinymcp by example" ladder.
-# Each example must actually build and render, not merely parse. MCP-App examples
-# are driven through the full preview path (which sources app.R, builds the ui://
-# resource, and starts the host server); the serve-to-client server is built from
-# its serve.R; the full Shiny examples are sourced into a shiny app object.
+# Every example must build and answer, not merely parse.
 
 require_pkgs <- function(pkgs) {
   for (p in pkgs) {
@@ -12,71 +8,85 @@ require_pkgs <- function(pkgs) {
 
 example_dir <- function(name) {
   dir <- system.file("examples", name, package = "shinymcp")
-  skip_if(dir == "", paste0("example not installed: ", name))
+  if (!nzchar(dir)) {
+    dir <- testthat::test_path("..", "..", "inst", "examples", name)
+  }
+  skip_if_not(dir.exists(dir), paste0("example not found: ", name))
   dir
 }
 
-# --- MCP-App examples: verified through the full preview render path -----------
-
-preview_examples <- list(
-  "hello-mcp-minimal" = c("ellmer", "httpuv"),
-  "hello-mcp" = c("ellmer", "httpuv", "bslib", "base64enc"),
-  "penguins" = c(
-    "ellmer",
-    "httpuv",
-    "bslib",
-    "ggplot2",
-    "palmerpenguins",
-    "shiny",
-    "base64enc"
+# Apps: load app.R the way preview_app() and serve() do, build the page, and
+# call the first tool the model can call.
+app_examples <- list(
+  "hello" = list(pkgs = "ellmer", args = list(dataset = "faithful")),
+  "faithful" = list(pkgs = "shiny", args = list(bins = 12)),
+  "fuel-economy" = list(
+    pkgs = c("shiny", "bslib", "ggplot2"),
+    args = list(class = list("suv", "pickup"), metric = "cty")
   ),
-  "bslib-inputs" = c("ellmer", "httpuv", "bslib", "shiny"),
-  "bind-mcp-demo" = c("ellmer", "httpuv", "bslib", "shiny", "base64enc"),
-  "multi-tool" = c("ellmer", "httpuv", "shiny", "base64enc"),
-  "module-tool" = c("ellmer", "httpuv", "bslib", "shiny", "base64enc"),
-  "converted-dashboard" = c("ellmer", "httpuv"),
-  "data-explorer" = c(
-    "ellmer",
-    "httpuv",
-    "bslib",
-    "ggplot2",
-    "shiny",
-    "base64enc"
-  )
+  "sample-size" = list(
+    pkgs = c("ellmer", "shiny", "bslib"),
+    args = list(delta = 0.5, sd = 1)
+  ),
+  "shiny-module" = list(pkgs = "shiny", args = list(bins = 10)),
+  "converted-dashboard" = list(pkgs = "ellmer", args = list(dataset = "iris", obs = 3)),
+  "feature-tour" = list(pkgs = c("ellmer", "bslib"), args = list()),
+  "ggplot-builder" = list(
+    pkgs = c("ellmer", "bslib", "ggplot2", "palmerpenguins"),
+    args = list()
+  ),
+  "posit-connect" = list(pkgs = "shiny", args = list(bins = 30))
 )
 
-for (nm in names(preview_examples)) {
+for (nm in names(app_examples)) {
   local({
     name <- nm
-    deps <- preview_examples[[nm]]
-    test_that(paste0("example renders via preview: ", name), {
+    spec <- app_examples[[nm]]
+    test_that(paste0("the ", name, " example builds and answers its tool"), {
       skip_on_cran()
-      require_pkgs(deps)
-      dir <- example_dir(name)
-      srv <- preview_app(dir, launch = FALSE)
-      on.exit(srv$stop(), add = TRUE)
-      expect_match(srv$url, "^http://127\\.0\\.0\\.1:")
+      require_pkgs(spec$pkgs)
+      app <- suppressMessages(as_mcp_app(example_dir(name)))
+      expect_s3_class(app, "McpApp")
+      expect_match(app$html_resource(), "id=\"shinymcp-config\"", fixed = TRUE)
+
+      tool <- app$tools("model")[[1]]
+      result <- app$run_tool(tool$name, spec$args)
+      expect_false(isTRUE(result$isError), info = result$content[[1]]$text)
+      expect_true(nzchar(result$content[[1]]$text))
     })
   })
 }
 
-# --- serve-to-client: a stdio server entry point (serve.R, not app.R) ----------
-
-test_that("example builds: serve-to-client", {
-  skip_if_not_installed("ellmer")
-  path <- file.path(example_dir("serve-to-client"), "serve.R")
-  env <- new.env()
-  env$serve <- function(app, ...) app # stub so the stdio loop never starts
-  sys.source(path, envir = env)
-  expect_s3_class(env$app, "McpApp")
-  expect_identical(env$app$name, "shinymcp-demo")
+test_that("the hello example renders through preview_app()", {
+  skip_on_cran()
+  require_pkgs(c("ellmer", "httpuv"))
+  preview <- suppressMessages(preview_app(example_dir("hello"), launch = FALSE))
+  on.exit(preview$stop(), add = TRUE)
+  expect_match(preview$url, "^http://127\\.0\\.0\\.1:")
 })
 
-# --- Full Shiny examples: app.R must source into a shiny app object ------------
+test_that("the posit-connect example is a Shiny app with an MCP endpoint", {
+  require_pkgs("shiny")
+  env <- new.env()
+  app <- source(file.path(example_dir("posit-connect"), "app.R"), local = env)$value
+  expect_s3_class(app, "shiny.appobj")
+  expect_true(inherits(app$mcpServer, "McpServer"))
+})
 
+test_that("the local-clients server serves both of its apps", {
+  require_pkgs(c("shiny", "ellmer"))
+  env <- new.env()
+  env$serve <- function(app, ...) app
+  served <- source(file.path(example_dir("local-clients"), "serve.R"), local = env)$value
+  server <- McpServer$new(served)
+  expect_true(server$tool_app("faithful")$name == "faithful")
+  expect_true(server$tool_app("summarize_dataset")$name == "dataset-summary")
+})
+
+# Shiny apps that host MCP Apps: app.R must source into a Shiny app object.
 shiny_examples <- list(
-  "shinychat-card" = c("shiny", "bslib", "ellmer", "shinychat"),
-  "embed-in-shiny" = c("shiny", "bslib", "ellmer"),
+  "shinychat" = c("shiny", "bslib", "ellmer", "shinychat"),
+  "shiny-host" = c("shiny", "bslib"),
   "rpharma-hangout" = c("shiny", "bslib", "ellmer", "shinychat")
 )
 
@@ -84,17 +94,10 @@ for (nm in names(shiny_examples)) {
   local({
     name <- nm
     deps <- shiny_examples[[nm]]
-    test_that(paste0("example builds shiny app: ", name), {
+    test_that(paste0("the ", name, " example builds a Shiny app"), {
       require_pkgs(deps)
-      path <- file.path(example_dir(name), "app.R")
-      env <- new.env()
-      built <- new.env()
-      env$shinyApp <- function(ui, server, ...) {
-        built$ok <- TRUE
-        structure(list(), class = "shiny.appobj")
-      }
-      sys.source(path, envir = env)
-      expect_true(isTRUE(built$ok))
+      app <- suppressMessages(shiny::shinyAppDir(example_dir(name)))
+      expect_s3_class(app, "shiny.appobj")
     })
   })
 }

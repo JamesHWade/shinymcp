@@ -369,6 +369,20 @@ coerce_json_scalar <- function(x, type) {
   if (is.list(x)) {
     return(x)
   }
+  # Pages send what form controls hold, so numbers and flags may arrive as
+  # strings ("0.05", "true"); read them as the schema says.
+  if (is.character(x) && length(x) == 1) {
+    x <- switch(
+      type,
+      integer = ,
+      number = {
+        n <- suppressWarnings(as.numeric(x))
+        if (is.na(n)) x else n
+      },
+      boolean = if (tolower(x) %in% c("true", "false")) tolower(x) == "true" else x,
+      x
+    )
+  }
   switch(
     type,
     integer = if (is.numeric(x) && all(x == round(x))) as.integer(x) else x,
