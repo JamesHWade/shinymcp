@@ -25,6 +25,9 @@
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
+/* conditionalPanel(): hidden until its condition holds, as in Shiny. */
+[data-display-if]:not(.shiny-conditional--shown) { display: none; }
+
 /* Bootstrap 3 and 4 have no dark mode: those pages stay light. */
 :root.shinymcp-bs3,
 :root.shinymcp-bs4 { color-scheme: light; }
@@ -435,6 +438,11 @@ html:not(.shinymcp-bootstrap) .shinymcp-modal-backdrop .modal-dialog {
   justify-content: flex-end;
   padding: 8px 0;
   background: var(--shinymcp-bg);
+}
+
+/* A search box over a select whose choices stay in R. */
+.shinymcp-choice-search {
+  margin-bottom: 0.25rem;
 }
 
 .shinymcp-file-note {

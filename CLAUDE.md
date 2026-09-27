@@ -136,6 +136,13 @@ A tool that takes an action button's id runs when the button is pressed,
 not when its other inputs change. The page never runs tools annotated
 `readOnlyHint: false` or `destructiveHint: true` on its own to fill outputs.
 
+Hosts' CSP forbids `eval()` and `new Function()`, so nothing on the page may
+use them. `conditionalPanel()` conditions go through a small interpreter in
+the bridge (`parseCondition()`, `evaluateCondition()`); plot clicks, hovers,
+and brushes are a port of Shiny's `imageutils` (`setupPlotInteractions()`),
+fed by the coordmap each plot payload carries. Check changes to either
+against the same app in real Shiny: the input values should match.
+
 ### Conversion Pipeline
 
 1. `parse_shiny_app(path)` → `ShinyAppIR` (AST walking)

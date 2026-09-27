@@ -436,21 +436,27 @@ ShinyRuntime <- R6::R6Class(
       }
 
       # Inputs first, as Shiny's client sends them before the server runs.
-      defaults <- lapply(self$inputs, function(spec) spec$value)
+      defaults <- lapply(
+        self$inputs,
+        function(spec) as_session_value(spec$value, spec)
+      )
       names(defaults) <- vapply(
         self$inputs,
         function(s) s$dom_id %||% s$id,
         character(1)
       )
       defaults <- defaults[!vapply(defaults, is.null, logical(1))]
-      initial <- utils::modifyList(
-        defaults,
-        private$dom_keys(values),
-        keep.null = TRUE
-      )
+      # Given values replace defaults whole: modifyList() would merge lists
+      # (varSelectInput()'s symbols, a plot click) into them instead.
+      initial <- defaults
+      given <- private$dom_keys(values)
+      initial[names(given)] <- given
       initial <- initial[!vapply(initial, is.null, logical(1))]
       if (length(initial)) {
-        with_mock_context(session, do.call(session$setInputs, initial))
+        with_mock_context(
+          session,
+          do.call(session$setInputs, initial, quote = TRUE)
+        )
       }
 
       server <- private$server_function()
@@ -669,7 +675,10 @@ ShinyRuntime <- R6::R6Class(
       if (length(values) == 0) {
         return(invisible())
       }
-      with_mock_context(inst$session, do.call(inst$session$setInputs, values))
+      with_mock_context(
+        inst$session,
+        do.call(inst$session$setInputs, values, quote = TRUE)
+      )
     },
 
     apply_sizes = function(inst, sizes, pixel_ratio) {
@@ -775,7 +784,10 @@ ShinyRuntime <- R6::R6Class(
         if (length(echoed) == 0) {
           break
         }
-        with_mock_context(inst$session, do.call(inst$session$setInputs, echoed))
+        with_mock_context(
+          inst$session,
+          do.call(inst$session$setInputs, echoed, quote = TRUE)
+        )
       }
     },
 
@@ -955,7 +967,9 @@ ShinyRuntime <- R6::R6Class(
       req <- new.env(parent = emptyenv())
       req$REQUEST_METHOD <- "POST"
       req$PATH_INFO <- paste0("/dataobj/", name)
-      req$QUERY_STRING <- ""
+      # DT reads its parameters from the body; selectize's server-side
+      # choices from the query string.
+      req$QUERY_STRING <- if (is_string(body)) body else ""
       req$HTTP_CONTENT_TYPE <- "application/x-www-form-urlencoded; charset=UTF-8"
       req$rook.input <- list(
         read = function(...) raw_body,
@@ -1401,6 +1415,13 @@ runtime_session_class <- function() {
           if (!is.null(inst) && !name %in% inst$outputs) {
             inst$outputs <- c(inst$outputs, name)
           }
+          # A real session takes a function without arguments as an output
+          # too (`output$ready <- reactive(...)`); the mock calls every
+          # output with the session and the name.
+          if (is.function(func) && length(formals(func)) == 0) {
+            value <- func
+            func <- function(...) value()
+          }
           super$defineOutput(name, func, label)
         },
         registerDownload = function(name, filename, contentType, content) {
@@ -1772,7 +1793,9 @@ runtime_output_entry <- function(
           height = value$height,
           alt = alt,
           style = value$style,
-          class = value$class
+          class = value$class,
+          # Where the plot's panels are, for clicks and brushes.
+          coordmap = value$coordmap
         ))
       ),
       model = alt,
@@ -1809,8 +1832,21 @@ runtime_output_entry <- function(
       text = text
     )
   } else {
+    # A value from something other than a render function, such as
+    # `output$ready <- reactive(TRUE)` for a conditionalPanel() to read.
     text <- paste(utils::capture.output(print(value)), collapse = "\n")
-    list(payload = list(kind = "text", value = text), model = text, text = text)
+    raw <- if (is.atomic(value) && length(value) <= 1000) {
+      if (is.factor(value) || inherits(value, c("Date", "POSIXt"))) {
+        format(value)
+      } else {
+        unclass(value)
+      }
+    }
+    list(
+      payload = compact_list(list(kind = "text", value = text, raw = raw)),
+      model = text,
+      text = text
+    )
   }
   entry$payload$dom <- dom_id
   # Widgets hash their JSON only, so whether their dependencies were sent

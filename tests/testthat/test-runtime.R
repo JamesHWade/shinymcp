@@ -1889,6 +1889,118 @@ test_that("an input emptied on the page or by the model becomes NULL", {
   expect_identical(res$structuredContent$outputs$out, "none")
 })
 
+test_that("an output made with reactive() works, and carries its value", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::checkboxInput("more", "More", FALSE),
+    shiny::conditionalPanel("output.ready", shiny::p("ready"))
+  )
+  server <- function(input, output, session) {
+    output$ready <- shiny::reactive(isTRUE(input$more))
+    shiny::outputOptions(output, "ready", suspendWhenHidden = FALSE)
+  }
+  app <- rt_app(ui, server, name = "cond")
+  view <- rt_meta(rt_open(app, list(more = TRUE)))
+  # A conditionalPanel() on the page reads the raw value.
+  expect_identical(view$outputs$ready$raw, TRUE)
+  expect_null(view$outputs$ready$error)
+  res <- rt_update(app, view, list(more = FALSE), changed = "more")
+  expect_identical(rt_meta(res)$outputs$ready$raw, FALSE)
+})
+
+test_that("varSelectInput() values reach the server as symbols", {
+  skip_if_not_installed("shiny")
+  seen <- new.env()
+  ui <- shiny::fluidPage(
+    shiny::varSelectInput("var", "Variable", mtcars[1:4]),
+    shiny::varSelectInput("vars", "Variables", mtcars[1:4], multiple = TRUE),
+    shiny::textOutput("out")
+  )
+  server <- function(input, output, session) {
+    output$out <- shiny::renderText({
+      seen$var <- input$var
+      seen$vars <- input$vars
+      mean(mtcars[[input$var]])
+    })
+  }
+  app <- rt_app(ui, server, name = "vars")
+  schema <- app$tool_definitions()[[1]]$inputSchema$properties$var
+  expect_identical(unclass(schema$enum), c("mpg", "cyl", "disp", "hp"))
+
+  res <- rt_open(app)
+  expect_identical(seen$var, quote(mpg))
+  expect_identical(seen$vars, list())
+
+  res <- rt_open(app, list(var = "hp", vars = list("mpg", "cyl")))
+  expect_identical(seen$var, quote(hp))
+  expect_identical(seen$vars, list(quote(mpg), quote(cyl)))
+  # The model and the page get names back.
+  expect_identical(res$structuredContent$inputs$var, "hp")
+  expect_identical(unclass(res$structuredContent$inputs$vars), c("mpg", "cyl"))
+
+  view <- rt_meta(res)
+  rt_update(app, view, list(var = "disp"), changed = "var")
+  expect_identical(seen$var, quote(disp))
+})
+
+test_that("plots carry their coordmap, for clicks and brushes", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::plotOutput("p", click = "pc", brush = "pb"))
+  server <- function(input, output, session) {
+    output$p <- shiny::renderPlot(plot(mtcars$wt, mtcars$mpg))
+  }
+  app <- rt_app(ui, server, name = "plot")
+  coordmap <- rt_meta(rt_open(app))$outputs$p$value$coordmap
+  expect_length(coordmap$panels, 1)
+  expect_named(
+    coordmap$panels[[1]]$domain,
+    c("left", "right", "bottom", "top"),
+    ignore.order = TRUE
+  )
+  expect_true(coordmap$dims$width > 0)
+
+  # What the page sends on a click is what nearPoints() reads.
+  view <- rt_meta(rt_open(app))
+  panel <- coordmap$panels[[1]]
+  click <- list(
+    x = 3.2,
+    y = 21,
+    coords_css = list(x = 300, y = 200),
+    coords_img = list(x = 300, y = 200),
+    img_css_ratio = list(x = 1, y = 1),
+    mapping = panel$mapping,
+    domain = panel$domain,
+    range = panel$range,
+    log = list(x = NULL, y = NULL)
+  )
+  seen <- new.env()
+  server <- function(input, output, session) {
+    output$p <- shiny::renderPlot(plot(mtcars$wt, mtcars$mpg))
+    shiny::observe({
+      shiny::req(input$pc)
+      seen$near <- shiny::nearPoints(
+        mtcars,
+        input$pc,
+        xvar = "wt",
+        yvar = "mpg",
+        threshold = 1000,
+        maxpoints = 1
+      )
+    })
+  }
+  app <- rt_app(ui, server, name = "plot")
+  view <- rt_meta(rt_open(app))
+  rt_update(
+    app,
+    view,
+    list(pc = click),
+    changed = "pc",
+    kinds = list(pc = list(kind = "value")),
+    events = list("pc")
+  )
+  expect_identical(nrow(seen$near), 1L)
+})
+
 test_that("values set from JavaScript arrive as Shiny delivers them", {
   skip_if_not_installed("shiny")
   seen <- new.env()
@@ -1924,6 +2036,50 @@ test_that("values set from JavaScript arrive as Shiny delivers them", {
     kinds = kinds
   )
   expect_identical(seen$rows, c(1L, 3L))
+})
+
+test_that("server-side selectize choices are searched through the view tool", {
+  skip_if_not_installed("shiny")
+  genes <- sprintf("GENE%04d", 1:3000)
+  ui <- shiny::fluidPage(
+    shiny::selectizeInput("gene", "Gene", choices = NULL),
+    shiny::textOutput("chosen")
+  )
+  server <- function(input, output, session) {
+    shiny::updateSelectizeInput(
+      session,
+      "gene",
+      choices = genes,
+      selected = "GENE0042",
+      server = TRUE
+    )
+    output$chosen <- shiny::renderText(paste("gene:", input$gene))
+  }
+  app <- rt_app(ui, server, name = "genes")
+  view <- rt_meta(rt_open(app))
+  expect_identical(view$outputs$chosen$value, "gene: GENE0042")
+  message <- view$inputMessages[[1]]$message
+  expect_match(message$url, "/dataobj/gene?", fixed = TRUE)
+
+  search <- function(query) {
+    res <- app$run_tool(
+      "genes_view",
+      list(
+        action = "data",
+        instance = view$instance,
+        output = "gene",
+        body = paste0(
+          "query=",
+          query,
+          "&field=%5B%22value%22%2C%22label%22%5D&value=value&conju=and&maxop=1000"
+        )
+      ),
+      context = list(caller = "app")
+    )
+    jsonlite::fromJSON(rt_meta(res)$data)$value
+  }
+  expect_length(search(""), 1000)
+  expect_identical(search("gene2999"), c("GENE0042", "GENE2999"))
 })
 
 test_that("server-side DT tables fetch their rows from the view's session", {

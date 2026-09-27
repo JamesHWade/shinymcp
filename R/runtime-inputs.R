@@ -297,7 +297,9 @@ describe_input_tag <- function(tag) {
       tag,
       choices = opts$values,
       choice_labels = opts$labels,
-      value = if (!multiple && length(value)) value[[1]] else value
+      value = if (!multiple && length(value)) value[[1]] else value,
+      # varSelectInput(): the server gets the column as a symbol.
+      symbol = if (has_class("symbol")) TRUE
     ))
   }
 
@@ -1041,19 +1043,23 @@ coerce_input_value <- function(value, spec, previous = NULL, strict = FALSE) {
     kind,
     select = ,
     tabs = ,
-    radio = if (length(value) == 0) {
-      NULL
-    } else {
-      check_choices(as.character(unlist(value))[1])
-    },
+    radio = as_session_value(
+      if (length(value) == 0) {
+        NULL
+      } else {
+        check_choices(as.character(unlist(value))[1])
+      },
+      spec
+    ),
     "select-multiple" = ,
-    "checkbox-group" = {
+    "checkbox-group" = as_session_value(
       if (is.null(value) || length(value) == 0) {
         NULL
       } else {
         check_choices(as.character(unlist(value)))
-      }
-    },
+      },
+      spec
+    ),
     checkbox = ,
     switch = isTRUE(as.logical(value)),
     number = {
@@ -1100,6 +1106,24 @@ coerce_input_value <- function(value, spec, previous = NULL, strict = FALSE) {
       value
     }
   )
+}
+
+#' An input's value as its Shiny input handler delivers it
+#'
+#' A varSelectInput()'s select has the class "symbol", and Shiny passes its
+#' value through the "shiny.symbol" (or, for several, "shiny.symbolList")
+#' input handler.
+#' @noRd
+as_session_value <- function(value, spec) {
+  if (!isTRUE(spec$symbol)) {
+    return(value)
+  }
+  if (identical(spec$kind, "select-multiple")) {
+    return(
+      if (is.null(value)) list() else lapply(as.character(value), as.symbol)
+    )
+  }
+  if (is.null(value) || identical(value, "")) NULL else as.symbol(value[[1]])
 }
 
 #' @noRd
@@ -1183,6 +1207,15 @@ as_datetime_strict <- function(x, label, strict) {
 input_value_for_page <- function(value) {
   if (is.null(value)) {
     return(NULL)
+  }
+  # varSelectInput()'s symbols, as the names the page shows.
+  if (is.symbol(value)) {
+    return(as.character(value))
+  }
+  if (
+    is.list(value) && length(value) && all(vapply(value, is.symbol, logical(1)))
+  ) {
+    return(I(vapply(value, as.character, character(1))))
   }
   if (inherits(value, "shinyActionButtonValue")) {
     return(as.integer(unclass(value)))

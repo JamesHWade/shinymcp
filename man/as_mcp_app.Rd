@@ -94,6 +94,9 @@ place of Shiny's JavaScript. The bridge draws Shiny's built-in inputs
 itself (select, slider, date, checkbox group, and so on), and puts
 outputs sent back from R on the page: text, HTML, tables, plots,
 \code{renderUI()}, and htmlwidgets such as plotly, DT, and leaflet.
+Conditional panels show and hide, and clicks and brushes on plots reach
+the server as they would from a browser, for \code{\link[shiny:nearPoints]{shiny::nearPoints()}} and
+\code{\link[shiny:brushedPoints]{shiny::brushedPoints()}}.
 
 Packages written for Shiny's JavaScript API work too. The page provides
 \code{window.Shiny} with the parts packages use: input bindings they register

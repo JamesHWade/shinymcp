@@ -42,6 +42,27 @@ test_that("the page is a complete HTML document", {
   expect_match(html, "</html>$")
 })
 
+test_that("conditional panels start hidden, as in Shiny", {
+  skip_if_not_installed("shiny")
+  app <- as_mcp_app(
+    shiny::shinyApp(
+      shiny::fluidPage(
+        shiny::selectInput("x", "X", c("a", "b")),
+        shiny::conditionalPanel("input.x == 'b'", shiny::p("only for b"))
+      ),
+      function(input, output, session) NULL
+    ),
+    name = "cond"
+  )
+  html <- app$html_resource()
+  expect_match(html, "data-display-if=", fixed = TRUE)
+  expect_match(
+    html,
+    "[data-display-if]:not(.shiny-conditional--shown) { display: none; }",
+    fixed = TRUE
+  )
+})
+
 test_that("the title falls back to the app name", {
   html <- mcp_app(htmltools::div(), name = "untitled")$html_resource()
   expect_match(html, "<title>untitled</title>", fixed = TRUE)

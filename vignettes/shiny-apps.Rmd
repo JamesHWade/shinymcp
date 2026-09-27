@@ -166,7 +166,20 @@ output: text, tables, plots and images, `renderUI()`, and htmlwidgets such
 as plotly, DT, reactable, and leaflet. Notifications, modal dialogs,
 `insertUI()`, tab changes (`updateTabsetPanel()`, `insertTab()`,
 `hideTab()`), downloads, and file uploads work, and `invalidateLater()` and
-`reactivePoll()` keep running while the app is open.
+`reactivePoll()` keep running while the app is open. Clicks, double clicks,
+hovers, and brushes on a plot (`plotOutput(click =, brush =)`) send what
+they send in a browser, so `nearPoints()` and `brushedPoints()` work.
+Select inputs are the browser's own; one whose choices stay on the server
+(`updateSelectizeInput(server = TRUE)`) shows the first 1,000 and a search
+box for the rest.
+
+`conditionalPanel()` works too, with one difference. Shiny runs a panel's
+condition as JavaScript, which chat clients forbid, so shinymcp reads it
+instead. It understands what conditions are usually made of: comparisons,
+`&&`, `||`, `!`, arithmetic, `input.x` and `output.x` (including an output
+set to a `reactive()`), `.length`, regular expressions, and common string
+and array methods such as `indexOf()` and `includes()`. A condition it
+can't read shows its panel, with a warning in the browser's console.
 
 Packages that talk to Shiny's JavaScript work too. The page provides
 `window.Shiny` with what they use: input bindings (shinyWidgets' pickers,

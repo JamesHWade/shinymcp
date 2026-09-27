@@ -70,6 +70,14 @@ Chat clients block anything the app doesn't carry itself.
   with the same id. `mcp_input(tag, id = "argument")` connects an input
   whose id differs.
 
+## A conditional panel doesn't show or hide
+
+shinymcp reads a `conditionalPanel()`'s condition itself, since chat
+clients forbid running it as JavaScript. A condition it can't read shows
+its panel and logs a warning in the browser's console. Conditions built
+from comparisons, `&&`, `||`, `!`, `input.x`, `output.x`, and methods such
+as `indexOf()` work; functions defined elsewhere on the page don't.
+
 ## An output doesn't update
 
 * In an app built from tools, the names of the list a tool returns must

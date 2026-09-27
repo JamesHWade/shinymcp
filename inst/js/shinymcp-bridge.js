@@ -254,7 +254,9 @@
     contextListeners: [],
     events: {},
     syncedInstance: null,
-    shinyAnnounced: false
+    shinyAnnounced: false,
+    // Output values, for conditionalPanel() conditions that read them.
+    outputValues: {}
   };
   each(config.deps || [], function (key) {
     state.loadedDeps[key] = true;
@@ -608,6 +610,16 @@
           listen(el, ["change"], function () { self.emit(); });
         },
         receiveMessage: function (msg) {
+          if (msg.label !== undefined) setLabel(this, msg.label);
+          // updateSelectizeInput(server = TRUE): the choices stay in R. The
+          // selection is shown (and read) at once; the rest follow.
+          if (typeof msg.url === "string") {
+            var keep = msg.value !== undefined ? msg.value : this.get();
+            fillServerChoices(el, [], keep);
+            this.set(keep === undefined ? null : keep);
+            loadServerChoices(el, this, msg.url, keep, "");
+            return;
+          }
           if (typeof msg.options === "string") {
             var current = this.get();
             el.innerHTML = msg.options;
@@ -616,7 +628,6 @@
             }
           }
           if (msg.value !== undefined) this.set(msg.value);
-          if (msg.label !== undefined) setLabel(this, msg.label);
         }
       };
     },
@@ -1305,6 +1316,7 @@
     } finally {
       applying = false;
     }
+    updateConditionals();
   }
 
   function applyToolInput(args) {
@@ -1328,6 +1340,7 @@
   var submitButton = null;
 
   function onInputChanged(adapter) {
+    updateConditionals();
     if (applying || tornDown) return;
     state.changed[adapter.id] = true;
     state.dirty = true;
@@ -1360,6 +1373,430 @@
     } else {
       callTools(toolsForInputs(force && !changed.length ? null : changed));
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Server-side selectize choices
+  // ---------------------------------------------------------------------------
+
+  // updateSelectizeInput(server = TRUE) keeps the choices in the session and
+  // sends a URL to query them, as selectize would while the user types. The
+  // page asks the view tool for the first SERVER_CHOICES; when there may be
+  // more, a search box above the select asks for the ones that match.
+  var SERVER_CHOICES = 1000;
+
+  function loadServerChoices(el, adapter, url, value, query) {
+    var match = DATA_URL.exec(url);
+    if (!match || !config.runtime) return;
+    el.__shinymcpChoicesUrl = url;
+    var body = "query=" + encodeURIComponent(query) +
+      "&field=" + encodeURIComponent("[\"value\",\"label\"]") +
+      "&value=value&conju=and&maxop=" + SERVER_CHOICES;
+    callTool(config.runtime.viewTool, {
+      action: "data",
+      instance: state.instance,
+      output: decodeURIComponent(match[1]),
+      body: body
+    }).then(function (result) {
+      var view = viewMeta(result);
+      // A later update replaced these choices.
+      if (!view || typeof view.data !== "string" || el.__shinymcpChoicesUrl !== url) return;
+      var rows;
+      try {
+        rows = JSON.parse(view.data);
+      } catch (e) {
+        return;
+      }
+      var keep = value !== undefined ? value : adapter.get();
+      fillServerChoices(el, rows, keep);
+      applying = true;
+      try {
+        adapter.set(keep === undefined ? null : keep);
+        if (!el.multiple && (keep === null || keep === undefined || keep === "")) el.value = "";
+      } finally {
+        applying = false;
+      }
+      if (rows.length >= SERVER_CHOICES || query) addChoiceSearch(el, adapter);
+      updateConditionals();
+    }, function (err) {
+      logWarn("couldn't load the choices for " + el.id, err && err.message);
+    });
+  }
+
+  // Options from selectize's rows ({label, value, optgroup}), keeping the
+  // selected values even when a search left them out.
+  function fillServerChoices(el, rows, keep) {
+    while (el.firstChild) el.removeChild(el.firstChild);
+    var kept = keep === null || keep === undefined ? [] : [].concat(keep).map(String);
+    if (!el.multiple && kept.length === 0) el.appendChild(new Option("", ""));
+    var groups = {};
+    var seen = {};
+    function add(value, label, group) {
+      var option = new Option(label === null || label === undefined ? value : label, value);
+      seen[value] = true;
+      if (group === null || group === undefined || group === "") {
+        el.appendChild(option);
+        return;
+      }
+      if (!groups[group]) {
+        groups[group] = document.createElement("optgroup");
+        groups[group].label = group;
+        el.appendChild(groups[group]);
+      }
+      groups[group].appendChild(option);
+    }
+    each(kept, function (v) {
+      var inRows = false;
+      each(rows, function (row) { if (String(row.value) === v) inRows = true; });
+      if (!inRows) add(v, v, null);
+    });
+    each(rows, function (row) {
+      var v = String(row.value);
+      if (!seen[v]) add(v, row.label, row.optgroup);
+    });
+  }
+
+  function addChoiceSearch(el, adapter) {
+    if (el.__shinymcpSearch) return;
+    var box = document.createElement("input");
+    box.type = "search";
+    box.className = (hasClass(el, "form-select") || hasClass(el, "form-control") ? "form-control " : "") +
+      "shinymcp-choice-search";
+    box.placeholder = "Search";
+    box.setAttribute("aria-label", "Search the choices");
+    el.parentNode.insertBefore(box, el);
+    el.__shinymcpSearch = box;
+    var timer = null;
+    box.addEventListener("input", function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        loadServerChoices(el, adapter, el.__shinymcpChoicesUrl, undefined, box.value);
+      }, 300);
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // conditionalPanel()
+  // ---------------------------------------------------------------------------
+
+  // A conditional panel's condition is a JavaScript expression, which Shiny
+  // evaluates with new Function(). The Content Security Policy hosts apply
+  // forbids that, so conditions are read here instead: comparisons, &&, ||,
+  // !, ?:, arithmetic, typeof, literals (arrays and regular expressions
+  // included), input.x, input['x'], output.x, .length, and the string,
+  // array, and regular expression methods below.
+  // The operators are JavaScript's own, applied to the values. A condition
+  // that can't be read shows its panel; one that fails hides it.
+
+  var CONDITION_METHODS = [
+    "indexOf", "lastIndexOf", "includes", "join", "concat", "slice",
+    "toLowerCase", "toUpperCase", "trim", "startsWith", "endsWith",
+    "charAt", "substring", "substr", "toString", "test", "match"
+  ];
+  var CONDITION_PUNCTUATION = [
+    "===", "!==", "==", "!=", "<=", ">=", "&&", "||",
+    "<", ">", "!", "(", ")", "[", "]", ".", ",", "+", "-", "*", "/", "%", "?", ":"
+  ];
+  var parsedConditions = {};
+  var unreadableConditions = {};
+
+  function tokenizeCondition(src) {
+    var tokens = [];
+    var i = 0;
+    while (i < src.length) {
+      var c = src.charAt(i);
+      var rest = src.slice(i);
+      var m;
+      if (/\s/.test(c)) {
+        i++;
+      } else if (c === "/" && !afterOperand(tokens)) {
+        // A regular expression, as in /^a/.test(input.x).
+        var end = i + 1;
+        var inClass = false;
+        while (end < src.length && (inClass || src.charAt(end) !== "/")) {
+          if (src.charAt(end) === "\\") end++;
+          else if (src.charAt(end) === "[") inClass = true;
+          else if (src.charAt(end) === "]") inClass = false;
+          end++;
+        }
+        if (end >= src.length) throw new Error("unterminated regular expression");
+        var flags = /^[gimsuy]*/.exec(src.slice(end + 1))[0];
+        tokens.push({ type: "value", value: new RegExp(src.slice(i + 1, end), flags) });
+        i = end + 1 + flags.length;
+      } else if ((m = /^(?:[0-9]+\.?[0-9]*|\.[0-9]+)(?:[eE][-+]?[0-9]+)?/.exec(rest))) {
+        tokens.push({ type: "value", value: parseFloat(m[0]) });
+        i += m[0].length;
+      } else if (c === "'" || c === "\"") {
+        var j = i + 1;
+        var text = "";
+        while (j < src.length && src.charAt(j) !== c) {
+          if (src.charAt(j) === "\\") {
+            j++;
+            var e = src.charAt(j);
+            text += e === "n" ? "\n" : e === "t" ? "\t" : e;
+          } else {
+            text += src.charAt(j);
+          }
+          j++;
+        }
+        if (j >= src.length) throw new Error("unterminated string");
+        tokens.push({ type: "value", value: text });
+        i = j + 1;
+      } else if ((m = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(rest))) {
+        tokens.push({ type: "name", value: m[0] });
+        i += m[0].length;
+      } else {
+        var op = null;
+        for (var k = 0; k < CONDITION_PUNCTUATION.length && !op; k++) {
+          if (rest.indexOf(CONDITION_PUNCTUATION[k]) === 0) op = CONDITION_PUNCTUATION[k];
+        }
+        if (!op) throw new Error("unexpected '" + c + "'");
+        tokens.push({ type: "op", value: op });
+        i += op.length;
+      }
+    }
+    return tokens;
+  }
+
+  // Whether the token before a "/" ends an operand, making it division.
+  function afterOperand(tokens) {
+    var last = tokens[tokens.length - 1];
+    if (!last) return false;
+    if (last.type === "value") return true;
+    if (last.type === "name") return last.value !== "typeof";
+    return last.value === ")" || last.value === "]";
+  }
+
+  function parseCondition(src) {
+    var tokens = tokenizeCondition(src);
+    var pos = 0;
+    var LEVELS = [["||"], ["&&"], ["==", "!=", "===", "!=="], ["<", "<=", ">", ">="], ["+", "-"], ["*", "/", "%"]];
+    var LITERALS = { "true": true, "false": false, "null": null, "undefined": undefined };
+
+    function isOp(value) {
+      var t = tokens[pos];
+      return !!t && t.type === "op" && t.value === value;
+    }
+    function expect(value) {
+      if (!isOp(value)) throw new Error("expected '" + value + "'");
+      pos++;
+    }
+    function list(close) {
+      var items = [];
+      if (!isOp(close)) {
+        items.push(conditional());
+        while (isOp(",")) {
+          pos++;
+          items.push(conditional());
+        }
+      }
+      expect(close);
+      return items;
+    }
+    function conditional() {
+      var test = binary(0);
+      if (!isOp("?")) return test;
+      pos++;
+      var yes = conditional();
+      expect(":");
+      return { node: "if", test: test, yes: yes, no: conditional() };
+    }
+    function binary(level) {
+      if (level === LEVELS.length) return unary();
+      var left = binary(level + 1);
+      while (tokens[pos] && tokens[pos].type === "op" && LEVELS[level].indexOf(tokens[pos].value) >= 0) {
+        var op = tokens[pos++].value;
+        left = { node: level < 2 ? "logical" : "binary", op: op, left: left, right: binary(level + 1) };
+      }
+      return left;
+    }
+    function unary() {
+      var t = tokens[pos];
+      if (t && ((t.type === "op" && (t.value === "!" || t.value === "-" || t.value === "+")) ||
+          (t.type === "name" && t.value === "typeof"))) {
+        pos++;
+        return { node: "unary", op: t.value, arg: unary() };
+      }
+      return postfix();
+    }
+    function postfix() {
+      var node = primary();
+      for (;;) {
+        if (isOp(".")) {
+          pos++;
+          var name = tokens[pos++];
+          if (!name || name.type !== "name") throw new Error("expected a name after '.'");
+          node = { node: "member", object: node, key: { node: "value", value: name.value } };
+        } else if (isOp("[")) {
+          pos++;
+          var key = conditional();
+          expect("]");
+          node = { node: "member", object: node, key: key };
+        } else if (isOp("(")) {
+          if (node.node !== "member") throw new Error("only methods can be called");
+          pos++;
+          node = { node: "call", method: node, args: list(")") };
+        } else {
+          return node;
+        }
+      }
+    }
+    function primary() {
+      var t = tokens[pos++];
+      if (!t) throw new Error("unexpected end");
+      if (t.type === "value") return { node: "value", value: t.value };
+      if (t.type === "name") {
+        if (Object.prototype.hasOwnProperty.call(LITERALS, t.value)) return { node: "value", value: LITERALS[t.value] };
+        return { node: "name", name: t.value };
+      }
+      if (t.value === "(") {
+        var inner = conditional();
+        expect(")");
+        return inner;
+      }
+      if (t.value === "[") return { node: "array", items: list("]") };
+      throw new Error("unexpected '" + t.value + "'");
+    }
+
+    var tree = conditional();
+    if (pos < tokens.length) throw new Error("unexpected '" + tokens[pos].value + "'");
+    return tree;
+  }
+
+  // `input` and `output` in a condition, narrowed to a module's namespace.
+  function conditionScope(prefix) {
+    return {
+      input: { shinymcpScope: "input", prefix: prefix },
+      output: { shinymcpScope: "output", prefix: prefix }
+    };
+  }
+
+  function conditionMember(object, key) {
+    if (object === null || object === undefined) {
+      throw new Error("can't read '" + key + "' of " + object);
+    }
+    if (object.shinymcpScope) {
+      var id = object.prefix + String(key);
+      if (object.shinymcpScope === "output") return state.outputValues[id];
+      var a = adapters[id];
+      return a && !a.unsupported ? a.get() : undefined;
+    }
+    if (typeof object === "string" || Array.isArray(object)) {
+      if (key === "length" || typeof key === "number") return object[key];
+      return undefined;
+    }
+    if (typeof object === "object" && Object.prototype.hasOwnProperty.call(object, key)) {
+      return object[key];
+    }
+    return undefined;
+  }
+
+  function evaluateCondition(node, scope) {
+    var a;
+    var b;
+    switch (node.node) {
+      case "value":
+        return node.value;
+      case "name":
+        if (!Object.prototype.hasOwnProperty.call(scope, node.name)) throw new Error(node.name + " is not defined");
+        return scope[node.name];
+      case "array":
+        var items = [];
+        each(node.items, function (item) { items.push(evaluateCondition(item, scope)); });
+        return items;
+      case "member":
+        return conditionMember(evaluateCondition(node.object, scope), evaluateCondition(node.key, scope));
+      case "call":
+        var target = evaluateCondition(node.method.object, scope);
+        var method = evaluateCondition(node.method.key, scope);
+        if (target === null || target === undefined || CONDITION_METHODS.indexOf(method) < 0 ||
+            typeof target[method] !== "function") {
+          throw new Error("can't call " + method + "()");
+        }
+        var args = [];
+        each(node.args, function (arg) { args.push(evaluateCondition(arg, scope)); });
+        return target[method].apply(target, args);
+      case "unary":
+        a = evaluateCondition(node.arg, scope);
+        if (node.op === "!") return !a;
+        if (node.op === "-") return -a;
+        if (node.op === "+") return +a;
+        return typeof a;
+      case "logical":
+        a = evaluateCondition(node.left, scope);
+        if (node.op === "&&") return a ? evaluateCondition(node.right, scope) : a;
+        return a ? a : evaluateCondition(node.right, scope);
+      case "binary":
+        a = evaluateCondition(node.left, scope);
+        b = evaluateCondition(node.right, scope);
+        switch (node.op) {
+          case "==": return a == b;
+          case "!=": return a != b;
+          case "===": return a === b;
+          case "!==": return a !== b;
+          case "<": return a < b;
+          case "<=": return a <= b;
+          case ">": return a > b;
+          case ">=": return a >= b;
+          case "+": return a + b;
+          case "-": return a - b;
+          case "*": return a * b;
+          case "/": return a / b;
+          default: return a % b;
+        }
+      case "if":
+        return evaluateCondition(node.test, scope) ? evaluateCondition(node.yes, scope) : evaluateCondition(node.no, scope);
+      default:
+        throw new Error("unknown expression");
+    }
+  }
+
+  function conditionHolds(el) {
+    var src = el.getAttribute("data-display-if") || "";
+    var tree = parsedConditions[src];
+    if (tree === undefined) {
+      try {
+        tree = parseCondition(src);
+      } catch (e) {
+        tree = null;
+        if (!unreadableConditions[src]) {
+          unreadableConditions[src] = true;
+          logWarn("couldn't read the condition '" + src + "' (" + e.message + "); its panel is shown");
+        }
+      }
+      parsedConditions[src] = tree;
+    }
+    if (tree === null) return true;
+    try {
+      return !!evaluateCondition(tree, conditionScope(el.getAttribute("data-ns-prefix") || ""));
+    } catch (e2) {
+      return false;
+    }
+  }
+
+  function updateConditionals() {
+    if (!document.body) return;
+    each(document.querySelectorAll("[data-display-if]"), function (el) {
+      var show = conditionHolds(el);
+      if (show === hasClass(el, "shiny-conditional--shown")) return;
+      el.classList.toggle("shiny-conditional--shown", show);
+      // htmlwidgets resize when a panel they're in is shown, as in Shiny.
+      if (window.jQuery) window.jQuery(el).trigger(show ? "shown" : "hidden");
+    });
+  }
+
+  // Panels can arrive with new UI (renderUI(), insertUI(), modals).
+  function watchConditionals() {
+    if (typeof MutationObserver === "undefined" || !document.body) return;
+    var pending = false;
+    new MutationObserver(function () {
+      if (pending) return;
+      pending = true;
+      setTimeout(function () {
+        pending = false;
+        updateConditionals();
+      }, 0);
+    }).observe(document.body, { childList: true, subtree: true });
   }
 
   // ---------------------------------------------------------------------------
@@ -1796,10 +2233,26 @@
   function renderOutputs(outputs) {
     each(keys(outputs), function (id) {
       var payload = outputs[id] || {};
+      recordOutputValue(payload.dom || id, payload);
       var el = findOutput(payload.dom || id);
       if (!el) return;
       safeRender(el, payload, id);
     });
+    updateConditionals();
+  }
+
+  // What `output.x` is in a condition: the value Shiny's client would hold.
+  // Outputs a server function defines without a render function
+  // (`output$ready <- reactive(TRUE)`) carry it as `raw`.
+  function recordOutputValue(id, payload) {
+    if (payload.kind === "keep") return;
+    if (payload.raw !== undefined) {
+      state.outputValues[id] = payload.raw;
+    } else if (payload.kind === "clear" || payload.kind === "error") {
+      state.outputValues[id] = null;
+    } else {
+      state.outputValues[id] = payload.value;
+    }
   }
 
   function safeRender(el, payload, id) {
@@ -1904,6 +2357,533 @@
       el.innerHTML = "";
       el.appendChild(image);
     }
+    if (hasPlotInteractions(el)) {
+      if (image.complete && image.naturalWidth) {
+        setupPlotInteractions(el, image, img.coordmap);
+      } else {
+        image.addEventListener("load", function () {
+          setupPlotInteractions(el, image, img.coordmap);
+        }, { once: true });
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Plot clicks, hovers, and brushes
+  // ---------------------------------------------------------------------------
+
+  // plotOutput(click =, dblclick =, hover =, brush =) and imageOutput() send
+  // the pointer's position in the plot's data coordinates, as Shiny's
+  // client does, so nearPoints() and brushedPoints() work in the server.
+  // Each plot comes with its coordmap: the panels of the plot, and how
+  // their pixels map to data.
+
+  function hasPlotInteractions(el) {
+    return !!(el.getAttribute("data-click-id") || el.getAttribute("data-dblclick-id") ||
+      el.getAttribute("data-hover-id") || el.getAttribute("data-brush-id"));
+  }
+
+  function plotOption(el, name, fallback) {
+    var value = el.getAttribute("data-" + name);
+    if (value === null || value === "") return fallback;
+    if (/^(true|false)$/i.test(value)) return value.toLowerCase() === "true";
+    if (typeof fallback === "number") {
+      var n = parseFloat(value);
+      return isNaN(n) ? fallback : n;
+    }
+    return value;
+  }
+
+  // x-prefixed values (x, xmin, xmax) by one function, y-prefixed by another.
+  function byAxis(values, fx, fy) {
+    var out = {};
+    each(keys(values), function (key) {
+      var c = key.charAt(0);
+      out[key] = c === "x" ? fx(values[key]) : c === "y" ? fy(values[key]) : null;
+    });
+    return out;
+  }
+
+  function mapLinear(v, fromMin, fromMax, toMin, toMax) {
+    var out = (v - fromMin) * (toMax - toMin) / (fromMax - fromMin) + toMin;
+    return Math.min(Math.max(out, Math.min(toMin, toMax)), Math.max(toMin, toMax));
+  }
+
+  function preparePlotPanel(panel) {
+    var d = panel.domain;
+    var r = panel.range;
+    var xlog = panel.log && panel.log.x ? panel.log.x : null;
+    var ylog = panel.log && panel.log.y ? panel.log.y : null;
+    function toImg(v, lo, hi, rlo, rhi, base) {
+      return mapLinear(base ? Math.log(v) / Math.log(base) : v, lo, hi, rlo, rhi);
+    }
+    function toData(v, rlo, rhi, lo, hi, base) {
+      var out = mapLinear(v, rlo, rhi, lo, hi);
+      return base ? Math.pow(base, out) : out;
+    }
+    panel.toImg = function (values) {
+      return byAxis(values,
+        function (v) { return toImg(v, d.left, d.right, r.left, r.right, xlog); },
+        function (v) { return toImg(v, d.bottom, d.top, r.bottom, r.top, ylog); });
+    };
+    panel.toData = function (values) {
+      return byAxis(values,
+        function (v) { return toData(v, r.left, r.right, d.left, d.right, xlog); },
+        function (v) { return toData(v, r.bottom, r.top, d.bottom, d.top, ylog); });
+    };
+    panel.clipImg = function (p) {
+      return {
+        x: Math.min(Math.max(p.x, r.left), r.right),
+        y: Math.min(Math.max(p.y, r.top), r.bottom)
+      };
+    };
+    return panel;
+  }
+
+  function plotCoordmap(img, raw) {
+    var map = JSON.parse(JSON.stringify(raw || {}));
+    map.panels = map.panels || [];
+    map.dims = map.dims || {};
+    if (!map.panels.length) {
+      var bounds = { top: 0, left: 0, right: img.naturalWidth - 1, bottom: img.naturalHeight - 1 };
+      map.panels = [{ domain: bounds, range: bounds, mapping: {} }];
+    }
+    map.dims.width = map.dims.width || img.naturalWidth;
+    map.dims.height = map.dims.height || img.naturalHeight;
+    each(map.panels, preparePlotPanel);
+    // CSS pixels per coordmap pixel.
+    function ratio() {
+      var rect = img.getBoundingClientRect();
+      return { x: rect.width / map.dims.width, y: rect.height / map.dims.height };
+    }
+    map.offsetCss = function (e) {
+      var rect = img.getBoundingClientRect();
+      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    map.cssToImg = function (values) {
+      var k = ratio();
+      return byAxis(values, function (v) { return v / k.x; }, function (v) { return v / k.y; });
+    };
+    map.imgToCss = function (values) {
+      var k = ratio();
+      return byAxis(values, function (v) { return v * k.x; }, function (v) { return v * k.y; });
+    };
+    map.cssToImgRatio = function () {
+      var k = ratio();
+      return { x: 1 / k.x, y: 1 / k.y };
+    };
+    // The panel under a point, or the nearest within `expand` CSS pixels.
+    map.panelAt = function (css, expand) {
+      var p = map.cssToImg(css);
+      var k = map.cssToImgRatio();
+      var ex = (expand || 0) * k.x;
+      var ey = (expand || 0) * k.y;
+      var best = null;
+      var bestDist = Infinity;
+      each(map.panels, function (panel) {
+        var b = panel.range;
+        if (p.x > b.right + ex || p.x < b.left - ex || p.y > b.bottom + ey || p.y < b.top - ey) return;
+        var dx = p.x > b.right ? p.x - b.right : p.x < b.left ? p.x - b.left : 0;
+        var dy = p.y > b.bottom ? p.y - b.bottom : p.y < b.top ? p.y - b.top : 0;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < bestDist) {
+          best = panel;
+          bestDist = dist;
+        }
+      });
+      return best;
+    };
+    return map;
+  }
+
+  function withPanelInfo(coords, panel) {
+    each(keys(panel.panel_vars || {}), function (key) { coords[key] = panel.panel_vars[key]; });
+    coords.mapping = panel.mapping;
+    coords.domain = panel.domain;
+    coords.range = panel.range;
+    coords.log = panel.log;
+    return coords;
+  }
+
+  // Set an input to NULL, unless it is already.
+  function clearPlotInput(id) {
+    var a = adapters[id];
+    if (a && a.value !== null && a.value !== undefined) setShinyInput(id, null, {});
+  }
+
+  function sendPlotPointer(map, id, e, clip, nullOutside) {
+    if (e === null) {
+      clearPlotInput(id);
+      return;
+    }
+    var css = map.offsetCss(e);
+    var panel = map.panelAt(css, 0);
+    if (!panel) {
+      if (nullOutside) {
+        clearPlotInput(id);
+      } else if (!clip) {
+        setShinyInput(id, { coords_css: css, coords_img: map.cssToImg(css) }, { priority: "event" });
+      }
+      return;
+    }
+    var coordsImg = map.cssToImg(css);
+    var data = panel.toData(coordsImg);
+    setShinyInput(id, withPanelInfo({
+      x: data.x,
+      y: data.y,
+      coords_css: css,
+      coords_img: coordsImg,
+      img_css_ratio: map.cssToImgRatio()
+    }, panel), { priority: "event" });
+  }
+
+  // Call fn at most once per `delay` ms ("throttle"), or `delay` ms after
+  // the last call ("debounce").
+  function delayed(fn, delay, type) {
+    var timer = null;
+    var last = 0;
+    var args = null;
+    function run() {
+      timer = null;
+      last = Date.now();
+      fn.apply(null, args);
+    }
+    return {
+      call: function () {
+        args = arguments;
+        if (type === "throttle") {
+          if (timer) return;
+          var wait = Math.max(0, delay - (Date.now() - last));
+          timer = setTimeout(run, wait);
+        } else {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(run, delay);
+        }
+      },
+      now: function () {
+        args = arguments;
+        if (timer) clearTimeout(timer);
+        run();
+      },
+      pending: function () { return timer !== null; }
+    };
+  }
+
+  function setupPlotInteractions(el, img, rawCoordmap) {
+    var map = plotCoordmap(img, rawCoordmap);
+    var previous = el.__shinymcpPlot;
+    if (previous) previous.detach();
+    var listeners = [];
+    function on(target, type, fn) {
+      target.addEventListener(type, fn);
+      listeners.push([target, type, fn]);
+    }
+    var plot = {
+      map: map,
+      detach: function () {
+        each(listeners, function (l) { l[0].removeEventListener(l[1], l[2]); });
+        listeners = [];
+      }
+    };
+    el.__shinymcpPlot = plot;
+    img.draggable = false;
+    img.style.webkitUserDrag = "none";
+    on(el, "dragstart", function (e) { e.preventDefault(); });
+
+    var clickId = plotOption(el, "click-id", null);
+    var dblclickId = plotOption(el, "dblclick-id", null);
+    var clickClip = plotOption(el, "click-clip", true);
+    var dblclickDelay = plotOption(el, "dblclick-delay", 400);
+    var hoverId = plotOption(el, "hover-id", null);
+
+    // A new plot clears clicks and hovers, as in Shiny.
+    if (clickId) clearPlotInput(clickId);
+    if (dblclickId) clearPlotInput(dblclickId);
+    if (hoverId) clearPlotInput(hoverId);
+
+    // A click waits to see whether it is half of a double click.
+    var pendingClick = null;
+    var clickTimer = null;
+    function flushClick() {
+      if (pendingClick && clickId) sendPlotPointer(map, clickId, pendingClick, clickClip, false);
+      pendingClick = null;
+    }
+    on(el, "mousedown", function (e) {
+      if (e.button !== 0 || (!clickId && !dblclickId)) return;
+      if (!dblclickId) {
+        sendPlotPointer(map, clickId, e, clickClip, false);
+        return;
+      }
+      if (pendingClick === null) {
+        pendingClick = e;
+        clickTimer = setTimeout(flushClick, dblclickDelay);
+        return;
+      }
+      clearTimeout(clickTimer);
+      if (Math.abs(pendingClick.clientX - e.clientX) > 2 || Math.abs(pendingClick.clientY - e.clientY) > 2) {
+        flushClick();
+        pendingClick = e;
+        clickTimer = setTimeout(flushClick, dblclickDelay);
+      } else {
+        pendingClick = null;
+        sendPlotPointer(map, dblclickId, e, clickClip, false);
+      }
+    });
+
+    if (hoverId) {
+      var hoverClip = plotOption(el, "hover-clip", true);
+      var nullOutside = plotOption(el, "hover-null-outside", false);
+      var hover = delayed(function (e) {
+        sendPlotPointer(map, hoverId, e, hoverClip, nullOutside);
+      }, plotOption(el, "hover-delay", 300), plotOption(el, "hover-delay-type", "debounce"));
+      on(el, "mousemove", function (e) { hover.call(e); });
+      if (nullOutside) on(el, "mouseleave", function () { hover.call(null); });
+    }
+
+    if (plotOption(el, "brush-id", null)) setupPlotBrush(el, img, map, on);
+  }
+
+  function setupPlotBrush(el, img, map, on) {
+    var opts = {
+      id: plotOption(el, "brush-id", null),
+      fill: plotOption(el, "brush-fill", "#666"),
+      stroke: plotOption(el, "brush-stroke", "#000"),
+      opacity: plotOption(el, "brush-opacity", 0.3),
+      clip: plotOption(el, "brush-clip", true),
+      direction: plotOption(el, "brush-direction", "xy"),
+      resetOnNew: plotOption(el, "brush-reset-on-new", false)
+    };
+    var EXPAND = 20;
+    var RESIZE = 10;
+    var old = el.__shinymcpBrush;
+    var brush = { panel: null, css: null, data: null, down: null, start: null, mode: null, sides: null };
+    var div = old && old.div && old.div.parentNode === el ? old.div : null;
+
+    if (window.getComputedStyle(el).position === "static") el.style.position = "relative";
+
+    function box(a, b) {
+      return { xmin: Math.min(a.x, b.x), xmax: Math.max(a.x, b.x), ymin: Math.min(a.y, b.y), ymax: Math.max(a.y, b.y) };
+    }
+    function round(v) { return parseFloat(v.toPrecision(14)); }
+
+    // Set the brush from a box in CSS pixels, clipped to its panel and
+    // stretched across it for one-direction brushes.
+    function setCss(b) {
+      var panel = brush.panel;
+      var r = panel.range;
+      var min = { x: b.xmin, y: b.ymin };
+      var max = { x: b.xmax, y: b.ymax };
+      if (opts.clip) {
+        min = map.imgToCss(panel.clipImg(map.cssToImg(min)));
+        max = map.imgToCss(panel.clipImg(map.cssToImg(max)));
+      }
+      if (opts.direction === "x") {
+        min.y = map.imgToCss({ y: r.top }).y;
+        max.y = map.imgToCss({ y: r.bottom }).y;
+      } else if (opts.direction === "y") {
+        min.x = map.imgToCss({ x: r.left }).x;
+        max.x = map.imgToCss({ x: r.right }).x;
+      }
+      brush.css = { xmin: min.x, xmax: max.x, ymin: min.y, ymax: max.y };
+      var data = box(panel.toData(map.cssToImg(min)), panel.toData(map.cssToImg(max)));
+      brush.data = { xmin: round(data.xmin), xmax: round(data.xmax), ymin: round(data.ymin), ymax: round(data.ymax) };
+      draw();
+    }
+    function draw() {
+      if (!div) {
+        div = document.createElement("div");
+        div.id = el.id + "_brush";
+        div.style.position = "absolute";
+        div.style.pointerEvents = "none";
+        div.style.boxSizing = "border-box";
+        el.appendChild(div);
+      }
+      var border = "1px solid " + opts.stroke;
+      div.style.backgroundColor = opts.fill;
+      div.style.opacity = opts.opacity;
+      div.style.border = opts.direction === "xy" ? border : "none";
+      if (opts.direction === "x") { div.style.borderLeft = border; div.style.borderRight = border; }
+      if (opts.direction === "y") { div.style.borderTop = border; div.style.borderBottom = border; }
+      var b = brush.css;
+      div.style.left = (img.offsetLeft + b.xmin) + "px";
+      div.style.top = (img.offsetTop + b.ymin) + "px";
+      div.style.width = (b.xmax - b.xmin + 1) + "px";
+      div.style.height = (b.ymax - b.ymin + 1) + "px";
+      div.style.display = "";
+    }
+    function clear() {
+      if (div && div.parentNode) div.parentNode.removeChild(div);
+      div = null;
+      brush.panel = null;
+      brush.css = null;
+      brush.data = null;
+    }
+    function send() {
+      if (!brush.data) {
+        clearPlotInput(opts.id);
+        return;
+      }
+      var coords = withPanelInfo({
+        xmin: brush.data.xmin,
+        xmax: brush.data.xmax,
+        ymin: brush.data.ymin,
+        ymax: brush.data.ymax,
+        coords_css: brush.css,
+        coords_img: map.cssToImg(brush.css),
+        img_css_ratio: map.cssToImgRatio()
+      }, brush.panel);
+      coords.direction = opts.direction;
+      coords.brushId = opts.id;
+      coords.outputId = el.id;
+      setShinyInput(opts.id, coords, {});
+    }
+    var sender = delayed(send, plotOption(el, "brush-delay", 300), plotOption(el, "brush-delay-type", "debounce"));
+
+    function inside(css) {
+      var b = brush.css;
+      return !!b && css.x <= b.xmax && css.x >= b.xmin && css.y <= b.ymax && css.y >= b.ymin;
+    }
+    function sidesAt(css) {
+      var b = brush.css;
+      var sides = { left: false, right: false, top: false, bottom: false };
+      if (!b) return sides;
+      var withinY = css.y <= b.ymax + RESIZE && css.y >= b.ymin - RESIZE;
+      var withinX = css.x <= b.xmax + RESIZE && css.x >= b.xmin - RESIZE;
+      if (opts.direction !== "y" && withinY) {
+        if (css.x < b.xmin && css.x >= b.xmin - RESIZE) sides.left = true;
+        else if (css.x > b.xmax && css.x <= b.xmax + RESIZE) sides.right = true;
+      }
+      if (opts.direction !== "x" && withinX) {
+        if (css.y < b.ymin && css.y >= b.ymin - RESIZE) sides.top = true;
+        else if (css.y > b.ymax && css.y <= b.ymax + RESIZE) sides.bottom = true;
+      }
+      return sides;
+    }
+    function anySide(s) { return s.left || s.right || s.top || s.bottom; }
+    function shift(lo, hi, min, max) {
+      var d = hi > max ? max - hi : lo < min ? min - lo : 0;
+      return [lo + d, hi + d];
+    }
+
+    function move(e) {
+      var css = map.offsetCss(e);
+      if (brush.mode === "brushing") {
+        setCss(box(brush.down, css));
+      } else if (brush.mode === "dragging") {
+        var s = brush.start;
+        var dx = css.x - brush.down.x;
+        var dy = css.y - brush.down.y;
+        var next = { xmin: s.xmin + dx, xmax: s.xmax + dx, ymin: s.ymin + dy, ymax: s.ymax + dy };
+        if (opts.clip) {
+          var r = brush.panel.range;
+          var nImg = map.cssToImg(next);
+          var xs = shift(nImg.xmin, nImg.xmax, r.left, r.right);
+          var ys = shift(nImg.ymin, nImg.ymax, r.top, r.bottom);
+          next = map.imgToCss({ xmin: xs[0], xmax: xs[1], ymin: ys[0], ymax: ys[1] });
+        }
+        setCss(next);
+      } else if (brush.mode === "resizing") {
+        var bImg = map.cssToImg(brush.start);
+        var dImg = map.cssToImg({ x: css.x - brush.down.x, y: css.y - brush.down.y });
+        var pr = brush.panel.range;
+        if (brush.sides.left) bImg.xmin = Math.min(Math.max(bImg.xmin + dImg.x, pr.left), bImg.xmax);
+        else if (brush.sides.right) bImg.xmax = Math.max(Math.min(bImg.xmax + dImg.x, pr.right), bImg.xmin);
+        if (brush.sides.top) bImg.ymin = Math.min(Math.max(bImg.ymin + dImg.y, pr.top), bImg.ymax);
+        else if (brush.sides.bottom) bImg.ymax = Math.max(Math.min(bImg.ymax + dImg.y, pr.bottom), bImg.ymin);
+        setCss(map.imgToCss(bImg));
+      }
+      sender.call();
+    }
+    function up(e) {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      var css = map.offsetCss(e);
+      var mode = brush.mode;
+      brush.mode = null;
+      if (mode === "brushing" && css.x === brush.down.x && css.y === brush.down.y) {
+        // A click without a drag clears the brush.
+        clear();
+        sender.now();
+        return;
+      }
+      if (sender.pending()) sender.now();
+    }
+
+    on(el, "mousedown", function (e) {
+      if (e.button !== 0 || brush.mode) return;
+      var css = map.offsetCss(e);
+      if (opts.clip && !map.panelAt(css, EXPAND)) return;
+      brush.down = css;
+      var sides = sidesAt(css);
+      if (brush.css && anySide(sides)) {
+        brush.mode = "resizing";
+        brush.sides = sides;
+        brush.start = brush.css;
+      } else if (inside(css)) {
+        brush.mode = "dragging";
+        brush.start = brush.css;
+      } else {
+        brush.mode = "brushing";
+        brush.panel = map.panelAt(css, EXPAND);
+        if (!brush.panel) return;
+        var start = map.imgToCss(brush.panel.clipImg(map.cssToImg(css)));
+        brush.down = start;
+        setCss(box(start, start));
+      }
+      e.preventDefault();
+      document.addEventListener("mousemove", move);
+      document.addEventListener("mouseup", up);
+    });
+    on(el, "mousemove", function (e) {
+      if (brush.mode) return;
+      var css = map.offsetCss(e);
+      var s = sidesAt(css);
+      var cursor = "";
+      if (brush.css && anySide(s)) {
+        cursor = (s.left && s.top) || (s.right && s.bottom) ? "nwse-resize" :
+          (s.left && s.bottom) || (s.right && s.top) ? "nesw-resize" :
+          s.left || s.right ? "ew-resize" : "ns-resize";
+      } else if (inside(css)) {
+        cursor = "grab";
+      } else if (map.panelAt(css, EXPAND)) {
+        cursor = "crosshair";
+      }
+      el.style.cursor = cursor;
+    });
+
+    // A new plot: keep the brush on the same data (on the panel with the
+    // same mapping), unless the brush resets on new plots.
+    el.__shinymcpBrush = { div: div, panel: old && old.panel, data: old && old.data };
+    if (old && old.data && !opts.resetOnNew) {
+      var match = null;
+      each(map.panels, function (panel) {
+        if (!match && JSON.stringify(panel.mapping) === JSON.stringify(old.panel.mapping) &&
+            JSON.stringify(panel.panel_vars || {}) === JSON.stringify(old.panel.panel_vars || {})) {
+          match = panel;
+        }
+      });
+      if (match) {
+        brush.panel = match;
+        var cssBox = map.imgToCss(match.toImg(old.data));
+        setCss(box({ x: cssBox.xmin, y: cssBox.ymin }, { x: cssBox.xmax, y: cssBox.ymax }));
+        sender.now();
+      } else {
+        clear();
+        sender.now();
+      }
+    } else if (old && old.data) {
+      clear();
+      sender.now();
+    } else if (div) {
+      clear();
+    }
+    // Remember the brush across plots.
+    var remember = function () {
+      el.__shinymcpBrush = { div: div, panel: brush.panel, data: brush.data };
+    };
+    on(el, "mouseup", remember);
+    on(document, "mouseup", remember);
+    remember();
   }
 
   function renderDownload(el, payload, id) {
@@ -2197,6 +3177,7 @@
     } finally {
       applying = false;
     }
+    updateConditionals();
   }
 
   var toastRoot = null;
@@ -2651,6 +3632,8 @@
     scanInputs(document);
     state.scanned = true;
     announceOutputs(document);
+    updateConditionals();
+    watchConditionals();
     setupSubmit();
     window.addEventListener("message", onMessage);
     each(document.querySelectorAll(".shiny-download-link[id]"), function (el) {

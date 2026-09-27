@@ -28,6 +28,16 @@ the page's JavaScript, the hosts, and the documentation.
   (DT row selection, `plotly::event_data()`, leaflet events), custom
   message handlers (shinyjs), and the `shiny:*` events (shinycssloaders).
 * `fileInput()` uploads work, within `shiny.maxRequestSize`.
+* `conditionalPanel()` works. Chat clients forbid `eval()`, so shinymcp
+  reads conditions itself; it understands comparisons, logic, arithmetic,
+  `input.x`, `output.x`, `.length`, regular expressions, and common string
+  and array methods.
+* Clicks, double clicks, hovers, and brushes on plots send what Shiny's
+  client sends, so `nearPoints()` and `brushedPoints()` work.
+* `varSelectInput()` values arrive as symbols, and outputs set to a
+  `reactive()` work.
+* `updateSelectizeInput(server = TRUE)` works: the page shows the first
+  1,000 choices, with a search box for the rest.
 * `invalidateLater()` and `reactivePoll()` run while the app is open.
 * `renderUI()`, `insertUI()`, modals, notifications, downloads, and
   `insertTab()`, `removeTab()`, `hideTab()`, and `showTab()` reach the page.

@@ -72,7 +72,7 @@ calls the tool, the chat shows the app and the model reads a summary:
 ``` r
 result <- app$run_tool("faithful", list(bins = 30))
 cat(result$content[[1]]$text)
-#> The faithful app is open in the conversation (view view-0623b8f7492477bd).
+#> The faithful app is open in the conversation (view view-66e37058a676278e).
 #> 
 #> Inputs: bins = 30.
 #> 
@@ -154,11 +154,12 @@ keep from the model.
 
 The page is the app’s UI with shinymcp’s JavaScript in place of Shiny’s.
 It draws Shiny’s inputs and every kind of output: text, tables, plots,
-`renderUI()`, and htmlwidgets such as plotly, DT, and leaflet. Packages
-written for Shiny’s JavaScript work too, including shinyWidgets inputs,
-DT row selection, `plotly::event_data()`, shinyjs, and shinycssloaders.
-Downloads, file uploads, modals, notifications, and `invalidateLater()`
-work as they do in a browser.
+`renderUI()`, and htmlwidgets such as plotly, DT, and leaflet.
+Conditional panels, plot clicks and brushes (for `nearPoints()` and
+`brushedPoints()`), downloads, file uploads, modals, notifications, and
+`invalidateLater()` work as they do in a browser. So do packages written
+for Shiny’s JavaScript, including shinyWidgets inputs, DT row selection,
+`plotly::event_data()`, shinyjs, and shinycssloaders.
 
 What doesn’t carry over is anything from another website, such as map
 tiles or a script from a CDN, unless the app declares it: chat clients
