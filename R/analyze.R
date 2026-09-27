@@ -1,12 +1,17 @@
 # Analyze reactive graph from parsed Shiny app
 
-#' Analyze reactive graph from parsed Shiny app
+#' Group a Shiny app's reactive code into tools
 #'
-#' Builds a dependency graph from inputs through reactives to outputs,
-#' and groups connected components into tool groups.
+#' `analyze_reactive_graph()` follows each output back through the reactive
+#' expressions it uses to the inputs they read, and groups outputs that
+#' share inputs or reactive expressions. Each group becomes one tool in
+#' [convert_app()]'s draft.
 #'
-#' @param ir A `ShinyAppIR` object from [parse_shiny_app()]
-#' @return A `ReactiveAnalysis` list with components: `graph`, `tool_groups`, `warnings`
+#' @param ir The result of [parse_shiny_app()].
+#' @return A `ReactiveAnalysis` object: a list with `graph` (the
+#'   dependencies), `tool_groups`, and `warnings` about code that doesn't
+#'   fit a tool (observers with side effects, for example).
+#' @family conversion
 #' @export
 analyze_reactive_graph <- function(ir) {
   if (!inherits(ir, "ShinyAppIR")) {
@@ -479,9 +484,9 @@ server_call_names <- function(expr) {
   unique(found)
 }
 
-#' Print method for ReactiveAnalysis
-#' @param x A ReactiveAnalysis object
-#' @param ... Ignored
+#' @rdname analyze_reactive_graph
+#' @param x A `ReactiveAnalysis` object.
+#' @param ... Ignored.
 #' @export
 print.ReactiveAnalysis <- function(x, ...) {
   cli::cli_h1("Reactive Analysis")

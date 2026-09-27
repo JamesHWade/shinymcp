@@ -4,11 +4,11 @@
 \name{shinymcp-package}
 \alias{shinymcp}
 \alias{shinymcp-package}
-\title{shinymcp: Convert Shiny Apps to MCP Apps}
+\title{shinymcp: Serve 'shiny' Apps as MCP Apps in AI Chat Clients}
 \description{
 \if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
 
-Converts existing Shiny applications into MCP (Model Context Protocol) Apps that render inside AI chat interfaces. Provides a parse-analyze-generate pipeline for automatic conversion, MCP-compatible UI components, a JavaScript bridge for the MCP Apps postMessage protocol, and a runtime framework for serving MCP Apps with tools and ui:// resources.
+Serves 'shiny' apps as MCP Apps, the Model Context Protocol extension that lets AI chat clients show interactive pages in the conversation. An existing app runs as it is, its server function live in R, or an app can be built from tools the model can also call on their own. Includes an MCP server over standard input and output or HTTP, an endpoint for deploying apps to Posit Connect, a preview in the browser, and hosts for showing MCP Apps in 'shiny' and 'shinychat'.
 }
 \seealso{
 Useful links:

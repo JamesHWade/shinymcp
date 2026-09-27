@@ -35,7 +35,8 @@ a path to an app directory (with \code{app.R}, or \code{ui.R} and \code{server.R
 an \link{McpApp} (returned unchanged).}
 
 \item{...}{Passed on to \code{\link[=mcp_app]{mcp_app()}}, for example \code{csp},
-\code{prefers_border}, or \code{images}.}
+\code{prefers_border}, \code{images}, or \code{www} (which defaults to the app
+directory's \verb{www/} folder).}
 
 \item{name}{App name, used for the \verb{ui://<name>} resource and the tool
 name. Defaults to the directory name for a path, otherwise
@@ -83,22 +84,39 @@ Choose what the model sees with \code{\link[=bindMcp]{bindMcp()}}. Once any inpu
 marked, only marked inputs become tool arguments and only marked outputs
 are reported; the user still sees the whole app. Buttons are never
 pressed by the model unless you mark them, and password and file inputs
-are never exposed.
+are never the model's to set.
 }
 \section{What runs where}{
 
 The page is the app's UI rendered once to HTML, with shinymcp's bridge in
-place of Shiny's JavaScript. The bridge provides native versions of
-Shiny's inputs (select, slider, date, checkbox group, and so on) and
-draws outputs sent back from R: text, HTML, tables, plots, \code{renderUI()},
-and htmlwidgets such as plotly and DT. Custom JavaScript input and output
-bindings written against Shiny's client API won't work.
+place of Shiny's JavaScript. The bridge draws Shiny's built-in inputs
+itself (select, slider, date, checkbox group, and so on), and puts
+outputs sent back from R on the page: text, HTML, tables, plots,
+\code{renderUI()}, and htmlwidgets such as plotly, DT, and leaflet.
 
-Sessions live in the R process that serves the app, up to 50 at a time,
-closing after an hour of inactivity. If a request reaches a process that
-doesn't have the view's session (after a restart, or on a server running
-several processes), a new session starts from the inputs on the page.
-Anything the server function remembers outside its inputs (a
+Packages written for Shiny's JavaScript API work too. The page provides
+\code{window.Shiny} with the parts packages use: input bindings they register
+(shinyWidgets, for example), \code{Shiny.setInputValue()} (DT row selection,
+plotly's \code{event_data()}, leaflet clicks), custom message handlers
+(shinyjs), and the \code{shiny:value} family of events (shinycssloaders).
+File inputs upload to the session, within \code{shiny.maxRequestSize}.
+\code{invalidateLater()} and \code{reactivePoll()} run while the app is open.
+
+The app starts as \code{\link[shiny:runApp]{shiny::runApp()}} would start it: its \code{onStart}
+(for a directory, \code{global.R} and the files in \verb{R/}) runs once, before
+the UI is built, and its code runs in the app's directory. Scripts, stylesheets, and images the
+UI loads from \verb{www/} or from \code{\link[shiny:addResourcePath]{shiny::addResourcePath()}} paths are
+written into the page. \code{onStop} runs when the server stops.
+}
+
+\section{Sessions}{
+
+Sessions live in the R process that serves the app, up to 50 at a time
+(the \code{shinymcp.max_views} option), each closing after an hour without
+use (\code{shinymcp.view_timeout}, in seconds). If a request reaches a
+process that doesn't have the view's session (after a restart, or on a
+server running several processes), a new session starts from the inputs
+on the page. Anything the server function kept outside its inputs (a
 \code{reactiveVal()} that counts clicks, say) starts over.
 }
 
@@ -131,6 +149,8 @@ serve("path/to/my-app")
 }
 \seealso{
 Other apps:
+\code{\link{McpApp}},
+\code{\link[=bindMcp]{bindMcp()}},
 \code{\link[=mcp_app]{mcp_app()}},
 \code{\link[=mcp_tool_module]{mcp_tool_module()}}
 }

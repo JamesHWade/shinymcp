@@ -61,7 +61,7 @@ with new input values.
 }
 \description{
 \code{mcp_host_ui()} and \code{mcp_host_server()} show an \link{McpApp} inside a Shiny
-app, exactly as a chat client would: the app runs in a sandboxed iframe
+app as a chat client would: the app runs in a sandboxed iframe
 and its tool calls are answered in R. Use it to review an app, to build a
 dashboard around one, or to react in Shiny to what the user does in it.
 

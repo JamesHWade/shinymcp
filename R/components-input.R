@@ -1,21 +1,26 @@
-# MCP-compatible input components
+# Inputs for apps built from tools
 #
-# These functions generate static HTML with data-shinymcp-* attributes
-# that the JS bridge reads to construct MCP tool parameters.
+# Plain HTML controls with data-shinymcp-* attributes, which the bridge
+# reads. Shiny's and bslib's own inputs work too; these need neither.
 
-#' Mark an element as an MCP input
+#' Mark an element as an input of an app's tools
 #'
-#' Stamps `data-shinymcp-input` on a tag or its first form-element descendant.
-#' Use this as an escape hatch when auto-detection by tool argument name doesn't
-#' work (e.g., custom widgets or elements whose `id` doesn't match the tool
-#' argument name).
+#' In an app built with [mcp_app()], a tool's argument takes its value from
+#' the input whose id matches the argument's name. Shiny's and bslib's
+#' inputs are found that way on their own. `mcp_input()` marks anything
+#' else: an element whose id differs from the argument name, or a form
+#' element shinymcp doesn't recognize.
 #'
-#' @param tag An [htmltools::tag] object (e.g., from `shiny::selectInput()`
-#'   or `bslib::input_select()`).
-#' @param id The input ID to register. If `NULL` (the default), reads the
-#'   element's existing `id` attribute.
-#' @return The modified [htmltools::tag] with `data-shinymcp-input` stamped.
+#' @param tag A tag or tag list. The mark goes on the tag if it is a form
+#'   element or an input group (radio buttons, a date input), otherwise on
+#'   the first one inside it.
+#' @param id The tool argument the element feeds. Defaults to the element's
+#'   own id.
+#' @return `tag`, marked.
+#' @family components
 #' @export
+#' @examples
+#' mcp_input(htmltools::tags$input(id = "q", type = "search"), id = "query")
 mcp_input <- function(tag, id = NULL) {
   if (inherits(tag, "shiny.tag") && is_input_element(tag)) {
     return(stamp_input(tag, id %||% htmltools::tagGetAttribute(tag, "id")))
@@ -95,18 +100,21 @@ check_input_id <- function(id, call = rlang::caller_env()) {
   invisible(id)
 }
 
-#' Mark an element as an MCP output
+#' Mark an element as an output of an app's tools
 #'
-#' Stamps `data-shinymcp-output` and `data-shinymcp-output-type` on a tag.
-#' Use this to turn any container element into a target for tool result output.
+#' A tool fills the outputs whose ids match the names of the list it
+#' returns. [mcp_text()], [mcp_plot()] and the other output functions make
+#' those elements; `mcp_output()` turns any element into one.
 #'
-#' @param tag An [htmltools::tag] object.
-#' @param id The output ID. If `NULL` (the default), reads the element's
-#'   existing `id` attribute.
-#' @param type Output type: `"text"`, `"html"`, `"plot"`, `"table"`,
-#'   `"image"`, or `"widget"`.
-#' @return The modified [htmltools::tag] with output attributes stamped.
+#' @param tag A tag.
+#' @param id The output id. Defaults to the element's own id.
+#' @param type How to show the value: `"text"`, `"html"`, `"plot"`,
+#'   `"table"`, `"image"`, or `"widget"`.
+#' @return `tag`, marked.
+#' @family components
 #' @export
+#' @examples
+#' mcp_output(htmltools::div(class = "summary-card"), id = "summary", type = "html")
 mcp_output <- function(
   tag,
   id = NULL,
@@ -127,17 +135,37 @@ mcp_output <- function(
   )
 }
 
-#' Create an MCP select input
+#' Inputs for apps built from tools
 #'
-#' Generates a dropdown select element with MCP data attributes.
+#' @description
+#' Small form controls for [mcp_app()] UIs, drawn by the page itself.
+#' Shiny's and bslib's inputs work just as well in an MCP App; these need
+#' neither package and keep the page light.
 #'
-#' @param id Input ID
-#' @param label Display label
-#' @param choices Character vector of choices. If named, names are used as
-#'   display labels and values as the option values.
-#' @param selected The initially selected value. Defaults to the first choice.
-#' @return An [htmltools::tag] object
+#' * `mcp_select()`: a drop-down list.
+#' * `mcp_text_input()`: a line of text.
+#' * `mcp_numeric_input()`: a number.
+#' * `mcp_checkbox()`: `TRUE` or `FALSE`.
+#' * `mcp_slider()`: a number on a range.
+#' * `mcp_radio()`: one of a few choices.
+#' * `mcp_action_button()`: a button; a tool taking its id runs when it's
+#'   pressed.
+#'
+#' @param id The input id, which is the name of the tool argument it feeds.
+#' @param label The label shown with the input.
+#' @param choices The values to choose from. Names, if any, are shown in
+#'   their place.
+#' @param selected The value selected at first. Defaults to the first
+#'   choice.
+#' @return A tag.
+#' @family components
 #' @export
+#' @examples
+#' htmltools::tagList(
+#'   mcp_select("species", "Species", c("Adelie", "Gentoo", "Chinstrap")),
+#'   mcp_slider("alpha", "Opacity", min = 0, max = 1, value = 0.7, step = 0.1),
+#'   mcp_checkbox("smooth", "Add a trend line")
+#' )
 mcp_select <- function(id, label, choices, selected = choices[[1]]) {
   choice_names <- names(choices) %||% unname(choices)
   choice_values <- unname(choices)
@@ -168,15 +196,9 @@ mcp_select <- function(id, label, choices, selected = choices[[1]]) {
   )
 }
 
-#' Create an MCP text input
-#'
-#' Generates a text input element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param value Initial value
-#' @param placeholder Placeholder text
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
+#' @param value The value at first.
+#' @param placeholder Text shown while the input is empty.
 #' @export
 mcp_text_input <- function(id, label, value = "", placeholder = NULL) {
   htmltools::tags$div(
@@ -193,17 +215,9 @@ mcp_text_input <- function(id, label, value = "", placeholder = NULL) {
   )
 }
 
-#' Create an MCP numeric input
-#'
-#' Generates a numeric input element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param value Initial value
-#' @param min Minimum allowed value
-#' @param max Maximum allowed value
-#' @param step Step increment
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
+#' @param min,max The smallest and largest values allowed.
+#' @param step The step between values.
 #' @export
 mcp_numeric_input <- function(id, label, value, min = NA, max = NA, step = NA) {
   attrs <- list(
@@ -230,14 +244,7 @@ mcp_numeric_input <- function(id, label, value, min = NA, max = NA, step = NA) {
   )
 }
 
-#' Create an MCP checkbox input
-#'
-#' Generates a checkbox input element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param value Initial checked state
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_checkbox <- function(id, label, value = FALSE) {
   input_tag <- htmltools::tags$input(
@@ -257,17 +264,7 @@ mcp_checkbox <- function(id, label, value = FALSE) {
   )
 }
 
-#' Create an MCP slider input
-#'
-#' Generates a range slider element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param min Minimum value
-#' @param max Maximum value
-#' @param value Initial value
-#' @param step Step increment
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_slider <- function(id, label, min, max, value = min, step = 1) {
   htmltools::tags$div(
@@ -286,16 +283,7 @@ mcp_slider <- function(id, label, min, max, value = min, step = 1) {
   )
 }
 
-#' Create MCP radio button inputs
-#'
-#' Generates a set of radio buttons with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param choices Character vector of choices. If named, names are used as
-#'   display labels and values as the radio values.
-#' @param selected The initially selected value. Defaults to the first choice.
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_radio <- function(id, label, choices, selected = choices[[1]]) {
   choice_names <- names(choices) %||% unname(choices)
@@ -328,13 +316,7 @@ mcp_radio <- function(id, label, choices, selected = choices[[1]]) {
   )
 }
 
-#' Create an MCP action button
-#'
-#' Generates a button element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Button label
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_action_button <- function(id, label) {
   htmltools::tags$div(

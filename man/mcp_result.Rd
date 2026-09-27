@@ -72,9 +72,9 @@ dependencies, such as a plotly chart.
 
 Each takes a \code{model_value}, the value the model sees for this output in
 the tool result's structured content, and a \code{text}, the plain-text
-version used when the model or host can only read text. The defaults are
-sensible (a table's rows, a plot's description), so set them when the
-model needs something more specific: identifiers, a decision, the numbers
+version used when the model or host can only read text. By default the
+model gets a table's rows and a plot's description; set them when it
+needs something more specific: identifiers, a decision, the numbers
 behind a chart.
 }
 \examples{

@@ -1,403 +1,245 @@
-# Convert Shiny App to MCP App
+---
+name: convert-shiny-app
+description: Make a Shiny app usable from AI chat clients (Claude, ChatGPT, VS Code) as an MCP App with the shinymcp R package, either by serving the app as it is or by rewriting it as tools. Use when asked to convert or port a Shiny app to MCP, to serve a Shiny app to a chat client or agent, or to build an MCP App in R.
+---
 
-You are converting a Shiny application into an MCP App powered by shinymcp.
-Follow these steps carefully.
+# Shiny app to MCP App
 
-## Conversion Approach
+shinymcp serves Shiny apps as MCP Apps. A client that supports the MCP Apps
+extension shows the app in the conversation, and the model opens it through
+a tool, sets its inputs, and reads its outputs. Clients without the
+extension get the same tools, with text results.
 
-MCP Apps replace Shiny's reactive server with AI-invoked tools. Instead of
-`reactive()` and `observe()`, the AI calls tools that return values which the
-JS bridge routes to output elements in the browser. The UI is plain HTML with
-data attributes; no Shiny server is required.
+There are two routes:
 
-## Step-by-Step Process
+- **Serve the app as it is**, with `as_mcp_app()`. The server function
+  keeps running in R, one session each time the app opens. Nothing is
+  rewritten. Take this route unless there is a reason not to.
+- **Rewrite it as tools**, with `mcp_app()`: plain R functions that take the
+  inputs and return the outputs, with no session. Take this route only when
+  the user asks for it, when the model must use the computation without the
+  app (in clients that can't show apps, or from other agents), or when each
+  call must stand alone, with nothing kept in the R process between calls.
 
-### 1. Read the Shiny Source
+## Serving the app as it is
 
-Read the entire app (either `app.R` or the `ui.R`/`server.R` pair). Identify:
+### 1. Read the app
 
-- All inputs (`selectInput`, `numericInput`, `textInput`, `sliderInput`, etc.)
-- All outputs (`textOutput`, `plotOutput`, `tableOutput`, `uiOutput`, etc.)
-- Reactive expressions and observers that connect inputs to outputs
+Read `app.R`, or `ui.R`, `server.R`, and `global.R`, and the files in `R/`.
+Note:
 
-### 2. Map Inputs to MCP Components
+- which inputs and outputs matter for what the app is for;
+- anything loaded from another site: `https://` URLs in `tags$script()`,
+  `tags$link()`, or `tags$img()`, map tiles, web fonts;
+- icons made with `icon()` (Font Awesome);
+- `withProgress()`, bookmarking, `updateQueryString()`, and
+  `session$reload()`.
 
-| Shiny Input           | MCP Component                                      |
-|-----------------------|----------------------------------------------------|
-| `selectInput`         | `mcp_select(id, label, choices)`                   |
-| `numericInput`        | `mcp_numeric_input(id, label, value, min, max)`    |
-| `textInput`           | `mcp_text_input(id, label)`                        |
-| `sliderInput`         | `mcp_slider(id, label, min, max, value)`           |
-| `checkboxInput`       | `mcp_checkbox(id, label)`                          |
-| `actionButton`        | `mcp_button(id, label)`                            |
-| `radioButtons`        | `mcp_select(id, label, choices)` (use select)      |
-| `fileInput`           | See "File Uploads" below                           |
+### 2. Write the server script
 
-### 3. Map Outputs to MCP Components
-
-| Shiny Output          | MCP Component                                      |
-|-----------------------|----------------------------------------------------|
-| `textOutput`          | `mcp_text(id)`                                     |
-| `verbatimTextOutput`  | `mcp_text(id)`                                     |
-| `plotOutput`          | `mcp_plot(id)`                                     |
-| `tableOutput`         | `mcp_table(id)`                                    |
-| `htmlOutput`          | `mcp_html(id)`                                     |
-| `uiOutput`            | `mcp_html(id)` (render as HTML string)             |
-
-### 4. Convert Reactive Logic to Tools
-
-Group related reactive chains into tools. Each tool should:
-
-- Accept the relevant input values as arguments
-- Perform the computation that the reactive expressions did
-- Return a named list mapping output IDs to their rendered values
-
-**Simple apps**: One tool per output, or one tool that returns all outputs.
-
-**Reactive chains**: If output B depends on reactive A, which depends on
-inputs X and Y, create a single tool that takes X and Y and returns B.
-Flatten the chain -- tools are stateless function calls.
-
-**Example**: A Shiny app with `reactive({ filter(data, col == input$x) })`
-feeding both a text summary and a table becomes one tool:
-
-```r
-ellmer::tool(
-  fun = function(x = "default") {
-    filtered <- dplyr::filter(data, col == x)
-    list(
-      summary_text = paste(nrow(filtered), "rows"),
-      data_table = render_table_html(filtered)
-    )
-  },
-  name = "filter_data",
-  description = "Filter data by column value and return summary and table",
-  arguments = list(
-    x = ellmer::type_string("Column filter value")
-  )
-)
-```
-
-### 5. Assemble the MCP App
+Write a script that makes the app and serves it, for example `mcp.R` next
+to `app.R` (not in `R/`, which Shiny sources):
 
 ```r
 library(shinymcp)
 
-ui <- htmltools::tagList(
-  # Inputs
-  mcp_select("x", "Filter by:", choices),
-  # Outputs
-  mcp_text("summary_text"),
-  mcp_table("data_table")
+app <- as_mcp_app(
+  "/full/path/to/app",
+  name = "sales",
+  title = "Sales explorer",
+  description = "Monthly sales by region and product line, with a forecast."
 )
 
-tools <- list(filter_data_tool)
-
-app <- mcp_app(ui, tools, name = "my-app")
 serve(app)
 ```
 
-## Special Cases
+- Use the app directory's full path. Chat clients start the script from a
+  directory of their own.
+- The model reads `description` when it decides whether to open the app.
+  Say what the app is for in a sentence or two. The default only lists the
+  inputs and outputs.
+- `name` is also the tool's name. Keep it short: letters, digits, `_`, `-`.
+- Nothing may print to standard output before `serve()` starts, because
+  the protocol runs over it. Messages and warnings go to standard error and
+  are fine.
 
-### Dynamic UI (`uiOutput` / `renderUI`)
+`as_mcp_app()` starts the app as `shiny::runApp()` would: `global.R`, the
+files in `R/`, and `onStart` run first, the code runs in the app's
+directory, and files in `www/` are written into the page. It also takes a
+Shiny app object, `as_mcp_app(shinyApp(ui, server), ...)`.
 
-MCP Apps do not support dynamic UI generation from the server. Instead:
+### 3. Check what the model gets
 
-- Use `mcp_html(id)` and return rendered HTML strings from tools
-- For conditional visibility, return empty strings when hidden
-- For dynamic choices, see "Dynamic Select Updates" below
-
-### Accepting Session Data (`data_path` / `data_csv` Pattern)
-
-When the Shiny app works with a fixed dataset but the MCP App should let
-the AI pass data from the conversation, add `data_path` and/or `data_csv`
-tool arguments. This is common for analysis/visualization apps where the
-user may want to explore their own data.
-
-**Why persistence matters:** The JS bridge only sends tool arguments that
-have matching DOM elements. `data_path` and `data_csv` have no DOM elements
-(the AI provides them directly), so UI-triggered calls (e.g. user changes a
-dropdown) arrive *without* them. You must persist the active dataset
-server-side so it survives across calls.
-
-#### Setup
-
-1. **Keep a default dataset** so the app works standalone:
+Run the tool in R, as a client would:
 
 ```r
-default_data <- palmerpenguins::penguins[complete.cases(palmerpenguins::penguins), ]
-
-# Persists across tool calls — the bridge can't send data_path/data_csv
-# on UI-triggered calls, so we remember the last loaded data here.
-active_data_env <- new.env(parent = emptyenv())
-active_data_env$df <- default_data
-active_data_env$path <- NULL
+app$tool_definitions()[[1]]$inputSchema  # the arguments the model sees
+result <- app$run_tool("sales", list(region = "West"))
+isTRUE(result$isError)                   # should be FALSE
+cat(result$content[[1]]$text)            # what the model reads
 ```
 
-2. **Add `data_path` and `data_csv` as tool arguments** with no matching
-   DOM element. `data_path` supports multiple file formats; `data_csv` is
-   a convenience for small inline data:
+Plots reach the model as images as well. `as_mcp_app(images = FALSE)`
+leaves them out.
+
+To see the app as a chat client shows it, the user can run
+`preview_app(app)` in an interactive session.
+
+### 4. Narrow the tool when the app is large
+
+A large app gives the model a tool with many arguments, most of them beside
+the point. Mark the inputs and outputs the model should use with
+`bindMcp()`:
 
 ```r
-arguments = list(
-  data_path = ellmer::type_string(
-    "Path to a data file (CSV, TSV, Excel .xlsx/.xls, or Parquet).
-     Once loaded, persists for subsequent calls."
-  ),
-  data_csv = ellmer::type_string(
-    "Data as inline CSV text. Once loaded, persists for subsequent calls."
-  ),
-  # ... other arguments ...
-)
+selectInput("region", "Region", regions) |> bindMcp(),
+sliderInput("alpha", "Point opacity", 0, 1, 0.7),
+plotOutput("trend") |> bindMcp(),
 ```
 
-3. **Load data with a clear priority chain** in the tool function:
+Once anything is marked, only marked inputs are arguments and only marked
+outputs are reported. The person using the app still sees and uses all of
+it. The model presses an action button only if it is marked, and never sets
+password or file inputs. `bindMcp()` changes nothing when the app runs in
+Shiny.
+
+### 5. Tell the model what the person did (optional)
+
+When the person changes something, the page tells the model the current
+values of the inputs it can set and a summary of each output it reads. For
+something more useful, call `mcp_model_context()` from the server function:
 
 ```r
-fun = function(data_path = "", data_csv = "", x_var = "col1", ...) {
-  # Priority: data_path > data_csv > last active data > default
-  new_data_loaded <- FALSE
-  if (nzchar(data_path)) {
-    if (!file.exists(data_path)) {
-      rlang::abort(c(
-        sprintf("Data file not found: '%s'", data_path),
-        "i" = "Supported formats: CSV, TSV, Excel (.xlsx/.xls), Parquet."
-      ))
-    }
-    ext <- tolower(tools::file_ext(data_path))
-    supported <- c("csv", "tsv", "xlsx", "xls", "parquet")
-    if (!ext %in% supported) {
-      rlang::abort(c(
-        sprintf("Unsupported file extension: '.%s'", ext),
-        "i" = sprintf("Supported formats: %s.", paste(supported, collapse = ", "))
-      ))
-    }
-    data <- tryCatch(
-      switch(ext,
-        csv = read.csv(data_path, stringsAsFactors = TRUE),
-        tsv = read.delim(data_path, stringsAsFactors = TRUE),
-        xlsx = , xls = { readxl::read_excel(data_path) },
-        parquet = { as.data.frame(arrow::read_parquet(data_path)) }
-      ),
-      error = function(e) {
-        rlang::abort(c(
-          sprintf("Failed to read data file: '%s'", data_path),
-          "x" = conditionMessage(e)
-        ), parent = e)
-      }
-    )
-    data <- as.data.frame(data)
-    new_data_loaded <- TRUE
-  } else if (nzchar(data_csv)) {
-    data <- tryCatch(
-      read.csv(text = data_csv, stringsAsFactors = TRUE),
-      error = function(e) {
-        rlang::abort(c(
-          "Failed to parse inline CSV data.",
-          "x" = conditionMessage(e)
-        ), parent = e)
-      }
-    )
-    new_data_loaded <- TRUE
-  } else {
-    data <- active_data_env$df
-  }
+observe({
+  mcp_model_context(
+    text = sprintf("Showing %s sales in %s.", input$product, input$region),
+    data = list(region = input$region, product = input$product)
+  )
+})
+```
 
-  if (nrow(data) == 0L) {
-    rlang::abort("Loaded data has zero rows.")
-  }
+Keep it short and factual. It does nothing in an ordinary Shiny session;
+`is_mcp_session()` tells the two apart.
 
-  # Validate data suitability, then persist
-  # (defer persistence so bad data doesn't get stuck in active_data_env)
-  if (new_data_loaded) {
-    active_data_env$df <- data
-    active_data_env$path <- if (nzchar(data_path)) data_path else {
-      tmp <- tempfile(fileext = ".csv")
-      write.csv(data, tmp, row.names = FALSE)
-      tmp
+### 6. Fix what doesn't carry over
+
+The client shows the page in a sandboxed iframe under a Content Security
+Policy that blocks what the app doesn't declare.
+
+| In the app | What to do |
+|---|---|
+| Scripts, stylesheets, images, or fonts from another site | Declare the domains: `as_mcp_app(..., csp = list(resource_domains = "https://cdn.example.com"))`. |
+| `fetch()` or WebSockets to another site | `csp = list(connect_domains = ...)`. |
+| `icon()` and other icon fonts | Fonts in the page can't load. Use SVG icons, such as `bsicons::bs_icon()`. |
+| `withProgress()` | Shows nothing. The request finishes before the page hears of it. |
+| Bookmarking, `updateQueryString()`, `session$reload()` | There is no page URL to act on. |
+| Output bindings from packages, other than htmlwidgets | Shown as text. |
+| Uploads larger than 5 MB | `options(shiny.maxRequestSize = ...)`, as in Shiny. |
+
+Everything else works as it does in a browser: reactive expressions,
+observers, `renderUI()`, modules, htmlwidgets, `update*Input()`,
+notifications, modals, downloads, uploads, `invalidateLater()`, and packages
+built on Shiny's JavaScript (shinyWidgets, DT row selection,
+`plotly::event_data()`, shinyjs).
+
+### 7. Register the script with a client
+
+Claude Desktop, in `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "sales": {
+      "command": "Rscript",
+      "args": ["/full/path/to/mcp.R"]
     }
   }
-  # ... use data ...
 }
 ```
 
-This handles all the ways data can arrive:
-- **User uploads a file** (Excel, CSV, etc.) → AI passes `data_path`
-- **AI generates data with code** → saves to temp file → passes `data_path`
-- **Small inline data** → AI passes `data_csv`
-- **User changes a dropdown** → bridge sends UI inputs only → tool reuses
-  `active_data_env$df`
+Claude Code: `claude mcp add sales -- Rscript /full/path/to/mcp.R`.
 
-4. **Validate column arguments** against the actual data. Error early if
-   the data lacks the required column types (e.g. at least 2 numeric columns
-   for a scatter plot). Fall back to the first appropriate column only when
-   a specific column name is stale after a data change
-5. **Return column metadata** so select dropdowns can update (see next section)
+On macOS, desktop clients don't see the shell's `PATH`; use the full path to
+`Rscript` (from `which Rscript`). To check the script, run
+`Rscript /full/path/to/mcp.R` in a terminal: it should wait without
+printing anything.
 
-### Dynamic Select Updates
+For clients that connect to a URL, `serve(app, type = "http", port = 8080)`
+serves it at `http://127.0.0.1:8080/mcp`. To deploy to Posit Connect or
+Shiny Server, end `app.R` with `shinyApp(ui, server) |> mcp_endpoint(name =
+"sales")`: browsers get the Shiny app and chat clients connect to the
+content's URL followed by `/mcp`.
 
-When data changes at runtime (e.g. via `data_csv`), select inputs need to
-reflect the new columns. Use a hidden output + MutationObserver pattern:
+## Rewriting the app as tools
 
-1. **Add a hidden `mcp_text` output** to the UI:
+### 1. Draft with `convert_app()`
 
 ```r
-tags$div(style = "display:none;", mcp_text("_columns"))
+shinymcp::convert_app("/full/path/to/app")
 ```
 
-2. **Return column metadata as JSON** from the tool alongside other results:
+It reads the code without running it, groups outputs that share inputs into
+one tool each, and writes `ui.R`, `tools.R`, and `app.R` to
+`/full/path/to/app_mcp/`, with `CONVERSION_NOTES.md` when some code doesn't
+fit a tool (observers with side effects, for example). Each draft tool
+takes its inputs as typed arguments with the app's defaults, holds the
+app's code for its outputs as comments, and returns placeholder text for
+each output, so the draft runs as it is.
+
+### 2. Finish each tool
+
+Rewrite each tool's body as a function of its arguments:
+
+- `input$x` becomes the argument `x`;
+- a reactive expression becomes an ordinary variable;
+- each render call becomes the value it rendered, returned in a list named
+  by output id.
+
+Return, by output:
+
+| Output | Return |
+|---|---|
+| `textOutput()`, `verbatimTextOutput()`, `mcp_text()` | a string |
+| `tableOutput()`, `mcp_table()` | a data frame |
+| `plotOutput()`, `mcp_plot()` | a ggplot object, or `mcp_result_plot(function() <base graphics code>)` |
+| `uiOutput()`, `htmlOutput()`, `mcp_html()` | an htmltools tag |
+| an htmlwidget's output | the widget (plotly, leaflet, DT) |
+
+Name and describe each tool for what it does ("show_sales_trend", "Plot
+monthly sales for one region"): the model reads those, not the code. Use
+`ellmer::type_enum()` for fixed choices and `required = FALSE` for arguments
+with defaults.
+
+`mcp_tool_result()` sets the text and structured data the model gets, when
+the defaults (each output's text, a table's rows) aren't what it needs.
+
+### 3. What doesn't rewrite line by line
+
+- **Side effects.** Code that writes files, sends messages, or changes a
+  database goes in its own tool, hidden from the model with
+  `mcp_app(tool_visibility = list(save_report = "app"))` and annotated
+  `ellmer::tool_annotations(read_only_hint = FALSE)`. To run it from a
+  button, as `observeEvent(input$save, ...)` did, give the tool an argument
+  named after the button's id: it runs when the button is pressed, and not
+  when its other inputs change.
+- **State between interactions** (`reactiveVal()`, uploaded data, a
+  multi-step workflow). A tool keeps nothing between calls. Pass the state
+  in as an argument, or serve that part of the app with `as_mcp_app()`.
+- **File uploads.** A tool can't take a file from the page. Take a path or
+  the data as an argument, for the model to supply, or keep the upload in a
+  Shiny app.
+
+### 4. Test
+
+`as_mcp_app()` loads the app from its `app.R` without serving it:
 
 ```r
-col_info <- jsonlite::toJSON(list(
-  numeric = names(data)[vapply(data, is.numeric, logical(1))],
-  categorical = names(data)[vapply(data, function(x)
-    is.character(x) || is.factor(x), logical(1))]
-), auto_unbox = FALSE)
-
-list(plot = plot_b64, code = code_text, `_columns` = as.character(col_info))
+app <- shinymcp::as_mcp_app("/full/path/to/app_mcp")
+app$call_tool("show_sales_trend", list(region = "West"))  # the R value
+app$run_tool("show_sales_trend", list(region = "West"))   # what a client gets
 ```
 
-3. **Add a `<script>` that watches the hidden output** and rebuilds select
-   options using safe DOM methods (no innerHTML):
-
-```r
-tags$script(HTML("
-  (function() {
-    var colEl = document.querySelector(
-      '[data-shinymcp-output=\"_columns\"]'
-    );
-    if (!colEl) return;
-    new MutationObserver(function() {
-      var raw = colEl.textContent;
-      if (!raw || !raw.trim()) return;
-      try { var info = JSON.parse(raw); } catch(e) {
-        console.error('[shinymcp] Failed to parse column metadata:', e.message);
-        return;
-      }
-      updateSelect('x_var', info.numeric);
-      updateSelect('y_var', info.numeric);
-      updateSelectWithNone('color_var', info.categorical);
-      updateSelectWithNone('facet_var', info.categorical);
-    }).observe(colEl, { childList: true, characterData: true, subtree: true });
-
-    function clearSelect(sel) {
-      while (sel.firstChild) sel.removeChild(sel.firstChild);
-    }
-    function updateSelect(id, values) {
-      var sel = document.getElementById(id);
-      if (!sel) { console.warn('[shinymcp] Select not found: #' + id); return; }
-      if (!Array.isArray(values)) return;
-      var cur = sel.value;
-      clearSelect(sel);
-      for (var i = 0; i < values.length; i++) {
-        var opt = document.createElement('option');
-        opt.value = values[i];
-        opt.textContent = values[i];
-        if (values[i] === cur) opt.selected = true;
-        sel.appendChild(opt);
-      }
-    }
-    function updateSelectWithNone(id, values) {
-      var sel = document.getElementById(id);
-      if (!sel) { console.warn('[shinymcp] Select not found: #' + id); return; }
-      if (!Array.isArray(values)) return;
-      var cur = sel.value;
-      clearSelect(sel);
-      var none = document.createElement('option');
-      none.value = 'none'; none.textContent = 'None';
-      sel.appendChild(none);
-      for (var i = 0; i < values.length; i++) {
-        var opt = document.createElement('option');
-        opt.value = values[i];
-        opt.textContent = values[i];
-        if (values[i] === cur) opt.selected = true;
-        sel.appendChild(opt);
-      }
-    }
-  })();
-"))
-```
-
-The key insight: the existing `structuredContent` → `updateOutput()` pipeline
-pushes the JSON into the hidden element, and the MutationObserver picks it up
-to refresh the selects. No new bridge changes needed.
-
-See `inst/examples/ggplot-builder/app.R` for a full working example.
-
-### File Uploads
-
-MCP Apps run inside an AI tool-use context and cannot handle file uploads
-the way Shiny does. Instead, use the `data_path` / `data_csv` pattern above:
-
-- **Uploaded files**: The AI receives the file path and passes it as
-  `data_path`. The tool auto-detects format by extension (CSV, TSV, Excel,
-  Parquet)
-- **Inline data**: The AI passes small datasets as `data_csv` text
-- **AI-generated data**: The AI writes to a temp file and passes `data_path`
-
-The `data_path` argument replaces Shiny's `fileInput()` — instead of the
-user uploading directly to the app, the AI mediates the file access.
-
-### Shiny Modules
-
-Flatten modules into the top-level app. Each module's server logic becomes
-one or more tools. Prefix tool names with the module name for clarity:
-
-- `mod_chart_server` -> tool named `chart_update`
-- `mod_filter_server` -> tool named `filter_apply`
-
-### Plots
-
-For `plotOutput`, use `mcp_plot(id)` and return a base64-encoded PNG from
-the tool. The bridge wraps it in an `<img>` tag automatically. Example:
-
-```r
-fun = function(...) {
-  tmp <- tempfile(fileext = ".png")
-  grDevices::png(tmp, width = 600, height = 400, res = 96)
-  plot(...)
-  grDevices::dev.off()
-  on.exit(unlink(tmp))
-  base64enc::base64encode(tmp)
-}
-```
-
-For ggplot2 plots, use `ggsave()`:
-
-```r
-fun = function(...) {
-  p <- ggplot2::ggplot(...) + ggplot2::geom_point()
-  tmp <- tempfile(fileext = ".png")
-  ggplot2::ggsave(tmp, p, width = 7, height = 4, dpi = 144, bg = "white")
-  on.exit(unlink(tmp))
-  base64enc::base64encode(tmp)
-}
-```
-
-When returning multiple outputs (plot + text), use a named list:
-
-```r
-fun = function(...) {
-  # ... generate plot_b64 and summary_text ...
-  list(my_plot = plot_b64, my_text = summary_text)
-}
-```
-
-The keys must match the output IDs in the UI (`mcp_plot("my_plot")`,
-`mcp_text("my_text")`). The server returns these as `structuredContent`
-and the bridge routes each value to the correct output element.
-
-### Tables
-
-For `tableOutput`, use `mcp_table(id)` and return an HTML table string.
-You can use `htmltools::tags$table(...)` or `knitr::kable(df, format = "html")`.
-
-## Important Notes
-
-- The JS bridge handles all input-to-tool-to-output communication automatically
-- Tools are generally stateless. The exception is session data persistence
-  (e.g. `active_data_env`) for the `data_path`/`data_csv` pattern, where
-  data must survive across UI-triggered tool calls that cannot resend it
-- Keep tool argument types simple (strings, numbers, booleans)
-- Provide clear descriptions for each tool argument so the AI knows what to pass
-- Test the converted app with `serve(app)` to verify it works
+`app.R` ends with `if (interactive()) preview_app(app) else serve(app)`, so
+the same file previews the app in an interactive session and serves it when
+a client starts it with `Rscript /full/path/to/app_mcp/app.R`. Register it
+with a client as in step 7 above.

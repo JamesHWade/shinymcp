@@ -2,18 +2,36 @@
 % Please edit documentation in R/parse.R
 \name{parse_shiny_app}
 \alias{parse_shiny_app}
-\title{Parse a Shiny app into intermediate representation}
+\alias{print.ShinyAppIR}
+\title{Read a Shiny app's code}
 \usage{
 parse_shiny_app(path)
+
+\method{print}{ShinyAppIR}(x, ...)
 }
 \arguments{
-\item{path}{Path to a Shiny app directory (containing app.R or ui.R/server.R)}
+\item{path}{Path to a Shiny app directory, with \code{app.R}, or \code{ui.R} and
+\code{server.R}.}
+
+\item{x}{A \code{ShinyAppIR} object.}
+
+\item{...}{Ignored.}
 }
 \value{
-A \code{ShinyAppIR} list with components: \code{inputs}, \code{outputs}, \code{server_body},
-\code{reactives}, \code{observers}, \code{complexity}
+A \code{ShinyAppIR} object: a list with \code{inputs}, \code{outputs},
+\code{server_body}, \code{reactives}, \code{observers}, and \code{complexity} (\code{"simple"},
+\code{"medium"}, or \code{"complex"}).
 }
 \description{
-Reads a Shiny app's R source files and extracts a structured representation
-of UI inputs, outputs, and server logic.
+\code{parse_shiny_app()} reads an app's source without running it and lists
+its inputs, outputs, reactive expressions, and observers. It is the first
+step of \code{\link[=convert_app]{convert_app()}}.
 }
+\seealso{
+Other conversion:
+\code{\link[=analyze_reactive_graph]{analyze_reactive_graph()}},
+\code{\link[=as_mcp_apps]{as_mcp_apps()}},
+\code{\link[=convert_app]{convert_app()}},
+\code{\link[=generate_mcp_app]{generate_mcp_app()}}
+}
+\concept{conversion}

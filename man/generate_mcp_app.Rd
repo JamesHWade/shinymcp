@@ -2,21 +2,31 @@
 % Please edit documentation in R/generate.R
 \name{generate_mcp_app}
 \alias{generate_mcp_app}
-\title{Generate MCP App from analysis}
+\title{Write the draft of an app built from tools}
 \usage{
 generate_mcp_app(analysis, ir, output_dir)
 }
 \arguments{
-\item{analysis}{A \code{ReactiveAnalysis} object from \code{\link[=analyze_reactive_graph]{analyze_reactive_graph()}}}
+\item{analysis}{The result of \code{\link[=analyze_reactive_graph]{analyze_reactive_graph()}}.}
 
-\item{ir}{The original \code{ShinyAppIR} object}
+\item{ir}{The result of \code{\link[=parse_shiny_app]{parse_shiny_app()}} it was made from.}
 
-\item{output_dir}{Directory to write generated files}
+\item{output_dir}{Directory to write the files to.}
 }
 \value{
-The output directory path (invisibly)
+\code{output_dir}, invisibly.
 }
 \description{
-Produces HTML, tools, and server code for an MCP App based on the
-analysis of a Shiny app.
+\code{generate_mcp_app()} writes the files of \code{\link[=convert_app]{convert_app()}}'s draft: \code{ui.R}
+(the app's inputs and outputs), \code{tools.R} (one tool per group, with the
+app's code for it as comments), \code{app.R}, and, when some of the app's code
+doesn't fit a tool, \code{CONVERSION_NOTES.md}.
 }
+\seealso{
+Other conversion:
+\code{\link[=analyze_reactive_graph]{analyze_reactive_graph()}},
+\code{\link[=as_mcp_apps]{as_mcp_apps()}},
+\code{\link[=convert_app]{convert_app()}},
+\code{\link[=parse_shiny_app]{parse_shiny_app()}}
+}
+\concept{conversion}

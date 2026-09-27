@@ -2,7 +2,7 @@
 % Please edit documentation in R/convert.R
 \name{as_mcp_apps}
 \alias{as_mcp_apps}
-\title{Split a parsed Shiny app into chat-sized MCP App scaffolds}
+\title{Draft one small app per tool group}
 \usage{
 as_mcp_apps(
   app,
@@ -12,17 +12,29 @@ as_mcp_apps(
 )
 }
 \arguments{
-\item{app}{A path to a Shiny app directory or a parsed \code{ShinyAppIR} object.}
+\item{app}{A path to a Shiny app directory, or the result of
+\code{\link[=parse_shiny_app]{parse_shiny_app()}}.}
 
-\item{split}{Split strategy.}
+\item{split}{\code{"tool_group"} for one app per tool group, or \code{"manual"}
+for a single app with every input and output.}
 
-\item{max_inputs_per_card}{Preferred chat-card input budget.}
+\item{max_inputs_per_card}{The most inputs a card should show.}
 
-\item{compact_layout}{Whether the generated UIs should prefer compact cards.}
+\item{compact_layout}{Whether cards use a compact layout.}
 }
 \value{
-A list of \link{McpApp} scaffold apps.
+A list of \link{McpApp} objects.
 }
 \description{
-Split a parsed Shiny app into chat-sized MCP App scaffolds
+\code{as_mcp_apps()} is the \code{"cards"} mode of \code{\link[=convert_app]{convert_app()}} without writing
+files: it returns one draft \link{McpApp} for each group of connected inputs
+and outputs, each with placeholder tools.
 }
+\seealso{
+Other conversion:
+\code{\link[=analyze_reactive_graph]{analyze_reactive_graph()}},
+\code{\link[=convert_app]{convert_app()}},
+\code{\link[=generate_mcp_app]{generate_mcp_app()}},
+\code{\link[=parse_shiny_app]{parse_shiny_app()}}
+}
+\concept{conversion}

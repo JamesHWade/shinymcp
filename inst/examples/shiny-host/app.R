@@ -1,6 +1,6 @@
 # An MCP App inside a Shiny app.
 #
-# mcp_host_ui() and mcp_host_server() show an app exactly as a chat client
+# mcp_host_ui() and mcp_host_server() show an app as a chat client
 # would: in a sandboxed frame, with its tool calls answered in R. The
 # surrounding Shiny app can watch what happens in it: the context the app
 # publishes for the model, and every tool call.

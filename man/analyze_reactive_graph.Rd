@@ -2,17 +2,36 @@
 % Please edit documentation in R/analyze.R
 \name{analyze_reactive_graph}
 \alias{analyze_reactive_graph}
-\title{Analyze reactive graph from parsed Shiny app}
+\alias{print.ReactiveAnalysis}
+\title{Group a Shiny app's reactive code into tools}
 \usage{
 analyze_reactive_graph(ir)
+
+\method{print}{ReactiveAnalysis}(x, ...)
 }
 \arguments{
-\item{ir}{A \code{ShinyAppIR} object from \code{\link[=parse_shiny_app]{parse_shiny_app()}}}
+\item{ir}{The result of \code{\link[=parse_shiny_app]{parse_shiny_app()}}.}
+
+\item{x}{A \code{ReactiveAnalysis} object.}
+
+\item{...}{Ignored.}
 }
 \value{
-A \code{ReactiveAnalysis} list with components: \code{graph}, \code{tool_groups}, \code{warnings}
+A \code{ReactiveAnalysis} object: a list with \code{graph} (the
+dependencies), \code{tool_groups}, and \code{warnings} about code that doesn't
+fit a tool (observers with side effects, for example).
 }
 \description{
-Builds a dependency graph from inputs through reactives to outputs,
-and groups connected components into tool groups.
+\code{analyze_reactive_graph()} follows each output back through the reactive
+expressions it uses to the inputs they read, and groups outputs that
+share inputs or reactive expressions. Each group becomes one tool in
+\code{\link[=convert_app]{convert_app()}}'s draft.
 }
+\seealso{
+Other conversion:
+\code{\link[=as_mcp_apps]{as_mcp_apps()}},
+\code{\link[=convert_app]{convert_app()}},
+\code{\link[=generate_mcp_app]{generate_mcp_app()}},
+\code{\link[=parse_shiny_app]{parse_shiny_app()}}
+}
+\concept{conversion}

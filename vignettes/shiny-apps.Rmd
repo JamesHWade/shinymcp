@@ -1,0 +1,212 @@
+---
+title: "Serving a Shiny app"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Serving a Shiny app}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = requireNamespace("shiny", quietly = TRUE)
+)
+```
+
+`as_mcp_app()` serves a Shiny app you already have as an MCP App. This
+article covers what happens when the model opens the app and while someone
+uses it, how to decide what the model sees and knows, and what the page can
+do.
+
+```{r setup, message = FALSE}
+library(shiny)
+library(shinymcp)
+
+ui <- fluidPage(
+  selectInput("cyl", "Cylinders", c(4, 6, 8)),
+  sliderInput("bins", "Bins", min = 5, max = 30, value = 10),
+  plotOutput("hist"),
+  textOutput("summary")
+)
+
+server <- function(input, output, session) {
+  cars <- reactive(mtcars[mtcars$cyl == input$cyl, ])
+  output$hist <- renderPlot({
+    hist(cars()$mpg, breaks = input$bins, main = NULL, xlab = "Miles per gallon")
+  })
+  output$summary <- renderText({
+    sprintf("%d cars with %s cylinders; median %.1f mpg.", nrow(cars()), input$cyl, median(cars()$mpg))
+  })
+}
+
+app <- as_mcp_app(
+  shinyApp(ui, server),
+  name = "mileage",
+  description = "Fuel economy of the cars in mtcars, by number of cylinders."
+)
+app
+```
+
+## Views and sessions
+
+The app has two tools. The model calls `mileage`. Each call opens a *view*:
+shinymcp starts a session of the app's server function, sets its inputs
+from the call's arguments, lets it run, and returns what the outputs show.
+The chat client then shows the page, and from there the person using it
+works with the app directly. Their changes go to that view's session
+through `mileage_view`, a tool only the page can call, and the outputs that
+changed come back.
+
+So the server function runs as it would for a browser: reactive expressions
+cache, observers fire, `updateSelectInput()` and its relatives change the
+page, and `validate()` and `req()` behave as usual. There is one session per
+view, so two views of the same app don't share state, as two browser tabs
+wouldn't.
+
+When the model calls `mileage` again, it opens another view. To change a
+view that is already open, it passes that view's id as `view`; the person
+then sees the same view update, and inputs the model leaves out keep their
+current values.
+
+## What the model sees
+
+The model's tool takes the app's inputs as arguments, described from the
+UI: a select input becomes a list of allowed values, a slider a bounded
+number, a date input a date.
+
+```{r schema}
+str(app$tool_definitions()[[1]]$inputSchema$properties$bins)
+```
+
+When it calls the tool, the result starts with text written for the model,
+and carries the same facts as structured data:
+
+```{r result}
+result <- app$run_tool("mileage", list(cyl = "6", bins = 5))
+cat(result$content[[1]]$text)
+str(result$structuredContent$outputs)
+```
+
+Plots also go to the model as images, if it can read them. Set
+`images = FALSE` in `as_mcp_app()` to leave them out and save tokens.
+
+Everything the page needs to draw the outputs travels in the result's
+`_meta`, which chat clients pass to the page and keep from the model.
+
+Write a `description` that says what the app is for. The model reads it
+when it decides whether to open the app, and a sentence about the purpose
+("fuel economy by number of cylinders") helps more than the list of inputs
+shinymcp writes by default.
+
+### Choosing inputs and outputs
+
+A large app makes for a tool with many arguments, most of them beside the
+point. Mark the ones that matter with `bindMcp()`:
+
+```{r bind}
+ui <- fluidPage(
+  selectInput("cyl", "Cylinders", c(4, 6, 8)) |> bindMcp(),
+  sliderInput("bins", "Bins", min = 5, max = 30, value = 10),
+  plotOutput("hist"),
+  textOutput("summary") |> bindMcp()
+)
+marked <- as_mcp_app(shinyApp(ui, server), name = "mileage")
+names(marked$tool_definitions()[[1]]$inputSchema$properties)
+```
+
+Once anything is marked, only marked inputs are arguments and only marked
+outputs are reported. The person using the app still sees and uses all of
+it. Action buttons are only for the model to press when they are marked,
+and password and file inputs never are.
+
+## What the model knows afterwards
+
+When the person changes something, the page tells the model on its next
+turn: by default, the current values of the inputs it can set and a short
+summary of each output it reads. To say something more useful, call
+`mcp_model_context()` from the server function:
+
+```{r model-context, eval = FALSE}
+server <- function(input, output, session) {
+  cars <- reactive(mtcars[mtcars$cyl == input$cyl, ])
+  observe({
+    mcp_model_context(
+      text = sprintf("The user is looking at the %d cars with %s cylinders.", nrow(cars()), input$cyl),
+      data = list(cyl = input$cyl, cars = rownames(cars()))
+    )
+  })
+}
+```
+
+Each call replaces the last. Keep it short and factual: the model reads it
+along with everything else in the conversation. `mcp_send_message()` goes
+further and posts a message into the chat as the user.
+
+Both do nothing in an ordinary Shiny session, so the same app still runs
+with `shiny::runApp()`; `is_mcp_session()` tells the two apart.
+
+## The chat around the app
+
+`mcp_host_context()` returns what the chat client said about itself: its
+color theme, whether the app is shown inline or full screen, and the user's
+locale and time zone. It is reactive, so a plot that reads the theme redraws
+when the user switches the chat to dark mode.
+
+`mcp_request()` describes the call being handled. On Posit Connect it
+includes the signed-in user and their groups, which the server function can
+use to decide what data to show.
+
+## What works on the page
+
+The page is the app's UI, rendered once to HTML, with shinymcp's JavaScript
+in place of Shiny's. It draws Shiny's inputs itself, and shows every kind of
+output: text, tables, plots and images, `renderUI()`, and htmlwidgets such
+as plotly, DT, reactable, and leaflet. Notifications, modal dialogs,
+`insertUI()`, tab changes (`updateTabsetPanel()`, `insertTab()`,
+`hideTab()`), downloads, and file uploads work, and `invalidateLater()` and
+`reactivePoll()` keep running while the app is open.
+
+Packages that talk to Shiny's JavaScript work too. The page provides
+`window.Shiny` with what they use: input bindings (shinyWidgets' pickers,
+switches, and button groups), `Shiny.setInputValue()` (row selection in DT,
+`plotly::event_data()`, clicks on a leaflet map), custom message handlers
+(shinyjs), and the events that loading spinners listen for
+(shinycssloaders).
+
+The app starts the way `shiny::runApp()` starts it: `global.R`, the files
+in `R/`, and `onStart` run once, before the UI is built, and the app's code
+runs in its own directory. Scripts, stylesheets, and images the UI loads
+from `www/`, or from a path added with `addResourcePath()`, are written
+into the page.
+
+Some things don't carry over:
+
+* **Content from other sites.** Chat clients show the page under a strict
+  Content Security Policy that blocks anything from another domain unless
+  the app declares it. Map tiles, web fonts, and scripts from a CDN need a
+  `csp` declaration, for example
+  `as_mcp_app(app, csp = list(resource_domains = "https://*.tile.openstreetmap.org"))`.
+  Fonts can't load from the app itself either, so icon fonts such as Font
+  Awesome don't show; use inline SVG icons (`bsicons`, for example)
+  instead.
+* **Output bindings from packages**, other than htmlwidgets. Their values
+  are shown as text.
+* **Progress bars.** A request finishes before the page hears about its
+  progress, so `withProgress()` shows nothing.
+* **The page's URL.** Bookmarking, `updateQueryString()`, and
+  `session$reload()` have nothing to act on.
+
+## Sessions in a server
+
+Sessions live in the R process that serves the app: up to 50 at a time,
+each closing after an hour without use. The `shinymcp.max_views` and
+`shinymcp.view_timeout` options change those limits.
+
+If a request reaches a process that doesn't have its view's session (after
+a restart, or behind a load balancer that spreads requests over several R
+processes), the page's full input state starts a new session, and the view
+carries on. What the server function kept outside its inputs, such as a
+`reactiveVal()` counting clicks, starts over. `vignette("deployment")`
+covers serving apps over HTTP and on Posit Connect.

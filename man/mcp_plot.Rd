@@ -50,6 +50,9 @@ htmltools::tagList(
 }
 \seealso{
 Other components:
+\code{\link[=mcp_input]{mcp_input()}},
+\code{\link[=mcp_output]{mcp_output()}},
+\code{\link[=mcp_select]{mcp_select()}},
 \code{\link[=mcp_submit_button]{mcp_submit_button()}}
 }
 \concept{components}

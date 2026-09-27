@@ -6,7 +6,7 @@
 \usage{
 mcp_tool_module(
   module_ui,
-  module_server,
+  module_server = NULL,
   name,
   description,
   handler = NULL,
@@ -19,7 +19,7 @@ mcp_tool_module(
 \item{module_ui}{A module UI function, \verb{function(id)}.}
 
 \item{module_server}{A module server function, \verb{function(id, ...)},
-that calls \code{\link[shiny:moduleServer]{shiny::moduleServer()}}.}
+that calls \code{\link[shiny:moduleServer]{shiny::moduleServer()}}. Not needed with \code{handler}.}
 
 \item{name}{App and tool name.}
 
@@ -79,7 +79,9 @@ preview_app(app)
 }
 \seealso{
 Other apps:
+\code{\link{McpApp}},
 \code{\link[=as_mcp_app]{as_mcp_app()}},
+\code{\link[=bindMcp]{bindMcp()}},
 \code{\link[=mcp_app]{mcp_app()}}
 }
 \concept{apps}

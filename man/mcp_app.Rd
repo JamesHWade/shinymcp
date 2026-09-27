@@ -24,6 +24,7 @@ mcp_app(
   host_styles = TRUE,
   model_context = TRUE,
   images = TRUE,
+  www = NULL,
   ...
 )
 }
@@ -98,6 +99,11 @@ its next turn.}
 returned to the model are also sent as image content the model can
 see. Set \code{FALSE} to save tokens.}
 
+\item{www}{A directory of files the UI refers to by relative path, like
+a Shiny app's \verb{www/} folder: scripts, stylesheets, and images. They are
+written into the page, since a host's frame can't fetch them. Paths
+added with \code{\link[shiny:addResourcePath]{shiny::addResourcePath()}} are found without it.}
+
 \item{...}{Passed to \code{McpApp$new()}.}
 }
 \value{
@@ -122,6 +128,7 @@ and the app fills in from the result.
 To serve an existing Shiny app without writing tools, use \code{\link[=as_mcp_app]{as_mcp_app()}}.
 }
 \examples{
+\dontshow{if (rlang::is_installed("ellmer")) withAutoprint(\{ # examplesIf}
 app <- mcp_app(
   ui = htmltools::tagList(
     mcp_text_input("name", "Your name", value = "world"),
@@ -144,10 +151,13 @@ app$call_tool("greet", list(name = "Ada"))
 preview_app(app) # try it in a browser
 serve(app)       # serve it to an MCP client over stdio
 }
+\dontshow{\}) # examplesIf}
 }
 \seealso{
 Other apps:
+\code{\link{McpApp}},
 \code{\link[=as_mcp_app]{as_mcp_app()}},
+\code{\link[=bindMcp]{bindMcp()}},
 \code{\link[=mcp_tool_module]{mcp_tool_module()}}
 }
 \concept{apps}

@@ -1,0 +1,172 @@
+---
+title: "Rewriting an app as tools"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Rewriting an app as tools}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+`as_mcp_app()` serves a Shiny app as it is, and for most apps that is the
+right choice. This article is about the other route: rewriting the app's
+reactive code as tools, plain R functions that take the inputs and return
+the outputs.
+
+## When to rewrite
+
+A rewrite takes work, so it should buy something. It does when:
+
+* **The model should use the computation on its own.** A tool is useful
+  without the app: in chat clients that can't show apps, to other agents,
+  or when the model wants the numbers rather than the picture. A Shiny
+  app's tool opens the app.
+* **Each call should stand alone.** Tools keep no session in R, so any
+  process can answer any call, and a restart loses nothing.
+* **The app is small.** A few inputs and outputs connected by a reactive
+  expression or two rewrite in minutes.
+
+It doesn't when the app is large, keeps state as the person works
+(`reactiveVal()`, uploaded data, a multi-step workflow), or relies on
+observers with side effects. Serve those as they are.
+
+## A first draft with `convert_app()`
+
+Take this app:
+
+```{r}
+ui <- fluidPage(
+  selectInput("dataset", "Dataset:", c("mtcars", "iris")),
+  numericInput("obs", "Observations:", 10, min = 1, max = 50),
+  textOutput("summary_text"),
+  tableOutput("data_table")
+)
+
+server <- function(input, output, session) {
+  selected_data <- reactive({
+    head(get(input$dataset, envir = asNamespace("datasets")), input$obs)
+  })
+  output$summary_text <- renderText({
+    paste("Showing", nrow(selected_data()), "rows of", input$dataset)
+  })
+  output$data_table <- renderTable(selected_data())
+}
+```
+
+`convert_app()` reads its code (without running it), follows each output
+back through the reactive expressions to the inputs, and groups outputs
+that share inputs into one tool each. Here both outputs depend on
+`selected_data()`, so they become one tool:
+
+```{r}
+convert_app("path/to/dashboard")
+```
+
+It writes `ui.R`, `tools.R`, and `app.R` to `path/to/dashboard_mcp/`. The
+draft tool takes the inputs as typed arguments, with the app's defaults,
+and carries the app's code as comments:
+
+```{r}
+update_summary_text_and_data_table <- ellmer::tool(
+  function(dataset = "mtcars", obs = 10) {
+    # From the Shiny app:
+    #
+    # selected_data <- reactive({
+    #     head(get(input$dataset, envir = asNamespace("datasets")), input$obs)
+    # })
+    #
+    # output$summary_text <- renderText({
+    #     paste("Showing", nrow(selected_data()), "rows of", input$dataset)
+    # })
+    #
+    # output$data_table <- renderTable({
+    #     selected_data()
+    # })
+    list(
+      summary_text = "TODO: output$summary_text",
+      data_table = "TODO: output$data_table"
+    )
+  },
+  name = "update_summary_text_and_data_table",
+  description = "Update summary_text and data_table based on Dataset, Observations",
+  arguments = list(
+    dataset = ellmer::type_enum(c("mtcars", "iris"), "Dataset", required = FALSE),
+    obs = ellmer::type_number("Observations", required = FALSE)
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
+)
+```
+
+The draft runs as it is, so `preview_app("path/to/dashboard_mcp/app.R")`
+shows the app with placeholder outputs straight away.
+
+## Finishing the tools
+
+Rewrite each body as a function of its arguments: reactive expressions
+become ordinary variables, `input$x` becomes `x`, and each render call
+becomes the value it rendered. Give the tool a name and description that
+say what it's for, since those are what the model reads:
+
+```{r}
+show_dataset <- ellmer::tool(
+  function(dataset = "mtcars", obs = 10) {
+    data <- head(getExportedValue("datasets", dataset), obs)
+    list(
+      summary_text = paste("Showing", nrow(data), "rows of", dataset),
+      data_table = data
+    )
+  },
+  name = "show_dataset",
+  description = "Show the first rows of one of R's built-in datasets.",
+  arguments = list(
+    dataset = ellmer::type_enum(c("mtcars", "iris"), "Dataset to show.", required = FALSE),
+    obs = ellmer::type_integer("Number of rows, 1 to 50.", required = FALSE)
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
+)
+```
+
+Test it by calling it, as the model would:
+
+```{r}
+app$call_tool("show_dataset", list(dataset = "iris", obs = 3))
+```
+
+Some things need more than a line-by-line rewrite:
+
+* **Plots.** Return `mcp_result_plot(function() ...)`, or a ggplot object.
+* **Observers and side effects.** Code that writes files, sends messages,
+  or changes state belongs in its own tool, usually one only the app may
+  call (`mcp_app(tool_visibility = list(save = "app"))`). An
+  `observeEvent(input$save, ...)` becomes a tool that takes `save`, the
+  button's id: it runs when the button is pressed, and not when its other
+  inputs change. `CONVERSION_NOTES.md` lists the observers that need this.
+* **State kept between interactions.** A tool can't remember, so either
+  pass the state in as an argument or keep that part of the app in Shiny
+  and serve it with `as_mcp_app()`.
+
+The finished app is in the
+[`converted-dashboard`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/converted-dashboard)
+example, next to the original.
+
+## Keeping a module's UI
+
+If the app is built from Shiny modules, `mcp_tool_module()` serves a
+module's UI with a function of your own in place of its server:
+
+```{r}
+mcp_tool_module(
+  hist_ui,
+  name = "eruptions",
+  description = "Histogram of waiting times between Old Faithful eruptions.",
+  handler = function(bins = 20) {
+    list(plot = mcp_result_plot(function() hist(faithful$waiting, breaks = bins)))
+  }
+)
+```
+
+The handler takes the module's inputs by their ids, without the module's
+namespace, and returns its outputs by id.

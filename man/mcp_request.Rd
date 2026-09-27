@@ -30,7 +30,8 @@ runs on Posit Connect, otherwise \code{NULL}.
 }
 \examples{
 greet <- function(name = "world") {
-  who <- mcp_request()$user \%||\% "someone"
+  who <- mcp_request()$user
+  if (is.null(who)) who <- "someone"
   paste0("Hello, ", name, "! (asked by ", who, ")")
 }
 }

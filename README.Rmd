@@ -28,6 +28,8 @@ shows the app in the conversation, and the model can open it, set its
 inputs, and read what it shows. Clients without the extension still get the
 app's tools, which answer in text.
 
+<img src="man/figures/demo.gif" alt="A Shiny app exploring the Palmer penguins, open in a Claude Desktop conversation" width="100%">
+
 There are two ways to make one:
 
 * **Serve a Shiny app you already have** with `as_mcp_app()`. Its server
@@ -148,33 +150,42 @@ with or without a client that shows the app.
 Results can hold text, tables, plots, images, HTML, and htmlwidgets. Each
 result is split three ways: text and compact structured data for the
 model, and the data the page draws from, in `_meta`, which clients keep
-from the model. See `vignette("tools")`.
+from the model.
 
 ## What works
 
 The page is the app's UI with shinymcp's JavaScript in place of Shiny's.
-It has its own versions of Shiny's built-in inputs (select, slider, date,
-checkbox group, and the rest) and draws text, HTML, tables, plots,
-`renderUI()` output, and htmlwidgets. Two things don't carry over:
+It draws Shiny's inputs and every kind of output: text, tables, plots,
+`renderUI()`, and htmlwidgets such as plotly, DT, and leaflet. Packages
+written for Shiny's JavaScript work too, including shinyWidgets inputs, DT
+row selection, `plotly::event_data()`, shinyjs, and shinycssloaders.
+Downloads, file uploads, modals, notifications, and `invalidateLater()`
+work as they do in a browser.
 
-* Input and output bindings written in JavaScript against Shiny's client
-  API, such as those in shinyWidgets or DT's selection inputs.
-* File uploads. Chat clients don't pass files to apps.
-
-`vignette("shiny-apps")` covers what runs where, how to choose what the
-model sees, and how sessions behave when an app is deployed.
+What doesn't carry over is anything from another website, such as map
+tiles or a script from a CDN, unless the app declares it: chat clients
+block the rest. `vignette("shiny-apps")` has the details.
 
 ## Learn more
 
-* `vignette("shinymcp")`: a first app, from preview to Claude Desktop.
-* `vignette("shiny-apps")`: serving Shiny apps.
-* `vignette("tools")`: building apps from tools.
-* `vignette("deployment")`: clients, HTTP, and Posit Connect.
-* `vignette("hosting")`: apps in shinychat and in Shiny.
-* `vignette("rewriting-as-tools")`: when and how to turn a Shiny app into
-  tools.
-* `vignette("protocol")`: how shinymcp implements MCP Apps.
-* `vignette("troubleshooting")`: when an app doesn't appear or misbehaves.
+* [Get started](https://jameshwade.github.io/shinymcp/articles/shinymcp.html):
+  a first app, from preview to Claude Desktop.
+* [Serving a Shiny app](https://jameshwade.github.io/shinymcp/articles/shiny-apps.html):
+  views and sessions, and what the model sees and knows.
+* [Building an app from tools](https://jameshwade.github.io/shinymcp/articles/tools.html).
+* [Running an app](https://jameshwade.github.io/shinymcp/articles/deployment.html):
+  chat clients, HTTP, and Posit Connect.
+* [Apps in shinychat and Shiny](https://jameshwade.github.io/shinymcp/articles/hosting.html).
+* [Rewriting an app as tools](https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.html).
+* [How shinymcp works](https://jameshwade.github.io/shinymcp/articles/protocol.html).
+* [Troubleshooting](https://jameshwade.github.io/shinymcp/articles/troubleshooting.html).
 
 The [examples](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples)
 folder has runnable apps for each of these.
+
+shinymcp also comes with a
+[skill](https://github.com/JamesHWade/shinymcp/tree/main/inst/skills/convert-shiny-app)
+that walks a coding agent through serving or rewriting a Shiny app. For
+Claude Code, copy its folder,
+`system.file("skills", "convert-shiny-app", package = "shinymcp")`, into
+`~/.claude/skills/`.

@@ -1,0 +1,106 @@
+---
+title: "Troubleshooting"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Troubleshooting}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+Most problems are easier to see in `preview_app()` than in a chat client.
+It shows the app as clients do, under the same Content Security Policy, and
+next to it what the model received, every tool call with its result, the
+protocol messages, and the server's tools. The browser's developer console
+shows the page's own errors; the preview's page is in an iframe, so choose
+it in the console's context menu.
+
+In R, `app$run_tool("name", list(...))` returns exactly what a client would
+receive, and `app$call_tool()` the tool's R value.
+
+## The client doesn't list the app's tools
+
+The client couldn't start the server, or the server stopped.
+
+* Run the command the client runs, `Rscript /full/path/to/app.R`, in a
+  terminal. It should wait for input without printing anything (Ctrl+C
+  stops it). An error here is the one the client hit.
+* Use full paths in the client's settings. Desktop clients don't start in
+  your home directory, and on macOS they don't see your shell's `PATH`, so
+  `Rscript` may need its full path too (`which Rscript`).
+* The packages the app uses must be installed in the library that
+  `Rscript` uses. With renv, point the client at the project's library or
+  activate it in the script.
+* Nothing may print to standard output before `serve()` starts: the
+  protocol runs over it. Messages and warnings go to standard error and are
+  fine.
+* Check the client's log. Claude Desktop keeps one for each server, on
+  macOS in `~/Library/Logs/Claude/`.
+
+## The tools work but the app doesn't show
+
+The client doesn't support MCP Apps, or not in this context. Terminal
+clients such as Claude Code show text only. shinymcp gives those clients
+the same tools, with text results.
+
+## Something on the page is missing or blank
+
+Chat clients block anything the app doesn't carry itself.
+
+* Content from another site (map tiles, a script from a CDN, a web font)
+  needs a `csp` declaration: `csp = list(resource_domains = "https://tiles.example.com")`
+  for images, scripts, and stylesheets, `connect_domains` for `fetch()`.
+  The preview's console lists each blocked request.
+* Files the UI loads by relative path must be in the app's `www/` folder
+  or under a path added with `shiny::addResourcePath()`.
+* Fonts don't load from the app itself, so icon fonts such as Font
+  Awesome show nothing. Use SVG icons (the bsicons package, for example).
+
+## An input doesn't reach the server
+
+* In a Shiny app with anything marked by `bindMcp()`, the model can only
+  set marked inputs. The person can still change all of them.
+* An input from a package works if the package registers a Shiny input
+  binding for it. If it uses JavaScript without one, call
+  `Shiny.setInputValue("id", value)` from that JavaScript.
+* In an app built from tools, a tool argument takes the value of the input
+  with the same id. `mcp_input(tag, id = "argument")` connects an input
+  whose id differs.
+
+## An output doesn't update
+
+* In an app built from tools, the names of the list a tool returns must
+  match output ids.
+* `req()` that fails clears an output, as in Shiny; `validate()` shows its
+  message in it.
+* An error in a render function shows in the output, and in the text the
+  model receives.
+
+## The app forgets what the person did
+
+Each view keeps its session in the R process that opened it, for up to an
+hour without use, and a process keeps at most 50 views (the
+`shinymcp.view_timeout` and `shinymcp.max_views` options). When a view's
+session is gone, the page starts a new one from its inputs: what the server
+function kept outside its inputs starts over. On Posit Connect, this also
+happens when requests reach another process; set **Max processes** to 1 for
+apps that keep such state.
+
+## An upload is refused
+
+Uploads are limited by Shiny's `shiny.maxRequestSize` option, 5 MB unless
+the app sets it higher:
+
+```{r}
+options(shiny.maxRequestSize = 30 * 1024^2)
+```
+
+## The model doesn't know what the person did
+
+The page tells the model through the client, which must support
+`ui/update-model-context`. The preview's Context tab shows what the app
+sent. In a Shiny app, `mcp_model_context()` replaces the default summary;
+`mcp_app(model_context = FALSE)` turns it off.

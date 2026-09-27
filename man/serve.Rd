@@ -33,7 +33,7 @@ loopback ones for a local server, allowed to call the HTTP endpoint,
 for example \code{"https://chat.example.com"}. Use \code{"*"} to allow any.}
 
 \item{allowed_hosts}{For a server listening on this machine only, the
-host names it may be reached at besides \code{localhost} and \verb{127.0.0.1},
+host names it may be reached at besides \code{localhost} and IP addresses,
 such as the public name of a reverse proxy in front of it. Requests for
 any other host are refused, which protects a local server from web
 pages that point their own host name at it (DNS rebinding).}

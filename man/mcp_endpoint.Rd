@@ -24,7 +24,8 @@ call the endpoint. See \code{\link[=serve]{serve()}}.}
 \item{allowed_hosts}{Host names the app is reached at, when it runs
 somewhere other than Posit Connect, shinyapps.io, or Shiny Server (for
 example in a container behind your own proxy). Elsewhere, requests for
-host names other than \code{localhost} are refused; see \code{\link[=serve]{serve()}}.}
+host names other than \code{localhost} or an IP address are refused; see
+\code{\link[=serve]{serve()}}.}
 
 \item{preview}{For apps, whether browsers get a preview page at \code{/}.}
 

@@ -1,0 +1,92 @@
+---
+title: "Apps in shinychat and Shiny"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Apps in shinychat and Shiny}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+An MCP App doesn't need a desktop chat client. shinymcp can show one inside
+a [shinychat](https://posit-dev.github.io/shinychat/) conversation you
+build with ellmer, or anywhere in a Shiny app. The app runs the same way in
+both: in a sandboxed frame, with its tool calls answered in R.
+
+## In a shinychat conversation
+
+`as_shinychat_tool()` turns an app's tools into ellmer tools. Register them
+with the chat, and when the model calls one, shinychat shows the app, live,
+in the tool call's card:
+
+```{r}
+library(shiny)
+library(shinychat)
+library(shinymcp)
+
+app <- as_mcp_app(shinyApp(ui, server), name = "mileage")
+
+ui <- bslib::page_fillable(chat_ui("chat"))
+
+server <- function(input, output, session) {
+  client <- ellmer::chat("anthropic/claude-sonnet-5")
+  client$register_tool(as_shinychat_tool(app))
+  chat_server("chat", client)
+}
+
+shinyApp(ui, server)
+```
+
+The model gets the tool's structured result, or its text when there is
+none, as it would from an MCP client, and the person gets the app. What the
+person then does in the card stays in the card: ellmer sends the model the
+conversation, and shinymcp doesn't add to it. To pass the context an app
+publishes on to the model, host the app with `mcp_host_server()` (below),
+which reports it.
+
+The card's arguments shape how it looks: `title` and `icon`, `open` for
+whether it starts expanded, `show_request` for whether it shows the call's
+arguments, and `full_screen`. `value_fn` changes what the model gets, and
+`summary` sets the text shown where the app can't be.
+
+To put an app in the conversation without a tool call, for example to open
+a form when the chat starts, build the card with `mcp_content_result()` and
+append it yourself.
+
+## Anywhere in a Shiny app
+
+`mcp_host_ui()` and `mcp_host_server()` host an app in any Shiny app. The
+host calls the app's tool when the app opens, as the model would, with the
+`arguments` you give:
+
+```{r}
+ui <- bslib::page_sidebar(
+  sidebar = bslib::sidebar(verbatimTextOutput("context")),
+  mcp_host_ui("mileage")
+)
+
+server <- function(input, output, session) {
+  host <- mcp_host_server("mileage", app, arguments = list(cyl = 6))
+  output$context <- renderPrint(host$model_context())
+}
+```
+
+`mcp_host_server()` returns what the app did, as reactives: the context it
+would give the model (`model_context()`), its latest tool call and result
+(`last_tool_call()`, `last_result()`), and the messages it asked to post to
+the chat (`messages()`). `execute()` runs the app's tools with new input
+values, and `dispose()` shuts the app down.
+
+That makes the host useful for reviewing an app before you give it to a
+model (you see exactly what the model would be told), for dashboards built
+around apps, and for Shiny apps that react to what someone does in one.
+
+For UI created on the server, such as inside `renderUI()`, `mcp_embed()`
+does both halves at once.
+
+The [`shinychat`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/shinychat)
+and [`shiny-host`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/shiny-host)
+examples are complete apps.

@@ -4,125 +4,88 @@ template:
   bootstrap: 5
   light-switch: true
   bslib:
-    primary: "#0f766e"
-    secondary: "#475569"
-    success: "#15803d"
-    info: "#2563eb"
-    warning: "#b45309"
-    danger: "#b91c1c"
-    light: "#f8fafc"
-    dark: "#0f172a"
-    body-color: "#172033"
-    link-color: "#0f766e"
-    border-color: "#d9e3ef"
-    border-radius: 0.45rem
-    btn-border-radius: 0.45rem
+    primary: "#39729e"
+    base_font: {google: "Inter"}
+    code_font: {google: "JetBrains Mono"}
 
 home:
-  title: "shinymcp - Shiny Apps Inside AI Chat"
-  description: >
-    Convert Shiny apps into MCP Apps that render interactive UIs directly
-    inside AI chat interfaces like Claude Desktop.
-  sidebar: false
+  title: shinymcp
+  description: Serve Shiny apps as MCP Apps in AI chat clients.
 
 navbar:
-  bg: light
   structure:
-    left: [intro, reference, articles]
+    left: [intro, articles, reference, news]
     right: [search, lightswitch, github]
-  components:
-    articles:
-      text: Articles
-      menu:
-        - text: shinymcp by example
-          href: articles/shinymcp-by-example.html
-        - text: Use Cases
-          href: articles/use-cases.html
-        - text: Converting Shiny Apps
-          href: articles/converting-shiny-apps.html
-        - text: Automatic Conversion
-          href: articles/automatic-conversion.html
-        - text: Choose Migration Path
-          href: articles/choose-the-right-migration-path.html
-        - text: Use with shinychat
-          href: articles/use-shinymcp-with-shinychat.html
-        - text: MCP Apps Protocol
-          href: articles/mcp-apps-protocol.html
-        - text: Add to Claude, VS Code, or Goose
-          href: articles/adding-to-a-client.html
-        - text: Debugging shinymcp
-          href: articles/debugging-shinymcp.html
+
+articles:
+  - title: Guides
+    navbar: ~
+    contents:
+      - shiny-apps
+      - tools
+      - deployment
+      - hosting
+  - title: More
+    navbar: More
+    contents:
+      - rewriting-as-tools
+      - protocol
+      - troubleshooting
 
 reference:
-  - title: Create MCP Apps
-    desc: Build and serve MCP Apps from UI components and tools.
+  - title: Make an app
     contents:
-      - mcp_app
-      - McpApp
       - as_mcp_app
-      - as_mcp_apps
-      - bindMcp
+      - mcp_app
       - mcp_tool_module
+      - bindMcp
+      - McpApp
+
+  - title: Run it
+    contents:
       - serve
+      - mcp_endpoint
       - preview_app
 
-  - title: Shinychat and Hosting
-    desc: Embed MCP Apps in Shiny and shinychat, and return typed rich results.
+  - title: Show it in Shiny and shinychat
     contents:
       - as_shinychat_tool
-      - mcp_content_result
-      - mcp_embed
-      - mcp_host_server
       - mcp_host_ui
-      - mcp_result_html
-      - mcp_result_image
-      - mcp_result_pdf
-      - mcp_result_plot
-      - mcp_result_table
-      - mcp_result_text
-      - mcp_result_widget
 
-  - title: Input Components
+  - title: Inside a Shiny app's server function
     desc: >
-      Interactive inputs that mirror Shiny's API. Values are sent to tools
-      when the user interacts with them.
+      For Shiny apps served with `as_mcp_app()`. Outside an MCP App they do
+      nothing, so the app still runs as usual.
+    contents:
+      - mcp_model_context
+      - mcp_host_context
+      - mcp_request
+
+  - title: UI for apps built from tools
     contents:
       - mcp_select
-      - mcp_text_input
-      - mcp_numeric_input
-      - mcp_checkbox
-      - mcp_slider
-      - mcp_radio
-      - mcp_action_button
-      - mcp_input
-
-  - title: Output Components
-    desc: >
-      Placeholders populated by tool results. The JS bridge routes values
-      to outputs based on matching IDs.
-    contents:
-      - mcp_text
       - mcp_plot
-      - mcp_table
-      - mcp_html
+      - mcp_submit_button
+      - mcp_input
       - mcp_output
 
-  - title: Conversion Pipeline
-    desc: >
-      Parse, analyze, and generate MCP Apps from existing Shiny apps.
+  - title: Tool results
+    contents:
+      - mcp_result
+      - mcp_tool_result
+
+  - title: Rewriting a Shiny app as tools
     contents:
       - convert_app
+      - as_mcp_apps
       - parse_shiny_app
       - analyze_reactive_graph
       - generate_mcp_app
-      - starts_with("print.")
 
-  - title: Bridge Helpers
-    desc: Internal helpers for the JS bridge configuration.
+  - title: Pages built by hand
     contents:
-      - bridge_config_tag
       - bridge_script_tag
 
-  - title: Package
+  - title: internal
     contents:
       - shinymcp-package

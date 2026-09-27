@@ -25,6 +25,9 @@ mcp_submit_button("Run analysis")
 }
 \seealso{
 Other components:
-\code{\link[=mcp_plot]{mcp_plot()}}
+\code{\link[=mcp_input]{mcp_input()}},
+\code{\link[=mcp_output]{mcp_output()}},
+\code{\link[=mcp_plot]{mcp_plot()}},
+\code{\link[=mcp_select]{mcp_select()}}
 }
 \concept{components}

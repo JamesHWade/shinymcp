@@ -29,3 +29,4 @@
 ^_brand\.yml$
 ^index\.md$
 ^append\.env$
+^man/figures/demo\.gif$

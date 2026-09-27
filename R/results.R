@@ -53,9 +53,9 @@ is_mcp_result <- function(x) {
 #'
 #' Each takes a `model_value`, the value the model sees for this output in
 #' the tool result's structured content, and a `text`, the plain-text
-#' version used when the model or host can only read text. The defaults are
-#' sensible (a table's rows, a plot's description), so set them when the
-#' model needs something more specific: identifiers, a decision, the numbers
+#' version used when the model or host can only read text. By default the
+#' model gets a table's rows and a plot's description; set them when it
+#' needs something more specific: identifiers, a decision, the numbers
 #' behind a chart.
 #'
 #' @param value,html,data,plot,path_or_data,ui The content to render.

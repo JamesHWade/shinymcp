@@ -9,9 +9,10 @@
 #' run them. Create one with [mcp_app()] or [as_mcp_app()] rather than
 #' calling `McpApp$new()` directly; the arguments are the same.
 #'
-#' Most code only needs `$call_tool()` (run a tool and get its R value back,
-#' handy in tests) and `$html_resource()` (the page a host renders).
+#' Most code only needs `$call_tool()` (run a tool and get its R value
+#' back, as in tests) and `$html_resource()` (the page a host renders).
 #'
+#' @family apps
 #' @export
 McpApp <- R6::R6Class(
   "McpApp",
@@ -541,7 +542,7 @@ McpApp <- R6::R6Class(
 #' @return An [McpApp] object.
 #' @family apps
 #' @export
-#' @examples
+#' @examplesIf rlang::is_installed("ellmer")
 #' app <- mcp_app(
 #'   ui = htmltools::tagList(
 #'     mcp_text_input("name", "Your name", value = "world"),

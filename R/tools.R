@@ -331,7 +331,8 @@ with_request_context <- function(context, expr) {
 #' @export
 #' @examples
 #' greet <- function(name = "world") {
-#'   who <- mcp_request()$user %||% "someone"
+#'   who <- mcp_request()$user
+#'   if (is.null(who)) who <- "someone"
 #'   paste0("Hello, ", name, "! (asked by ", who, ")")
 #' }
 mcp_request <- function() {

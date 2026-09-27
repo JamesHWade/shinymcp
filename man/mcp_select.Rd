@@ -2,23 +2,77 @@
 % Please edit documentation in R/components-input.R
 \name{mcp_select}
 \alias{mcp_select}
-\title{Create an MCP select input}
+\alias{mcp_text_input}
+\alias{mcp_numeric_input}
+\alias{mcp_checkbox}
+\alias{mcp_slider}
+\alias{mcp_radio}
+\alias{mcp_action_button}
+\title{Inputs for apps built from tools}
 \usage{
 mcp_select(id, label, choices, selected = choices[[1]])
+
+mcp_text_input(id, label, value = "", placeholder = NULL)
+
+mcp_numeric_input(id, label, value, min = NA, max = NA, step = NA)
+
+mcp_checkbox(id, label, value = FALSE)
+
+mcp_slider(id, label, min, max, value = min, step = 1)
+
+mcp_radio(id, label, choices, selected = choices[[1]])
+
+mcp_action_button(id, label)
 }
 \arguments{
-\item{id}{Input ID}
+\item{id}{The input id, which is the name of the tool argument it feeds.}
 
-\item{label}{Display label}
+\item{label}{The label shown with the input.}
 
-\item{choices}{Character vector of choices. If named, names are used as
-display labels and values as the option values.}
+\item{choices}{The values to choose from. Names, if any, are shown in
+their place.}
 
-\item{selected}{The initially selected value. Defaults to the first choice.}
+\item{selected}{The value selected at first. Defaults to the first
+choice.}
+
+\item{value}{The value at first.}
+
+\item{placeholder}{Text shown while the input is empty.}
+
+\item{min, max}{The smallest and largest values allowed.}
+
+\item{step}{The step between values.}
 }
 \value{
-An \link[htmltools:tag]{htmltools::tag} object
+A tag.
 }
 \description{
-Generates a dropdown select element with MCP data attributes.
+Small form controls for \code{\link[=mcp_app]{mcp_app()}} UIs, drawn by the page itself.
+Shiny's and bslib's inputs work just as well in an MCP App; these need
+neither package and keep the page light.
+\itemize{
+\item \code{mcp_select()}: a drop-down list.
+\item \code{mcp_text_input()}: a line of text.
+\item \code{mcp_numeric_input()}: a number.
+\item \code{mcp_checkbox()}: \code{TRUE} or \code{FALSE}.
+\item \code{mcp_slider()}: a number on a range.
+\item \code{mcp_radio()}: one of a few choices.
+\item \code{mcp_action_button()}: a button; a tool taking its id runs when it's
+pressed.
 }
+}
+\examples{
+htmltools::tagList(
+  mcp_select("species", "Species", c("Adelie", "Gentoo", "Chinstrap")),
+  mcp_slider("alpha", "Opacity", min = 0, max = 1, value = 0.7, step = 0.1),
+  mcp_checkbox("smooth", "Add a trend line")
+)
+}
+\seealso{
+Other components:
+\code{\link[=mcp_input]{mcp_input()}},
+\code{\link[=mcp_output]{mcp_output()}},
+\code{\link[=mcp_plot]{mcp_plot()}},
+\code{\link[=mcp_submit_button]{mcp_submit_button()}}
+}
+\concept{components}

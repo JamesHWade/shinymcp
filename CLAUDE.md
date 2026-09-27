@@ -4,60 +4,79 @@ This file provides guidance for AI assistants working with the shinymcp codebase
 
 ## Project Overview
 
-**shinymcp** is an R package that converts Shiny apps into MCP (Model Context Protocol) Apps. MCP Apps render inside AI chat interfaces (Claude, ChatGPT, VS Code) using `ui://` resources, sandboxed iframes, and postMessage/JSON-RPC communication.
+**shinymcp** is an R package that serves Shiny apps as MCP Apps. An MCP App
+is a tool whose result comes with a page (a `ui://` resource) that chat
+clients such as Claude, ChatGPT, and VS Code show in a sandboxed iframe and
+talk to over postMessage JSON-RPC.
 
-Key capabilities:
-- **Parse → Analyze → Generate** pipeline for automatic Shiny-to-MCP conversion
-- MCP-compatible UI components (`mcp_select()`, `mcp_text_input()`, `mcp_plot()`, etc.)
-- Self-contained JS bridge for the MCP Apps postMessage/JSON-RPC protocol
-- McpApp R6 runtime class bundling UI + tools
-- Resource protocol handler for `ui://` resources
-- MCP server supporting stdio and HTTP transports
-- Deputy skill for AI-assisted conversion of complex apps
+There are two kinds of app, and the package also hosts apps and converts
+between the two:
+
+- **Live Shiny apps.** `as_mcp_app()` serves a Shiny app as it is: the
+  server function runs in R, one `MockShinySession` per view of the app,
+  and the page sends input changes to it through an app-only view tool.
+- **Apps built from tools.** `mcp_app()` pairs a UI with stateless tools
+  (ellmer tools or plain lists). Inputs match tool arguments by id; the
+  lists tools return fill outputs by id.
+- **Serving.** `serve()` (stdio and Streamable HTTP), `mcp_endpoint()`
+  (an endpoint inside a Shiny app, for Posit Connect), both MCP eras: the
+  handshake versions 2024-11-05 to 2025-11-25 and stateless 2026-07-28.
+- **Hosting.** `preview_app()`, `mcp_host_ui()`/`mcp_host_server()`, and
+  `as_shinychat_tool()` show apps the way a chat client does.
+- **Conversion.** `convert_app()` drafts tools from a Shiny app's reactive
+  graph, for apps that should be rewritten as tools.
 
 ## Directory Structure
-
-There are two complementary directions: **convert** Shiny apps into MCP Apps,
-and **host** (embed) MCP Apps inside a running Shiny app.
 
 ```
 shinymcp/
 ├── R/
-│   ├── shinymcp-package.R     # Package-level docs
-│   │   # Convert pipeline (Shiny -> MCP App)
-│   ├── parse.R                # Shiny app AST parser -> ShinyAppIR
+│   │   # Apps
+│   ├── mcp-app.R              # McpApp R6 class and mcp_app()
+│   ├── as-mcp-app.R           # as_mcp_app(): Shiny app, directory, or McpApp -> McpApp
+│   ├── runtime.R              # ShinyRuntime: live sessions, the model and view tools
+│   ├── runtime-inputs.R       # Describe a Shiny UI's inputs (kinds, defaults, schema)
+│   ├── tools.R                # Normalize ellmer/list tools; run handlers
+│   ├── schema.R               # JSON Schema for tools; argument checks
+│   ├── results.R              # mcp_result_*(), mcp_tool_result(); three-level results
+│   ├── components-input.R     # mcp_select() and relatives, mcp_input(), mcp_output()
+│   ├── components-output.R    # mcp_text(), mcp_plot(), mcp_table(), mcp_html()
+│   ├── bind-mcp.R             # bindMcp(): choose what the model sees
 │   ├── detect.R               # Classify rendered tags as inputs/outputs
-│   ├── analyze.R              # Reactive graph -> tool group clusters
-│   ├── generate.R             # Code generator (ui.R + tools.R + server.R + app.R)
-│   ├── convert.R              # Top-level convert_app() + scaffold tools
-│   │   # Runtime
-│   ├── mcp-app.R              # McpApp R6 class (runtime)
-│   ├── as-mcp-app.R           # as_mcp_app()/as_mcp_apps() coercion surface
-│   ├── results.R              # mcp_result_*() typed results + shinychat tools
-│   ├── components-input.R     # mcp_select(), mcp_text_input(), mcp_input(), mcp_output()
-│   ├── components-output.R    # mcp_plot(), mcp_text(), mcp_table()
-│   ├── bind-mcp.R             # bindMcp() pipe for annotating Shiny tags
-│   ├── mcp-tool-module.R      # mcp_tool_module(): wrap a Shiny module as a tool
-│   │   # Serving + resources
-│   ├── js-bridge.R            # JS bridge config generation + injection
-│   ├── serve.R                # MCP server (stdio + HTTP) with tools + ui:// resources
-│   ├── mcp-resources.R        # Resource protocol handler
-│   │   # Host (embed MCP Apps in Shiny)
-│   ├── host-base.R            # Transport-agnostic host protocol logic
-│   ├── host-shiny.R           # mcp_host_ui()/mcp_host_server()/mcp_embed()
-│   ├── preview.R              # preview_app(): local httpuv preview host
+│   ├── mcp-tool-module.R      # mcp_tool_module(): serve a Shiny module
+│   │   # The page
+│   ├── html.R                 # Build the ui:// page and the bridge config
+│   ├── assets.R               # Inline www/ and addResourcePath() files, CSS urls
+│   │   # Serving
+│   ├── protocol.R             # McpServer: versions, JSON-RPC dispatch
+│   ├── transport-stdio.R      # stdio transport
+│   ├── transport-http.R       # Streamable HTTP handler; Origin/Host checks
+│   ├── serve.R                # serve()
+│   ├── endpoint.R             # mcp_endpoint() for Posit Connect and Shiny Server
+│   │   # Hosts
+│   ├── host-base.R            # Host state shared by the Shiny and shinychat hosts
+│   ├── host-shiny.R           # mcp_host_ui(), mcp_host_server()
+│   ├── shinychat.R            # as_shinychat_tool(), mcp_content_result()
+│   ├── preview.R              # preview_app()
+│   │   # Rewriting a Shiny app as tools
+│   ├── parse.R                # Shiny app AST -> ShinyAppIR
+│   ├── analyze.R              # Reactive graph -> tool groups
+│   ├── generate.R             # Draft ui.R, tools.R, app.R
+│   ├── convert.R              # convert_app()
 │   │   # Shared
-│   ├── utils.R                # Internal utilities + format_tool_result()
-│   └── errors.R               # Custom error classes
+│   ├── utils.R
+│   ├── errors.R               # shinymcp_abort() and error classes
+│   └── shinymcp-package.R
 ├── inst/
-│   ├── js/shinymcp-bridge.js  # MCP Apps JS bridge (iframe side, ~970 lines)
-│   ├── js/shinymcp-host.js    # Host-side bridge (Shiny embedding)
-│   ├── templates/app.html     # HTML skeleton template
-│   ├── preview/host.html      # preview_app() host shell
-│   ├── skills/                # convert-shiny-app skill for AI conversion
-│   └── examples/              # Example MCP Apps and host apps
-├── tests/testthat/            # Unit tests (testthat edition 3)
-└── man/                       # Auto-generated roxygen2 docs
+│   ├── js/shinymcp-bridge.js  # The page's bridge (ES5): protocol, inputs, outputs
+│   ├── js/shinymcp-shiny.js   # window.Shiny stand-in for packages written for Shiny
+│   ├── js/shinymcp-host.js    # Host side, for mcp_host_ui() and shinychat cards
+│   ├── preview/host.html      # preview_app()'s host page
+│   ├── skills/convert-shiny-app/SKILL.md  # Agent skill: serve or rewrite an app
+│   └── examples/              # Runnable apps; README.md indexes them
+├── vignettes/                 # Articles (see _pkgdown.yml for the site's menus)
+├── tests/testthat/            # testthat edition 3
+└── man/                       # Generated by roxygen2
 ```
 
 ## Common Commands
@@ -65,8 +84,8 @@ shinymcp/
 ### Testing
 
 ```bash
-Rscript -e "devtools::test()"
-Rscript -e "testthat::test_file('tests/testthat/test-components.R')"
+NOT_CRAN=true Rscript -e "devtools::test()"
+Rscript -e "testthat::test_file('tests/testthat/test-runtime.R')"
 Rscript -e "devtools::test(filter = 'parse')"
 ```
 
@@ -76,39 +95,46 @@ Rscript -e "devtools::test(filter = 'parse')"
 Rscript -e "devtools::check()"
 air format R/ tests/testthat/
 Rscript -e "devtools::document()"
+npx --yes acorn --ecma5 --silent inst/js/shinymcp-bridge.js   # the bridge must stay ES5
 ```
+
+The browser side has no automated tests. After changing the bridge or the
+shim, check the app in a browser: `preview_app()`, or Playwright against it.
 
 ### Building
 
 ```bash
 Rscript -e "devtools::build()"
 Rscript -e "devtools::install()"
+Rscript -e "pkgdown::build_site()"
 ```
 
 ## Code Conventions
 
 - **Formatter**: Air (config in `air.toml`)
-- **Documentation**: roxygen2 with markdown support
-- **Classes**: R6 for McpApp, ResourceRegistry
-- **Errors**: Custom error classes via `rlang::abort()` (see `R/errors.R`)
-- **Style**: tidyverse conventions, `%||%` operator from rlang
+- **Documentation**: roxygen2 with markdown. Public docs say what a function
+  does and when to use it, for R users; internal design goes in comments.
+- **Classes**: R6 for mutable runtime owners (`McpApp`, `McpServer`,
+  `ShinyRuntime`)
+- **Errors**: `shinymcp_abort()` with a `shinymcp_error_*` class (see
+  `R/errors.R`); tool errors go back to the model as `isError` results
+- **Style**: tidyverse conventions, `%||%` from rlang
+- **JavaScript**: vanilla ES5 in an IIFE, no build step (no `const`, `let`,
+  arrow functions, classes, or `Set`)
 
-### Input Binding
+### Inputs and outputs on the page
 
-The JS bridge auto-detects inputs by matching tool argument names to DOM element `id` attributes. This means native `shiny::selectInput()`, `shiny::numericInput()`, etc. work without wrappers — as long as the element's `id` matches a tool argument name.
+The bridge finds inputs by id: an element with the id of a tool argument
+(tools mode) or of a Shiny input (live mode). It draws Shiny's built-in
+inputs itself through adapters (`inputKind()`, `makeAdapter()`); inputs
+from packages that register a Shiny input binding go through that binding,
+via the `window.Shiny` stand-in. `data-shinymcp-input` and
+`data-shinymcp-output` attributes (from `mcp_*()` components, `bindMcp()`,
+`mcp_input()`, `mcp_output()`) mark elements explicitly.
 
-Resolution priority (in `resolveInputElement()`):
-1. Explicit `data-shinymcp-input="{id}"` attribute (backward compat, `mcp_select()` etc.)
-2. Standard form elements by id: `select#id`, `input#id`, `textarea#id`, `button#id`
-3. Container with `id` holding radio inputs (radio group pattern)
-
-The `mcp_*()` input components (`mcp_select()`, `mcp_text_input()`, etc.) still work and are used by the conversion pipeline. `mcp_input(tag)` and `mcp_output(tag)` are escape hatches for stamping `data-shinymcp-*` attributes on arbitrary tags.
-
-### UI Components Pattern
-
-Components generate `htmltools` tags with `data-shinymcp-*` attributes:
-- Inputs: `data-shinymcp-input="{id}"`, `data-shinymcp-type="{type}"`
-- Outputs: `data-shinymcp-output="{id}"`, `data-shinymcp-output-type="{type}"`
+A tool that takes an action button's id runs when the button is pressed,
+not when its other inputs change. The page never runs tools annotated
+`readOnlyHint: false` or `destructiveHint: true` on its own to fill outputs.
 
 ### Conversion Pipeline
 
@@ -121,37 +147,66 @@ Components generate `htmltools` tags with `data-shinymcp-*` attributes:
 
 ### MCP Apps Protocol
 
-MCP Apps use:
+MCP Apps (extension version 2026-01-26) use:
 - `ui://` resource URIs to declare HTML content
 - `text/html;profile=mcp-app` MIME type
-- postMessage/JSON-RPC for host ↔ iframe communication
-- Tool annotations with `_meta.ui.resourceUri` to link tools to their UI
+- postMessage/JSON-RPC between host and iframe
+- `_meta.ui.resourceUri` on a tool to link it to its page, and
+  `_meta.ui.visibility` for tools only the page may call
+- A Content Security Policy that blocks what the app doesn't declare
+  (`csp` in `mcp_app()`); fonts in the page can't load
 
-### JS Bridge
+Clients without UI support get no app-only tools and no `_meta.ui`.
 
-The self-contained bridge (`inst/js/shinymcp-bridge.js`):
-- Reads config (including `toolArgs`) from `<script id="shinymcp-config">` element
-- Builds input cache by matching tool arg names to DOM elements (`buildInputCache()`)
-- Listens for input changes → sends `ui/update-model-context` and debounced `tools/call` to host
-- Receives `ui/tool-result` → updates DOM output elements via `structuredContent` keys
-- Reports size changes via ResizeObserver
-- Handles teardown cleanup
-- ES5-compatible (no const/let/arrow functions/Set), includes CSS.escape polyfill
+### Results
+
+Every tool result has three levels: `content` (text for the model),
+`structuredContent` (data for the model), and `_meta["shinymcp/view"]`
+(what the page draws: HTML, images, widget data, dependencies), which
+clients keep from the model. Dependencies the page already has are left
+out; in results for the model, large ones go by name and the page fetches
+them through the view tool.
+
+### Live runtime
+
+`ShinyRuntime` gives each live app two tools: the model's tool (named
+after the app), which opens a view, and `<name>_view`, app-only, with the
+actions `update`, `download`, `data`, `dependency`, and `close`. Each view
+is a subclass of `shiny::MockShinySession` that records what the server
+sends to the browser (outputs, input updates, notifications, modals,
+inserted UI, custom messages, tab changes). Views carry a revision; a page
+that missed updates, or whose session is gone, sends all its inputs.
+Timers (`invalidateLater()`) run when the page calls back at the time each
+result gives. Limits: `shinymcp.max_views`, `shinymcp.view_timeout`.
+
+The app starts as `shiny::runApp()` would: `global.R`, `R/`, and
+`onStart`, in the app's directory (`app_lifecycle()` in `R/runtime.R`).
+
+### The page
+
+`McpApp$html_resource()` renders the UI once and writes everything into
+one self-contained document (hosts may load it from `srcdoc`):
+dependencies, `www/` files, stylesheets with their images as `data:` URIs,
+the `window.Shiny` stand-in at the top of `<head>`, and the bridge with its
+config (`#shinymcp-config`) at the end of `<body>`.
 
 ### Key Design Decisions
 
-1. **htmltools, not Shiny runtime** - No dependency on Shiny's JS. The JS bridge replaces shiny.js entirely.
-2. **Auto-detect inputs** - The bridge matches tool argument names to DOM element ids, so native shiny/bslib inputs work without wrappers. `mcp_*()` components and `data-shinymcp-input` attributes remain as explicit overrides.
-3. **One tool per reactive group** - Connected inputs/reactives/outputs map to a single tool.
-4. **Self-contained JS** - No npm build step. Vanilla ES5 JS in an IIFE.
-5. **mcptools extension path** - Resource handling in `mcp-resources.R` is designed for eventual upstream PR.
+1. **No Shiny client on the page.** The bridge replaces shiny.js; the
+   stand-in provides only the parts of `window.Shiny` packages use.
+2. **Serve Shiny apps as they are.** Rewriting as tools is a separate,
+   optional route, for computations the model should use on their own.
+3. **Self-contained pages and JS.** No npm build step, no network.
+4. **Approval stays with the person.** Tools that change something can be
+   app-only (`tool_visibility`), run from a button in the page.
 
 ## Dependencies
 
-**Core** (Imports): cli, htmltools, jsonlite, methods, R6, rlang, stats, utils
-**Optional** (Suggests): base64enc, bslib, ellmer, ggplot2, grDevices, httpuv,
-knitr, mcptools, palmerpenguins, rmarkdown, scales, shiny, shinychat,
-testthat, withr
+**Core** (Imports): cli, graphics, htmltools, jsonlite, methods, R6, rlang,
+stats, tools, utils
+**Optional** (Suggests): base64enc, bslib, DT, ellmer, ggplot2, grDevices,
+htmlwidgets, httpuv, knitr, later, palmerpenguins, promises, rmarkdown,
+shiny, shinychat, shinyWidgets, testthat, withr
 
 Suggests must be guarded at every call site (`rlang::check_installed()` or
 `requireNamespace()`), since R CMD check builds without them.

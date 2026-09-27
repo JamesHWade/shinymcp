@@ -37,14 +37,18 @@ shiny_output_fns <- c(
   "downloadButton"
 )
 
-#' Parse a Shiny app into intermediate representation
+#' Read a Shiny app's code
 #'
-#' Reads a Shiny app's R source files and extracts a structured representation
-#' of UI inputs, outputs, and server logic.
+#' `parse_shiny_app()` reads an app's source without running it and lists
+#' its inputs, outputs, reactive expressions, and observers. It is the first
+#' step of [convert_app()].
 #'
-#' @param path Path to a Shiny app directory (containing app.R or ui.R/server.R)
-#' @return A `ShinyAppIR` list with components: `inputs`, `outputs`, `server_body`,
-#'   `reactives`, `observers`, `complexity`
+#' @param path Path to a Shiny app directory, with `app.R`, or `ui.R` and
+#'   `server.R`.
+#' @return A `ShinyAppIR` object: a list with `inputs`, `outputs`,
+#'   `server_body`, `reactives`, `observers`, and `complexity` (`"simple"`,
+#'   `"medium"`, or `"complex"`).
+#' @family conversion
 #' @export
 parse_shiny_app <- function(path) {
   if (!dir.exists(path)) {
@@ -838,9 +842,9 @@ extract_outputs_from_tags <- function(ui, selective = FALSE) {
 }
 
 
-#' Print method for ShinyAppIR
-#' @param x A ShinyAppIR object
-#' @param ... Ignored
+#' @rdname parse_shiny_app
+#' @param x A `ShinyAppIR` object.
+#' @param ... Ignored.
 #' @export
 print.ShinyAppIR <- function(x, ...) {
   cli::cli_h1("Shiny App IR")

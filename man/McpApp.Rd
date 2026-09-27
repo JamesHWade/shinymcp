@@ -10,13 +10,22 @@ app's \verb{ui://} resource), how to describe its tools to a client, and how to
 run them. Create one with \code{\link[=mcp_app]{mcp_app()}} or \code{\link[=as_mcp_app]{as_mcp_app()}} rather than
 calling \code{McpApp$new()} directly; the arguments are the same.
 
-Most code only needs \verb{$call_tool()} (run a tool and get its R value back,
-handy in tests) and \verb{$html_resource()} (the page a host renders).
+Most code only needs \verb{$call_tool()} (run a tool and get its R value
+back, as in tests) and \verb{$html_resource()} (the page a host renders).
 }
+\seealso{
+Other apps:
+\code{\link[=as_mcp_app]{as_mcp_app()}},
+\code{\link[=bindMcp]{bindMcp()}},
+\code{\link[=mcp_app]{mcp_app()}},
+\code{\link[=mcp_tool_module]{mcp_tool_module()}}
+}
+\concept{apps}
 \section{Public fields}{
   \if{html}{\out{<div class="r6-fields">}}
   \describe{
-    \item{\code{name}}{App name; the UI resource is \verb{ui://<name>}.}
+    \item{\code{name}}{App name; the UI resource is \verb{ui://<name>}, with any
+characters a URI can't carry percent-encoded.}
 
     \item{\code{version}}{App version string.}
 
@@ -43,6 +52,7 @@ handy in tests) and \verb{$html_resource()} (the page a host renders).
     \item \href{#method-McpApp-has_tool}{\code{McpApp$has_tool()}}
     \item \href{#method-McpApp-interaction_defaults}{\code{McpApp$interaction_defaults()}}
     \item \href{#method-McpApp-runtime}{\code{McpApp$runtime()}}
+    \item \href{#method-McpApp-close}{\code{McpApp$close()}}
     \item \href{#method-McpApp-output_types}{\code{McpApp$output_types()}}
     \item \href{#method-McpApp-print}{\code{McpApp$print()}}
     \item \href{#method-McpApp-clone}{\code{McpApp$clone()}}
@@ -75,6 +85,7 @@ handy in tests) and \verb{$html_resource()} (the page a host renders).
   host_styles = TRUE,
   model_context = TRUE,
   images = TRUE,
+  www = NULL,
   runtime = NULL
 )}
     \if{html}{\out{</div>}}
@@ -82,7 +93,7 @@ handy in tests) and \verb{$html_resource()} (the page a host renders).
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{ui, tools, name, version, title, description, theme, csp, permissions, prefers_border, domain, tool_visibility, tool_outputs, trigger, debounce_ms, resources, host_styles, model_context, images}}{See \code{\link[=mcp_app]{mcp_app()}}.}
+      \item{\code{ui, tools, name, version, title, description, theme, csp, permissions, prefers_border, domain, tool_visibility, tool_outputs, trigger, debounce_ms, resources, host_styles, model_context, images, www}}{See \code{\link[=mcp_app]{mcp_app()}}.}
       \item{\code{runtime}}{Internal: the live Shiny runtime for apps created by
 \code{\link[=as_mcp_app]{as_mcp_app()}} from a Shiny app.}
     }
@@ -318,6 +329,20 @@ app, or \code{NULL}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{McpApp$runtime()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-close"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-close}{}}}
+\subsection{\code{McpApp$close()}}{
+  Close the app's open views and stop the Shiny app
+behind it, if any, running its \code{onStop} hook. \code{\link[=serve]{serve()}} and
+\code{\link[=mcp_endpoint]{mcp_endpoint()}} call this when they stop.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$close()}
     \if{html}{\out{</div>}}
   }
 }
