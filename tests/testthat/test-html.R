@@ -63,6 +63,44 @@ test_that("conditional panels start hidden, as in Shiny", {
   )
 })
 
+test_that("Leaflet's default markers come from the library's own images", {
+  dir <- withr::local_tempdir()
+  dir.create(file.path(dir, "images"))
+  writeLines("window.L = {};", file.path(dir, "leaflet.js"))
+  for (name in c(
+    "marker-icon.png",
+    "marker-icon-2x.png",
+    "marker-shadow.png"
+  )) {
+    writeBin(
+      as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+      file.path(dir, "images", name)
+    )
+  }
+  dep <- htmltools::htmlDependency(
+    "leaflet",
+    "1.3.1",
+    src = c(file = dir),
+    script = "leaflet.js"
+  )
+  head <- inline_dependency(dep)
+  expect_match(head, "L.Icon.Default.prototype._getIconUrl", fixed = TRUE)
+  expect_match(head, 'var shadow = "data:image/png;base64,', fixed = TRUE)
+  # After the library itself.
+  expect_lt(
+    regexpr("window.L = {};", head, fixed = TRUE),
+    regexpr("leaflet icons", head, fixed = TRUE)
+  )
+
+  other <- htmltools::htmlDependency(
+    "not-leaflet",
+    "1.0",
+    src = c(file = dir),
+    script = "leaflet.js"
+  )
+  expect_no_match(inline_dependency(other), "_getIconUrl", fixed = TRUE)
+})
+
 test_that("the title falls back to the app name", {
   html <- mcp_app(htmltools::div(), name = "untitled")$html_resource()
   expect_match(html, "<title>untitled</title>", fixed = TRUE)

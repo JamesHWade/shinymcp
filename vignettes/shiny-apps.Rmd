@@ -202,9 +202,10 @@ Some things don't carry over:
   the app declares it. Map tiles, web fonts, and scripts from a CDN need a
   `csp` declaration, for example
   `as_mcp_app(app, csp = list(resource_domains = "https://*.tile.openstreetmap.org"))`.
-  Fonts can't load from the app itself either, so icon fonts such as Font
-  Awesome don't show; use inline SVG icons (`bsicons`, for example)
-  instead.
+  (Leaflet's default markers don't: shinymcp puts their images in the
+  page.) Fonts can't load from the app itself either, so icon fonts such
+  as Font Awesome don't show; use inline SVG icons (`bsicons`, for
+  example) instead.
 * **Output bindings from packages**, other than htmlwidgets. Their values
   are shown as text.
 * **Progress bars.** A request finishes before the page hears about its

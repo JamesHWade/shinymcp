@@ -38,6 +38,8 @@ the page's JavaScript, the hosts, and the documentation.
   `reactive()` work.
 * `updateSelectizeInput(server = TRUE)` works: the page shows the first
   1,000 choices, with a search box for the rest.
+* Leaflet's default markers show. The leaflet package loads their images
+  from a CDN, which chat clients block; the page carries them instead.
 * `invalidateLater()` and `reactivePoll()` run while the app is open, and
   an `ExtendedTask`'s result appears when the task finishes.
 * bslib's inputs work: sidebars, accordions, navsets, switches, and task

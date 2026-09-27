@@ -174,6 +174,9 @@ inline_dependency <- function(dep) {
         )
       )
     }
+    if (identical(dep$name, "leaflet")) {
+      parts <- c(parts, leaflet_icon_patch(base))
+    }
   } else if (!is.null(dep$src$href)) {
     href <- dep$src$href
     for (css in dep$stylesheet) {
@@ -191,6 +194,47 @@ inline_dependency <- function(dep) {
     parts <- c(parts, paste(dep$head, collapse = "\n"))
   }
   paste(parts, collapse = "\n")
+}
+
+#' Leaflet's default marker, from the images the library ships
+#'
+#' The leaflet package points Leaflet's default marker icons at unpkg.com,
+#' which hosts block, so markers would be missing. This script, run after
+#' Leaflet loads, hands out the library's own images as data URIs instead.
+#' @noRd
+leaflet_icon_patch <- function(base) {
+  images <- file.path(
+    base,
+    "images",
+    c("marker-icon.png", "marker-icon-2x.png", "marker-shadow.png")
+  )
+  if (!all(file.exists(images))) {
+    return(character())
+  }
+  uris <- vapply(images, function(path) data_uri(path) %||% "", character(1))
+  if (!all(nzchar(uris))) {
+    return(character())
+  }
+  paste0(
+    "<script data-shinymcp-dep=\"leaflet icons\">\n",
+    "(function () {\n",
+    "  if (!window.L || !L.Icon || !L.Icon.Default) return;\n",
+    "  var icon = \"",
+    uris[[1]],
+    "\";\n",
+    "  var retina = \"",
+    uris[[2]],
+    "\";\n",
+    "  var shadow = \"",
+    uris[[3]],
+    "\";\n",
+    "  L.Icon.Default.prototype._getIconUrl = function (name) {\n",
+    "    if (name === \"shadow\") return shadow;\n",
+    "    return L.Browser.retina ? retina : icon;\n",
+    "  };\n",
+    "})();\n",
+    "</script>"
+  )
 }
 
 #' @noRd
