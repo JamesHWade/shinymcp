@@ -21,7 +21,7 @@ the page's JavaScript, the hosts, and the documentation.
 * The model's tool takes the app's inputs as arguments, described from the
   UI (select inputs as choices, sliders as bounded numbers, dates as
   dates, tabsets as the tab to show), and its result reports what each
-  output shows, with plots as images. Passing `view` changes a view that is
+  output shows, with tables (DT's included) as rows and plots as images. Passing `view` changes a view that is
   already open. `bindMcp()` narrows what the model sees.
 * Packages written for Shiny's JavaScript work on the page, which provides
   `window.Shiny`: input bindings (shinyWidgets), `Shiny.setInputValue()`
@@ -40,8 +40,11 @@ the page's JavaScript, the hosts, and the documentation.
   client's theme and display mode, `mcp_request()` for the caller (and the
   signed-in user on Posit Connect), and `is_mcp_session()`.
 * Sessions are limited by the `shinymcp.max_views` and
-  `shinymcp.view_timeout` options. A view whose session is gone starts a
-  new one from the page's inputs.
+  `shinymcp.view_timeout` options (see `help("shinymcp-options")`). A view
+  whose session is gone starts a new one from the page's inputs.
+* An error in an observer ends the view's session, as it ends a browser's.
+  The model, or the page, gets the error, and the page's next change
+  starts a new session.
 
 ## Apps built from tools
 

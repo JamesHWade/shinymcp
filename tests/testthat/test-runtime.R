@@ -1820,6 +1820,112 @@ dt_request_body <- function(n_columns, start = 0, length = 10) {
   )
 }
 
+test_that("a session that ends after an error is reported, and restarts", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::numericInput("n", "N", 1),
+    shiny::textOutput("out")
+  )
+  server <- function(input, output, session) {
+    shiny::observe(if (input$n > 5) stop("n is too big"))
+    output$out <- shiny::renderText(paste("n is", input$n))
+  }
+  app <- rt_app(ui, server, name = "crash")
+
+  # The model hears why the app it opened stopped.
+  # Shiny prints the error and its stack trace, as a server would log them.
+  res <- quiet_crash(rt_open(app, list(n = 9)))
+  expect_true(res$isError)
+  expect_identical(
+    rt_text(res),
+    "The crash app stopped after an error in its server function: n is too big."
+  )
+  expect_length(ls(rt_private(app)$instances), 0)
+
+  # So does the page, and its next change starts a new session.
+  view <- rt_meta(rt_open(app, list(n = 1)))
+  res <- quiet_crash(rt_update(app, view, list(n = 9), changed = "n"))
+  expect_true(res$isError)
+  expect_match(rt_text(res), "n is too big", fixed = TRUE)
+  res <- rt_update(app, view, list(n = 2), changed = "n")
+  expect_null(res$isError)
+  expect_true(rt_meta(res)$restarted)
+  expect_identical(rt_meta(res)$outputs$out$value, "n is 2")
+})
+
+test_that("session errors respect shiny.sanitize.errors", {
+  skip_if_not_installed("shiny")
+  withr::local_options(shiny.sanitize.errors = TRUE)
+  ui <- shiny::fluidPage(shiny::numericInput("n", "N", 9))
+  server <- function(input, output, session) {
+    shiny::observe(stop("secret detail"))
+  }
+  res <- quiet_crash(rt_open(rt_app(ui, server, name = "crash")))
+  expect_true(res$isError)
+  expect_no_match(rt_text(res), "secret", fixed = TRUE)
+})
+
+test_that("an input emptied on the page or by the model becomes NULL", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::checkboxGroupInput("g", "G", c("a", "b"), selected = "a"),
+    shiny::textOutput("out")
+  )
+  server <- function(input, output, session) {
+    output$out <- shiny::renderText(
+      if (is.null(input$g)) "none" else paste(input$g, collapse = ",")
+    )
+  }
+  app <- rt_app(ui, server, name = "cb")
+  view <- rt_meta(rt_open(app))
+  expect_identical(view$outputs$out$value, "a")
+
+  res <- rt_update(app, view, list(g = list()), changed = "g")
+  expect_identical(rt_meta(res)$outputs$out$value, "none")
+
+  res <- rt_open(app, list(view = view$instance, g = list("b")))
+  expect_identical(res$structuredContent$outputs$out, "b")
+  res <- rt_open(app, list(view = view$instance, g = list()))
+  expect_identical(res$structuredContent$outputs$out, "none")
+})
+
+test_that("values set from JavaScript arrive as Shiny delivers them", {
+  skip_if_not_installed("shiny")
+  seen <- new.env()
+  ui <- shiny::fluidPage(shiny::textOutput("out"))
+  server <- function(input, output, session) {
+    output$out <- shiny::renderText({
+      seen$rows <- input$tbl_rows_selected
+      seen$state <- input$tbl_state
+      "ok"
+    })
+  }
+  app <- rt_app(ui, server, name = "js")
+  view <- rt_meta(rt_open(app))
+  kinds <- list(
+    tbl_rows_selected = list(kind = "value"),
+    tbl_state = list(kind = "value")
+  )
+  # An empty array is NULL, as unlist() makes it in Shiny.
+  rt_update(
+    app,
+    view,
+    list(tbl_rows_selected = list(), tbl_state = list(start = 0)),
+    changed = c("tbl_rows_selected", "tbl_state"),
+    kinds = kinds
+  )
+  expect_null(seen$rows)
+  expect_identical(seen$state, list(start = 0))
+  rt_update(
+    app,
+    view,
+    list(tbl_rows_selected = list(1L, 3L)),
+    changed = "tbl_rows_selected",
+    kinds = kinds
+  )
+  expect_identical(seen$rows, c(1L, 3L))
+})
+
 test_that("server-side DT tables fetch their rows from the view's session", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("DT")
@@ -1838,10 +1944,12 @@ test_that("server-side DT tables fetch their rows from the view's session", {
   view <- rt_meta(res)
   tbl <- view$outputs$tbl
   expect_identical(tbl$kind, "widget")
-  expect_identical(
-    res$structuredContent$outputs$tbl,
-    "An interactive widget."
-  )
+  # The model reads the table's rows, as it would a tableOutput()'s.
+  model_rows <- res$structuredContent$outputs$tbl
+  expect_length(model_rows, 5)
+  expect_identical(model_rows[[1]]$mpg, 21)
+  expect_match(res$content[[1]]$text, "A table with 5 rows:", fixed = TRUE)
+  expect_match(res$content[[1]]$text, "Mazda RX4", fixed = TRUE)
   widget <- jsonlite::fromJSON(tbl$value, simplifyVector = FALSE)
   expect_match(widget$x$options$ajax$url, "/dataobj/tbl?", fixed = TRUE)
 

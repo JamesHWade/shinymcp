@@ -226,7 +226,12 @@ ShinyRuntime <- R6::R6Class(
           }
           next
         }
-        values[[id]] <- coerce_input_value(arguments[[id]], spec, strict = TRUE)
+        # `[<-` with list() keeps an input the model emptied, as NULL.
+        values[id] <- list(coerce_input_value(
+          arguments[[id]],
+          spec,
+          strict = TRUE
+        ))
       }
 
       if (continued) {
@@ -246,6 +251,10 @@ ShinyRuntime <- R6::R6Class(
         private$set_inputs(instance, presses)
       }
       with_request_context(context, private$settle(instance))
+      crashed <- private$crash_result(instance)
+      if (!is.null(crashed)) {
+        return(crashed)
+      }
       private$result(
         instance,
         context,
@@ -344,6 +353,10 @@ ShinyRuntime <- R6::R6Class(
       # download handlers when its server runs, and the file should reflect
       # the inputs sent with the request.
       with_request_context(context, private$settle(instance))
+      crashed <- private$crash_result(instance)
+      if (!is.null(crashed)) {
+        return(crashed)
+      }
       if (identical(action, "download")) {
         return(private$download(instance, arguments$output, context))
       }
@@ -417,6 +430,10 @@ ShinyRuntime <- R6::R6Class(
       session$groups <- context$groups
       session$userData$.shinymcp <- inst
       install_session_hooks(session, inst)
+      # An error in an observer ends a Shiny session; keep it to report.
+      if (is.function(session$onUnhandledError)) {
+        session$onUnhandledError(function(e) inst$crash <- e)
+      }
 
       # Inputs first, as Shiny's client sends them before the server runs.
       defaults <- lapply(self$inputs, function(spec) spec$value)
@@ -558,7 +575,7 @@ ShinyRuntime <- R6::R6Class(
             private$uploads <- c(private$uploads, attr(upload, "dir"))
             attr(upload, "dir") <- NULL
           }
-          out[[public_id]] <- upload
+          out[public_id] <- list(upload)
           next
         }
         # Inputs from packages' own bindings, and values set from
@@ -570,10 +587,14 @@ ShinyRuntime <- R6::R6Class(
             dom_id,
             if (!is.null(instance)) instance$session
           )
-          out[[public_id]] <- value
+          out[public_id] <- list(value)
           next
         }
-        out[[public_id]] <- coerce_input_value(value, spec, previous = previous)
+        # An input the page emptied (no boxes checked, no rows selected)
+        # is NULL, and `[<-` with list() keeps it.
+        out[public_id] <- list(
+          coerce_input_value(value, spec, previous = previous)
+        )
       }
       out
     },
@@ -702,6 +723,35 @@ ShinyRuntime <- R6::R6Class(
 
     # Flush reactives, run due timers, and apply input updates the server
     # sent (updateSelectInput() and friends) the way the browser would.
+    # An unhandled error (in an observer, say) ends a Shiny session. The
+    # view goes with it: the caller hears why, and the page's next change
+    # starts a new session.
+    crash_result = function(inst) {
+      if (!inst$session$isClosed()) {
+        return(NULL)
+      }
+      private$close_instance(inst)
+      title <- self$title %||% self$app_name
+      detail <- if (is.null(inst$crash)) {
+        "its session ended"
+      } else {
+        paste0(
+          "an error in its server function: ",
+          session_error_message(inst$crash)
+        )
+      }
+      wire_result(list(
+        content = list(text_block(paste0(
+          "The ",
+          title,
+          " app stopped after ",
+          detail,
+          if (!grepl("[.!?]$", detail)) "."
+        ))),
+        isError = TRUE
+      ))
+    },
+
     settle = function(inst) {
       now <- as.numeric(Sys.time())
       elapsed <- max(0, (now - inst$clock) * 1000)
@@ -1579,7 +1629,13 @@ collect_runtime_outputs <- function(inst, specs, skip_deps = character()) {
       with_mock_context(inst$session, inst$session$getOutput(dom_id)),
       error = function(e) e
     )
-    out[[public_id]] <- runtime_output_entry(value, spec, dom_id, skip_deps)
+    out[[public_id]] <- runtime_output_entry(
+      value,
+      spec,
+      dom_id,
+      skip_deps,
+      data = inst$data_objects[[dom_id]]$data
+    )
     skip_deps <- c(skip_deps, sent(out[[public_id]]))
   }
   out
@@ -1660,8 +1716,17 @@ payload_dependencies <- function(deps, skip_deps = character()) {
 }
 
 #' Turn a render function's value into a page payload and a model value
+#'
+#' `data` is what the output registered with `session$registerDataObj()`, if
+#' anything: DT's server-side tables keep their data frame there.
 #' @noRd
-runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
+runtime_output_entry <- function(
+  value,
+  spec,
+  dom_id,
+  skip_deps = character(),
+  data = NULL
+) {
   type <- spec$type
   entry <- if (inherits(value, "error")) {
     runtime_error_entry(value)
@@ -1672,15 +1737,16 @@ runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
     # have yet (plotly's library, for one, arrives with the first plot).
     deps <- widget_dependencies(value)
     deps <- Filter(function(d) !dependency_loaded(d, skip_deps), deps)
-    list(
-      payload = compact_list(list(
-        kind = "widget",
-        value = as.character(value),
-        deps = if (length(deps)) lapply(deps, dependency_payload)
-      )),
-      digest = rlang::hash(as.character(value)),
-      model = "An interactive widget.",
-      text = "An interactive widget."
+    c(
+      list(
+        payload = compact_list(list(
+          kind = "widget",
+          value = as.character(value),
+          deps = if (length(deps)) lapply(deps, dependency_payload)
+        )),
+        digest = rlang::hash(as.character(value))
+      ),
+      widget_model_entry(data)
     )
   } else if (is.list(value) && !is.null(value$src)) {
     alt <- value$alt
@@ -1753,6 +1819,48 @@ runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
   entry
 }
 
+#' What the model reads for an htmlwidget
+#'
+#' A widget that keeps a data frame in R, as DT's server-side tables do, is
+#' described by that data, the way a table output is. Other widgets hold
+#' their data in the page, so the model only learns that there is one.
+#' @noRd
+widget_model_entry <- function(data = NULL) {
+  if (!is.data.frame(data)) {
+    return(list(
+      model = "An interactive widget.",
+      text = "An interactive widget."
+    ))
+  }
+  list(
+    model = table_records(data),
+    text = paste0(
+      "A table with ",
+      nrow(data),
+      if (nrow(data) == 1) " row" else " rows",
+      ":\n",
+      table_text(data)
+    )
+  )
+}
+
+#' An error's message as a Shiny app would show it
+#'
+#' With the `shiny.sanitize.errors` option set, Shiny shows a generic
+#' message in place of any error not made with `safeError()`.
+#' @noRd
+session_error_message <- function(e) {
+  if (
+    isTRUE(getOption("shiny.sanitize.errors")) &&
+      !inherits(e, "shiny.custom.error")
+  ) {
+    return(
+      "An error has occurred. Check your logs or contact the app author for clarification."
+    )
+  }
+  cli::ansi_strip(conditionMessage(e))
+}
+
 #' @noRd
 runtime_error_entry <- function(e) {
   message <- cli::ansi_strip(conditionMessage(e))
@@ -1770,12 +1878,7 @@ runtime_error_entry <- function(e) {
       text = message
     ))
   }
-  if (
-    isTRUE(getOption("shiny.sanitize.errors")) &&
-      !inherits(e, "shiny.custom.error")
-  ) {
-    message <- "An error has occurred. Check your logs or contact the app author for clarification."
-  }
+  message <- session_error_message(e)
   list(
     payload = list(kind = "error", value = message),
     model = paste("Error:", message),

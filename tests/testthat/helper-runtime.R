@@ -85,3 +85,13 @@ local_app_dir_side_effects <- function(env = parent.frame()) {
     envir = env
   )
 }
+
+# An app whose observer fails: Shiny prints the error and a stack trace.
+quiet_crash <- function(expr) {
+  value <- NULL
+  utils::capture.output(
+    value <- suppressWarnings(expr),
+    type = "message"
+  )
+  value
+}

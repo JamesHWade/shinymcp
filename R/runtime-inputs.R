@@ -1092,7 +1092,13 @@ coerce_input_value <- function(value, spec, previous = NULL, strict = FALSE) {
       }
     },
     file = NULL,
-    value
+    # Anything else as Shiny delivers a value from the browser: an array
+    # becomes a vector, and an empty one NULL.
+    if (is.list(value) && is.null(names(value))) {
+      unlist(value, recursive = TRUE)
+    } else {
+      value
+    }
   )
 }
 

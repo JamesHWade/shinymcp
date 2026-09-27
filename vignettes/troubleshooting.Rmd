@@ -79,6 +79,13 @@ Chat clients block anything the app doesn't carry itself.
 * An error in a render function shows in the output, and in the text the
   model receives.
 
+## The app stops with an error
+
+An error in an observer ends a Shiny session, in a browser too. shinymcp
+reports it: a tool call from the model returns it as an error, and the page
+shows it above the app. The R console (or the client's log, for a stdio
+server) has the stack trace. The page's next change starts a new session.
+
 ## The app forgets what the person did
 
 Each view keeps its session in the R process that opened it, for up to an

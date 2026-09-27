@@ -78,7 +78,8 @@ expressions, observers, \code{updateSelectInput()} and friends,
 The model gets one tool, named after the app. Its arguments are the app's
 inputs, so the model can open the app already set up ("show the penguins
 explorer for Gentoo"). The result tells the model what the app shows:
-text outputs as text, tables as text, plots as images.
+text outputs as text, tables (DT's included) as their rows, plots as
+images.
 
 Choose what the model sees with \code{\link[=bindMcp]{bindMcp()}}. Once any input or output is
 marked, only marked inputs become tool arguments and only marked outputs
