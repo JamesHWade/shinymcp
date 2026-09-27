@@ -364,3 +364,25 @@ test_that("annotate_module_ui() stamps inputs and outputs once", {
     html
   )
 })
+
+test_that("a handler needs no module server", {
+  skip_if_not_installed("shiny")
+  hist_ui <- function(id) {
+    ns <- shiny::NS(id)
+    htmltools::tagList(
+      shiny::numericInput(ns("bins"), "Bins", 20),
+      shiny::textOutput(ns("text"))
+    )
+  }
+  app <- mcp_tool_module(
+    hist_ui,
+    name = "bins",
+    description = "Report the number of bins.",
+    handler = function(bins = 20) list(text = paste(bins, "bins"))
+  )
+  expect_identical(app$call_tool("bins", list(bins = 7))$text, "7 bins")
+  expect_error(
+    mcp_tool_module(hist_ui, name = "x", description = "x"),
+    class = "shinymcp_error_validation"
+  )
+})

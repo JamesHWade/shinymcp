@@ -2136,7 +2136,7 @@ test_that("is_mcp_session() is TRUE only inside the runtime", {
   expect_false(is_mcp_session())
 })
 
-test_that("the default model context lists the model's inputs", {
+test_that("the default model context lists the model's inputs and outputs", {
   skip_if_not_installed("shiny")
   app <- cars_text_app()
   view <- rt_meta(rt_open(app, list(xvar = "hp")))
@@ -2151,7 +2151,12 @@ test_that("the default model context lists the model's inputs", {
     context$content,
     list(list(
       type = "text",
-      text = 'In the cars app, the user has: xvar = "hp"; yvar = "qsec"; n = 3.'
+      text = paste0(
+        "In the cars app (view ",
+        view$instance,
+        '), the user has set xvar = "hp"; yvar = "qsec"; n = 3.',
+        " It shows: summary: x: hp y: qsec n: 3; xonly: x is hp."
+      )
     ))
   )
   expect_identical(context$structuredContent$app, "cars")
@@ -2159,6 +2164,10 @@ test_that("the default model context lists the model's inputs", {
   expect_mapequal(
     context$structuredContent$inputs,
     list(xvar = "hp", yvar = "qsec", n = 3)
+  )
+  expect_mapequal(
+    context$structuredContent$outputs,
+    list(summary = "x: hp y: qsec n: 3", xonly = "x is hp")
   )
 
   # Published again only when it changes.
@@ -2191,7 +2200,11 @@ test_that("runtime_model_context() says when no inputs are set", {
   )
   expect_identical(
     published$content[[1]]$text,
-    "In the empty app, the user has: no inputs set."
+    paste0(
+      "In the empty app (view ",
+      view$instance,
+      "). It shows: out: constant."
+    )
   )
   expect_identical(published$structuredContent$inputs, json_object())
   # The same context isn't published twice.

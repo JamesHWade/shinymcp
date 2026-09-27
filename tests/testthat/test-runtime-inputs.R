@@ -1289,3 +1289,83 @@ test_that("bslib navsets and navbar pages are tab inputs too", {
   expect_identical(navbar$nav$kind, "tabs")
   expect_identical(navbar$nav$value, "P")
 })
+
+test_that("shinyWidgets inputs are described for the model", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinyWidgets")
+  ui <- shiny::fluidPage(
+    shinyWidgets::radioGroupButtons(
+      "gear",
+      "Gears",
+      c("3", "4", "5"),
+      selected = "4"
+    ),
+    shinyWidgets::checkboxGroupButtons(
+      "opts",
+      "Options",
+      c("a", "b"),
+      selected = "b"
+    ),
+    shinyWidgets::pickerInput(
+      "cyl",
+      "Cylinders",
+      c("4", "6", "8"),
+      selected = "6",
+      multiple = TRUE
+    ),
+    shinyWidgets::switchInput("big", "Big cars"),
+    shinyWidgets::sliderTextInput(
+      "size",
+      "Size",
+      c("small", "medium", "large"),
+      selected = "medium"
+    ),
+    shinyWidgets::sliderTextInput(
+      "span",
+      "Span",
+      c("lo", "mid", "hi"),
+      selected = c("lo", "hi")
+    )
+  )
+  specs <- suppressPackageStartupMessages(describe_ui_inputs(ui))
+  kind <- function(id) specs[[id]]$kind
+  expect_identical(kind("gear"), "radio")
+  expect_identical(specs$gear$choices, c("3", "4", "5"))
+  expect_identical(specs$gear$value, "4")
+  expect_identical(specs$gear$label, "Gears")
+  expect_identical(kind("opts"), "checkbox-group")
+  expect_identical(specs$opts$value, "b")
+  expect_identical(kind("cyl"), "select-multiple")
+  expect_identical(kind("big"), "checkbox")
+  expect_identical(specs$big$label, "Big cars")
+  expect_identical(kind("size"), "select")
+  expect_identical(specs$size$choices, c("small", "medium", "large"))
+  expect_identical(specs$size$value, "medium")
+  expect_identical(kind("span"), "select-multiple")
+  expect_identical(specs$span$value, c("lo", "hi"))
+})
+
+test_that("pages with text sliders keep ionRangeSlider", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinyWidgets")
+  plain <- mcp_app(shiny::fluidPage(shiny::sliderInput(
+    "n",
+    "N",
+    1,
+    10,
+    5
+  )))$html_resource()
+  expect_no_match(
+    plain,
+    "data-shinymcp-dep=\"ionrangeslider-javascript",
+    fixed = TRUE
+  )
+  text <- mcp_app(shiny::fluidPage(
+    shinyWidgets::sliderTextInput("size", "Size", c("s", "m", "l"))
+  ))$html_resource()
+  expect_match(
+    text,
+    "data-shinymcp-dep=\"ionrangeslider-javascript",
+    fixed = TRUE
+  )
+})

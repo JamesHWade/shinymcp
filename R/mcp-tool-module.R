@@ -17,7 +17,7 @@
 #'
 #' @param module_ui A module UI function, `function(id)`.
 #' @param module_server A module server function, `function(id, ...)`,
-#'   that calls [shiny::moduleServer()].
+#'   that calls [shiny::moduleServer()]. Not needed with `handler`.
 #' @param name App and tool name.
 #' @param description What the module does, for the model.
 #' @param handler Optional function to use instead of running
@@ -56,7 +56,7 @@
 #' }
 mcp_tool_module <- function(
   module_ui,
-  module_server,
+  module_server = NULL,
   name,
   description,
   handler = NULL,
@@ -70,9 +70,9 @@ mcp_tool_module <- function(
       class = "shinymcp_error_validation"
     )
   }
-  if (!is.function(module_server)) {
+  if (is.null(handler) && !is.function(module_server)) {
     shinymcp_abort(
-      "{.arg module_server} must be a function.",
+      "{.arg module_server} must be a function, unless {.arg handler} is given.",
       class = "shinymcp_error_validation"
     )
   }

@@ -15,5 +15,6 @@ slides_files/
 .posit/
 
 .gepa_cache/
-libs/tests/testthat/_problems/
+libs/
+tests/testthat/_problems/
 tests/testthat/testthat-problems.rds

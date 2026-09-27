@@ -1,14 +1,17 @@
 # Generate MCP App files from analysis
 
-#' Generate MCP App from analysis
+#' Write the draft of an app built from tools
 #'
-#' Produces HTML, tools, and server code for an MCP App based on the
-#' analysis of a Shiny app.
+#' `generate_mcp_app()` writes the files of [convert_app()]'s draft: `ui.R`
+#' (the app's inputs and outputs), `tools.R` (one tool per group, with the
+#' app's code for it as comments), `app.R`, and, when some of the app's code
+#' doesn't fit a tool, `CONVERSION_NOTES.md`.
 #'
-#' @param analysis A `ReactiveAnalysis` object from [analyze_reactive_graph()]
-#' @param ir The original `ShinyAppIR` object
-#' @param output_dir Directory to write generated files
-#' @return The output directory path (invisibly)
+#' @param analysis The result of [analyze_reactive_graph()].
+#' @param ir The result of [parse_shiny_app()] it was made from.
+#' @param output_dir Directory to write the files to.
+#' @return `output_dir`, invisibly.
+#' @family conversion
 #' @export
 generate_mcp_app <- function(analysis, ir, output_dir) {
   if (!dir.exists(output_dir)) {
@@ -20,12 +23,8 @@ generate_mcp_app <- function(analysis, ir, output_dir) {
   writeLines(html, file.path(output_dir, "ui.R"))
 
   # Generate tools.R
-  tools_code <- generate_tools(analysis$tool_groups)
+  tools_code <- generate_tools(analysis$tool_groups, ir$reactives)
   writeLines(tools_code, file.path(output_dir, "tools.R"))
-
-  # Generate server.R entrypoint
-  server_code <- generate_server(analysis$tool_groups)
-  writeLines(server_code, file.path(output_dir, "server.R"))
 
   # Generate app.R that ties it together
   app_code <- generate_app_entry(ir, analysis)
@@ -39,7 +38,7 @@ generate_mcp_app <- function(analysis, ir, output_dir) {
 
   # Fail loudly at write time rather than letting unparseable generated code
   # degrade silently downstream in convert_app().
-  for (f in c("ui.R", "tools.R", "server.R", "app.R")) {
+  for (f in c("ui.R", "tools.R", "app.R")) {
     validate_generated_r(file.path(output_dir, f))
   }
 
@@ -82,8 +81,14 @@ validate_generated_r <- function(path) {
 #' @noRd
 generate_html <- function(inputs, outputs) {
   lines <- character()
-  lines <- c(lines, "# Generated MCP App UI")
-  lines <- c(lines, "# This file defines the UI using shinymcp components")
+  lines <- c(
+    lines,
+    "# The app's UI, drafted by shinymcp::convert_app(). Shiny and bslib"
+  )
+  lines <- c(
+    lines,
+    "# inputs and outputs work here too; ids connect them to the tools."
+  )
   lines <- c(lines, "")
   lines <- c(lines, "library(shinymcp)")
   lines <- c(lines, "")
@@ -215,29 +220,31 @@ generate_output_component <- function(out) {
   )
 }
 
-#' Generate tools.R code from tool groups
+#' Draft the tools.R of a converted app
 #'
-#' Creates ellmer::tool() definitions for each tool group.
+#' One `ellmer::tool()` per tool group. Each draft takes the group's inputs as
+#' typed arguments with the app's defaults, carries the app's code for the
+#' group (reactive expressions and render calls) as comments to rewrite, and
+#' already returns a list named by the group's outputs.
 #'
-#' @param tool_groups List of tool group definitions
-#' @return Character string of R code
+#' @param tool_groups Tool groups from [analyze_reactive_graph()].
+#' @param reactives The parsed app's reactive expressions (`ir$reactives`).
+#' @return Character string of R code.
 #' @noRd
-generate_tools <- function(tool_groups) {
+generate_tools <- function(tool_groups, reactives = list()) {
   lines <- c(
-    "# Generated MCP App Tools",
-    "# Each tool corresponds to a reactive computation group from the original Shiny app",
-    "",
-    "library(ellmer)"
+    "# The app's tools, drafted by shinymcp::convert_app().",
+    "#",
+    "# Each tool computes outputs that share inputs in the Shiny app. Its body",
+    "# holds the app's code for them as comments: rewrite it with the tool's",
+    "# arguments in place of input$..., and return each output by its id."
   )
-
   for (group in tool_groups) {
-    lines <- c(lines, "", generate_tool_definition(group))
+    lines <- c(lines, "", generate_tool_definition(group, reactives))
   }
-
   lines <- c(
     lines,
     "",
-    "# Collect all tools",
     sprintf(
       "tools <- list(%s)",
       paste(
@@ -246,161 +253,191 @@ generate_tools <- function(tool_groups) {
       )
     )
   )
-
   paste(lines, collapse = "\n")
 }
 
-#' Render captured output logic as commented R for the user to port
-#'
-#' The generated tool body keeps an executable placeholder so the file still
-#' parses and runs, but emitting the original `render*()` expression as a
-#' comment turns a blind scaffold into fill-in-the-blank.
-#'
-#' @param output_targets List of output definitions, optionally carrying a
-#'   `render_expr` captured during analysis.
-#' @return Character vector of comment lines (possibly empty).
+#' The app's code for a tool group, as comment lines
 #' @noRd
-render_logic_comment <- function(output_targets) {
-  lines <- character()
-  for (out in output_targets) {
-    expr <- out$render_expr
-    if (is.null(expr)) {
+group_code_comment <- function(group, reactives = list()) {
+  code <- character()
+  by_name <- stats::setNames(
+    reactives,
+    vapply(reactives, function(r) r$name %||% "", character(1))
+  )
+  for (name in group$reactive_names %||% character()) {
+    r <- by_name[[name]]
+    if (is.null(r) || is.null(r$body_expr)) {
       next
     }
-    deparsed <- deparse(expr, width.cutoff = 500)
-    lines <- c(
-      lines,
-      sprintf("    # Original logic for output '%s':", out$id),
-      paste0("    # ", deparsed)
-    )
+    body <- deparse(r$body_expr, width.cutoff = 70)
+    body[1] <- paste0(name, " <- reactive(", body[1])
+    body[length(body)] <- paste0(body[length(body)], ")")
+    code <- c(code, body, "")
   }
-  lines
+  for (out in group$output_targets) {
+    if (is.null(out$render_expr)) {
+      next
+    }
+    body <- deparse(out$render_expr, width.cutoff = 70)
+    body[1] <- paste0("output$", out$id, " <- ", body[1])
+    code <- c(code, body, "")
+  }
+  if (length(code) == 0) {
+    return(character())
+  }
+  code <- code[seq_len(max(which(nzchar(code))))]
+  c(
+    "    # From the Shiny app:",
+    "    #",
+    sub("\\s+$", "", paste0("    # ", code))
+  )
 }
 
-#' Generate a single ellmer::tool() definition
-#' @param group A tool group definition
-#' @return Character vector of R code lines
+#' A literal vector from a call such as c("a", "b"), or NULL
 #' @noRd
-generate_tool_definition <- function(group) {
-  # Build argument list for ellmer type specs
-  arg_specs <- vapply(
-    group$input_args,
-    function(inp) {
-      type_fn <- switch(
-        inp$type,
-        numeric = ,
-        slider = "type_number",
-        checkbox = "type_boolean",
-        "type_string"
-      )
-      sprintf(
-        '    %s = ellmer::%s("%s")',
-        inp$id,
-        type_fn,
-        inp$label %||% inp$id
-      )
+literal_values <- function(expr) {
+  if (is.atomic(expr)) {
+    return(expr)
+  }
+  if (!is.call(expr) || !identical(expr[[1]], as.name("c"))) {
+    return(NULL)
+  }
+  parts <- as.list(expr)[-1]
+  if (
+    !all(vapply(parts, function(p) is.atomic(p) && length(p) == 1, logical(1)))
+  ) {
+    return(NULL)
+  }
+  values <- unlist(parts)
+  names(values) <- NULL
+  values
+}
+
+#' The draft of one tool argument: its type and its default
+#' @return A list with `type` (R code) and `default` (R code or NULL).
+#' @noRd
+draft_argument <- function(inp) {
+  label <- sub("[:[:space:]]+$", "", trimws(inp$label %||% inp$id))
+  if (!nzchar(label)) {
+    label <- inp$id
+  }
+  args <- inp$args %||% list()
+  code <- function(x) paste(deparse(x), collapse = "")
+  choices <- literal_values(args$choices)
+  default <- switch(
+    inp$type,
+    select = ,
+    selectize = ,
+    radio = literal_values(args$selected) %||%
+      if (length(choices)) choices[[1]],
+    checkboxGroup = literal_values(args$selected),
+    numeric = ,
+    slider = ,
+    checkbox = ,
+    text = ,
+    textArea = ,
+    date = literal_values(args$value),
+    NULL
+  )
+  if (identical(inp$type, "checkbox") && is.null(default)) {
+    default <- FALSE
+  }
+  type_code <- function(fn, extra = NULL) {
+    paste0(
+      "ellmer::",
+      fn,
+      "(",
+      paste(
+        c(
+          extra,
+          deparse_string(label),
+          if (!is.null(default)) "required = FALSE"
+        ),
+        collapse = ", "
+      ),
+      ")"
+    )
+  }
+  type <- switch(
+    inp$type,
+    select = ,
+    selectize = ,
+    radio = if (length(choices)) {
+      type_code("type_enum", code(as.character(choices)))
+    } else {
+      type_code("type_string")
+    },
+    checkboxGroup = paste0(
+      "ellmer::type_array(ellmer::type_string(), ",
+      deparse_string(label),
+      if (!is.null(default)) ", required = FALSE",
+      ")"
+    ),
+    numeric = ,
+    slider = type_code("type_number"),
+    checkbox = type_code("type_boolean"),
+    date = {
+      label <- paste(label, "(YYYY-MM-DD)")
+      type_code("type_string")
+    },
+    type_code("type_string")
+  )
+  list(type = type, default = if (!is.null(default)) code(default))
+}
+
+#' Draft one ellmer::tool() definition
+#' @param group A tool group.
+#' @param reactives The parsed app's reactive expressions.
+#' @return Character vector of R code lines.
+#' @noRd
+generate_tool_definition <- function(group, reactives = list()) {
+  drafts <- lapply(group$input_args, draft_argument)
+  ids <- vapply(group$input_args, function(inp) inp$id, character(1))
+  params <- vapply(
+    seq_along(ids),
+    function(i) {
+      if (is.null(drafts[[i]]$default)) {
+        ids[[i]]
+      } else {
+        paste0(ids[[i]], " = ", drafts[[i]]$default)
+      }
     },
     character(1)
   )
-
-  # Build function parameter list
-  param_list <- paste(
-    vapply(group$input_args, function(inp) inp$id, character(1)),
-    collapse = ", "
+  arg_specs <- vapply(
+    seq_along(ids),
+    function(i) sprintf("    %s = %s", ids[[i]], drafts[[i]]$type),
+    character(1)
   )
-
-  # Determine if any outputs are plots
-  has_plot <- any(vapply(
-    group$output_targets,
-    function(o) o$type %in% c("plot", "image"),
-    logical(1)
-  ))
-
-  # Surface the original render logic as a comment so the user can port it.
-  render_logic <- render_logic_comment(group$output_targets)
-  plot_placeholder <- if (length(render_logic) > 0) {
-    render_logic
-  } else {
-    "    # TODO: Insert plot logic from original render function here"
-  }
-  compute_placeholder <- if (length(render_logic) > 0) {
-    render_logic
-  } else {
-    "    # TODO: Insert computation logic from original render function here"
-  }
-
-  # Build function body
-  if (has_plot) {
-    body_lines <- c(
-      "    # Render plot to base64 PNG",
-      "    tmp <- tempfile(fileext = \".png\")",
-      "    grDevices::png(tmp, width = 800, height = 600)",
-      "    on.exit(unlink(tmp), add = TRUE)",
-      plot_placeholder,
-      "    plot(1, main = \"Placeholder\")",
-      "    grDevices::dev.off()",
-      "    raw <- readBin(tmp, \"raw\", file.info(tmp)$size)",
-      "    paste0(\"data:image/png;base64,\", base64enc::base64encode(raw))"
+  outputs <- vapply(group$output_targets, function(o) o$id, character(1))
+  returns <- if (length(outputs)) {
+    c(
+      "    list(",
+      paste0(
+        sprintf('      %s = "TODO: output$%s"', outputs, outputs),
+        c(rep(",", length(outputs) - 1), "")
+      ),
+      "    )"
     )
   } else {
-    body_lines <- c(
-      compute_placeholder,
-      sprintf("    paste(\"Result for:\", %s)", param_list)
-    )
+    "    list()"
   }
-
-  # Annotations
-  annotations <- c(
-    "  annotations = ellmer::tool_annotations(",
-    "    read_only_hint = TRUE,",
-    "    destructive_hint = FALSE,",
-    "    open_world_hint = FALSE,",
-    "    idempotent_hint = TRUE",
-    "  )"
-  )
+  description <- gsub(":", "", group$description %||% group$name, fixed = TRUE)
 
   c(
     sprintf("%s <- ellmer::tool(", group$name),
-    sprintf("  fun = function(%s) {", param_list),
-    body_lines,
+    sprintf("  function(%s) {", paste(params, collapse = ", ")),
+    group_code_comment(group, reactives),
+    returns,
     "  },",
-    sprintf('  name = "%s",', group$name),
-    sprintf('  description = "%s",', gsub('"', '\\\\"', group$description)),
+    sprintf("  name = %s,", deparse_string(group$name)),
+    sprintf("  description = %s,", deparse_string(description)),
     "  arguments = list(",
     paste(arg_specs, collapse = ",\n"),
     "  ),",
-    annotations,
+    "  annotations = ellmer::tool_annotations(read_only_hint = TRUE)",
     ")"
   )
-}
-
-#' Generate server.R that sets up state and tool handlers
-#'
-#' @param tool_groups List of tool group definitions
-#' @return Character string of R code
-#' @noRd
-generate_server <- function(tool_groups) {
-  lines <- c(
-    "# Generated MCP App Server",
-    "# Sets up state environment and sources tools",
-    "",
-    "# Create shared state environment for tools",
-    "state <- new.env(parent = emptyenv())",
-    "",
-    "# Source tool definitions",
-    'source("tools.R", local = TRUE)',
-    "",
-    "# Tool handler function",
-    "handle_tool_call <- function(tool_name, args) {",
-    "  tool <- tools[[tool_name]]",
-    "  if (is.null(tool)) {",
-    '    stop(sprintf("Unknown tool: %s", tool_name))',
-    "  }",
-    "  do.call(tool$fun, args)",
-    "}"
-  )
-
-  paste(lines, collapse = "\n")
 }
 
 #' Generate app.R that ties everything together
@@ -414,23 +451,18 @@ generate_server <- function(tool_groups) {
 generate_app_entry <- function(ir, analysis = NULL) {
   app_name <- basename(ir$path)
 
-  # Suggested tool_outputs mapping (commented out: the scaffolded tool
-  # bodies return placeholder strings, and declaring an outputSchema is only
-  # valid once tools return named lists keyed by these output ids).
+  # The drafted tools return lists named by these outputs, so each can
+  # declare them (and get an outputSchema).
   tool_output_lines <- character()
   if (!is.null(analysis)) {
     mappings <- character()
     for (group in analysis$tool_groups) {
-      output_ids <- vapply(
-        group$output_targets,
-        function(o) o$id,
-        character(1)
-      )
+      output_ids <- vapply(group$output_targets, function(o) o$id, character(1))
       if (length(output_ids) > 0) {
         mappings <- c(
           mappings,
           sprintf(
-            "#     %s = c(%s)",
+            "    %s = c(%s)",
             group$name,
             paste0('"', output_ids, '"', collapse = ", ")
           )
@@ -439,37 +471,38 @@ generate_app_entry <- function(ir, analysis = NULL) {
     }
     if (length(mappings) > 0) {
       mappings <- paste0(mappings, c(rep(",", length(mappings) - 1), ""))
-      tool_output_lines <- c(
-        "  # Once each tool returns a named list keyed by these output ids,",
-        "  # uncomment tool_outputs to publish an outputSchema per tool:",
-        "  # , tool_outputs = list(",
-        paste0("  ", mappings),
-        "  #   )"
-      )
+      tool_output_lines <- c("  tool_outputs = list(", mappings, "  ),")
     }
   }
 
   lines <- c(
-    "# Generated MCP App",
-    sprintf("# Converted from Shiny app: %s", app_name),
+    sprintf(
+      "# Drafted by shinymcp::convert_app() from the Shiny app in %s.",
+      app_name
+    ),
+    "# Fill in the tools in tools.R, then try the app:",
+    '#   shinymcp::preview_app("app.R")',
     "",
     "library(shinymcp)",
     "",
-    "# Source server setup",
-    'source("server.R", local = TRUE)',
+    "# A chat client runs this file with Rscript from a directory of its own;",
+    "# work from the one this file is in.",
+    'script <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE))',
+    'if (!file.exists("tools.R") && length(script) == 1) {',
+    "  setwd(dirname(script))",
+    "}",
     "",
-    "# Source UI definition",
     'source("ui.R", local = TRUE)',
+    'source("tools.R", local = TRUE)',
     "",
-    "# Create MCP App",
     "app <- mcp_app(",
-    "  ui = ui,",
+    "  ui,",
     "  tools = tools,",
-    sprintf('  name = "%s"', app_name),
     tool_output_lines,
+    sprintf('  name = "%s"', app_name),
     ")",
     "",
-    "serve(app)"
+    "if (interactive()) preview_app(app) else serve(app)"
   )
 
   paste(lines, collapse = "\n")

@@ -20,21 +20,36 @@
 #' marked, only marked inputs become tool arguments and only marked outputs
 #' are reported; the user still sees the whole app. Buttons are never
 #' pressed by the model unless you mark them, and password and file inputs
-#' are never exposed.
+#' are never the model's to set.
 #'
 #' @section What runs where:
 #' The page is the app's UI rendered once to HTML, with shinymcp's bridge in
-#' place of Shiny's JavaScript. The bridge provides native versions of
-#' Shiny's inputs (select, slider, date, checkbox group, and so on) and
-#' draws outputs sent back from R: text, HTML, tables, plots, `renderUI()`,
-#' and htmlwidgets such as plotly and DT. Custom JavaScript input and output
-#' bindings written against Shiny's client API won't work.
+#' place of Shiny's JavaScript. The bridge draws Shiny's built-in inputs
+#' itself (select, slider, date, checkbox group, and so on), and puts
+#' outputs sent back from R on the page: text, HTML, tables, plots,
+#' `renderUI()`, and htmlwidgets such as plotly, DT, and leaflet.
 #'
-#' Sessions live in the R process that serves the app, up to 50 at a time,
-#' closing after an hour of inactivity. If a request reaches a process that
-#' doesn't have the view's session (after a restart, or on a server running
-#' several processes), a new session starts from the inputs on the page.
-#' Anything the server function remembers outside its inputs (a
+#' Packages written for Shiny's JavaScript API work too. The page provides
+#' `window.Shiny` with the parts packages use: input bindings they register
+#' (shinyWidgets, for example), `Shiny.setInputValue()` (DT row selection,
+#' plotly's `event_data()`, leaflet clicks), custom message handlers
+#' (shinyjs), and the `shiny:value` family of events (shinycssloaders).
+#' File inputs upload to the session, within `shiny.maxRequestSize`.
+#' `invalidateLater()` and `reactivePoll()` run while the app is open.
+#'
+#' The app starts as [shiny::runApp()] would start it: its `onStart`
+#' (for a directory, `global.R` and the files in `R/`) runs once, before
+#' the UI is built, and its code runs in the app's directory. Scripts, stylesheets, and images the
+#' UI loads from `www/` or from [shiny::addResourcePath()] paths are
+#' written into the page. `onStop` runs when the server stops.
+#'
+#' @section Sessions:
+#' Sessions live in the R process that serves the app, up to 50 at a time
+#' (the `shinymcp.max_views` option), each closing after an hour without
+#' use (`shinymcp.view_timeout`, in seconds). If a request reaches a
+#' process that doesn't have the view's session (after a restart, or on a
+#' server running several processes), a new session starts from the inputs
+#' on the page. Anything the server function kept outside its inputs (a
 #' `reactiveVal()` that counts clicks, say) starts over.
 #'
 #' @param x A Shiny app (from [shiny::shinyApp()] or [shiny::shinyAppDir()]),
@@ -58,7 +73,8 @@
 #'   are exposed to the model. Defaults to `TRUE` if anything is marked.
 #' @param version App version string.
 #' @param ... Passed on to [mcp_app()], for example `csp`,
-#'   `prefers_border`, or `images`.
+#'   `prefers_border`, `images`, or `www` (which defaults to the app
+#'   directory's `www/` folder).
 #' @return An [McpApp].
 #' @family apps
 #' @export
@@ -139,7 +155,9 @@ as_mcp_app.shiny.appobj <- function(
   }
 
   runtime <- ShinyRuntime$new(
-    server = x$serverFuncSource,
+    # serverFuncSource() returns the server function. Wrapped, because a
+    # shinyAppDir() app's takes `...`, which looks like a server function.
+    server = function() x$serverFuncSource(),
     ui = ui,
     app_name = name,
     tool_name = tool_name,
@@ -197,6 +215,7 @@ as_mcp_app.character <- function(x, name = NULL, ...) {
     if (inherits(found, "McpApp")) {
       return(found)
     }
+    found <- start_in_dir(found, dir)
     dots <- list(...)
     if (is.null(dots$www) && dir.exists(file.path(dir, "www"))) {
       dots$www <- file.path(dir, "www")
@@ -230,11 +249,13 @@ as_mcp_app.default <- function(x, ...) {
 
 #' Source an app.R and find the app it defines
 #'
-#' `serve()` is stubbed out so a script that ends in `serve(app)` doesn't
-#' start a server while being loaded.
+#' As shinyAppDir() does, the files in the app's R/ folder are sourced
+#' first, into an environment the app.R's own inherits from. `serve()` is
+#' stubbed out so a script that ends in `serve(app)` doesn't start a server
+#' while being loaded.
 #' @noRd
 source_app_file <- function(app_file) {
-  env <- new.env(parent = globalenv())
+  env <- new.env(parent = app_support_env(dirname(app_file)))
   env$serve <- function(...) invisible(NULL)
   env$preview_app <- function(...) invisible(NULL)
   sourced <- tryCatch(
@@ -265,6 +286,40 @@ source_app_file <- function(app_file) {
     "{.file {app_file}} doesn't define an {.cls McpApp} or a Shiny app.",
     class = "shinymcp_error_validation"
   )
+}
+
+#' The environment an app.R is sourced in, with its R/ folder loaded
+#'
+#' Follows shinyAppDir(): the `shiny.autoload.r` option turns it off, and an
+#' `R/_disable_autoload.R` file is honoured by shiny::loadSupport().
+#' @noRd
+app_support_env <- function(dir) {
+  if (
+    !dir.exists(file.path(dir, "R")) ||
+      !isTRUE(getOption("shiny.autoload.r", TRUE)) ||
+      !rlang::is_installed("shiny")
+  ) {
+    return(globalenv())
+  }
+  env <- new.env(parent = globalenv())
+  shiny::loadSupport(normalizePath(dir), renv = env, globalrenv = NULL)
+  env
+}
+
+#' Run a Shiny app from an app.R in the app's directory
+#'
+#' shinyAppDir() changes into the app's directory when the app starts; a
+#' Shiny app sourced from its app.R needs the same, so that its server
+#' function reads files relative to it.
+#' @noRd
+start_in_dir <- function(app, dir) {
+  dir <- normalizePath(dir)
+  on_start <- app$onStart
+  app$onStart <- function() {
+    setwd(dir)
+    if (is.function(on_start)) on_start()
+  }
+  app
 }
 
 #' The pre-runtime behaviour: explicit tools fill the Shiny UI's outputs

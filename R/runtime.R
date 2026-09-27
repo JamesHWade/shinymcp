@@ -2034,29 +2034,40 @@ runtime_model_context <- function(inst, runtime, collected, publish = TRUE) {
     })
     names(summary) <- runtime$model_outputs
     summary <- summary[nzchar(unlist(summary))]
+    inputs_text <- if (length(snapshot)) {
+      paste(
+        vapply(
+          names(snapshot),
+          function(id) paste0(id, " = ", format_snapshot_value(snapshot[[id]])),
+          character(1)
+        ),
+        collapse = "; "
+      )
+    }
     text <- paste0(
       "In the ",
       runtime$title %||% runtime$app_name,
-      " app, the user has: ",
-      if (length(snapshot)) {
-        paste(
-          vapply(
-            names(snapshot),
-            function(id) {
-              paste0(id, " = ", format_snapshot_value(snapshot[[id]]))
-            },
-            character(1)
-          ),
-          collapse = "; "
+      " app (view ",
+      inst$id,
+      ")",
+      if (!is.null(inputs_text)) paste0(", the user has set ", inputs_text),
+      ".",
+      if (length(summary)) {
+        paste0(
+          " It shows: ",
+          paste(names(summary), unlist(summary), sep = ": ", collapse = "; "),
+          if (!grepl("[.!?]$", summary[[length(summary)]])) "."
         )
-      } else {
-        "no inputs set"
-      },
-      "."
+      }
     )
     context <- list(
       text = text,
-      data = list(app = runtime$app_name, view = inst$id, inputs = snapshot)
+      data = compact_list(list(
+        app = runtime$app_name,
+        view = inst$id,
+        inputs = snapshot,
+        outputs = if (length(summary)) summary
+      ))
     )
   }
   payload <- compact_list(list(

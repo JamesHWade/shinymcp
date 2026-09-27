@@ -1370,16 +1370,35 @@
     return TOOLS.filter(function (t) { return t.app !== false; });
   }
 
+  // The tools to run for the inputs that changed. A tool that takes a
+  // button's id runs when the button is pressed, as an eventReactive()
+  // does, and not when its other inputs change. With no list of changes
+  // (the Apply button, or a host asking to run), every tool that only reads
+  // and waits for no button runs.
   function toolsForInputs(changed) {
     var tools = appTools();
-    if (!changed) return tools;
+    if (!changed) return tools.filter(refreshesOutputs);
     return tools.filter(function (t) {
-      var args = t.args || [];
+      var buttons = buttonArguments(t);
+      var triggers = buttons.length ? buttons : t.args || [];
       for (var i = 0; i < changed.length; i++) {
-        if (args.indexOf(changed[i]) >= 0) return true;
+        if (triggers.indexOf(changed[i]) >= 0) return true;
       }
       return false;
     });
+  }
+
+  function buttonArguments(tool) {
+    return (tool.args || []).filter(function (arg) {
+      var a = adapters[arg];
+      return !!a && a.kind === "action";
+    });
+  }
+
+  // Tools the page may run on its own to fill in outputs: not those that
+  // change something, nor those that wait for a button.
+  function refreshesOutputs(tool) {
+    return tool.readOnly !== false && tool.destructive !== true && !buttonArguments(tool).length;
   }
 
   function toolArguments(tool) {
@@ -1429,10 +1448,10 @@
   }
 
   // After the host's first result, run the other tools once so every output
-  // fills in, except tools that say they change something.
+  // fills in, except tools that change something or wait for a button.
   function fillRemainingOutputs(firstTool) {
     var tools = appTools().filter(function (t) {
-      return t.name !== firstTool && t.readOnly !== false && t.destructive !== true;
+      return t.name !== firstTool && refreshesOutputs(t);
     });
     if (tools.length) callTools(tools);
   }
@@ -2623,7 +2642,7 @@
     if (MODE === "shiny") {
       viewUpdate([], { all: true }).then(observePlotSizes);
     } else {
-      callTools(appTools().filter(function (t) { return t.readOnly !== false && t.destructive !== true; }));
+      callTools(appTools().filter(refreshesOutputs));
     }
   }
 

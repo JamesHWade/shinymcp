@@ -572,6 +572,58 @@ test_that("a directory with app.R is sourced and named after the directory", {
   expect_identical(named$name, "custom")
 })
 
+test_that("an app.R app loads its R/ folder and runs in its directory", {
+  skip_if_not_installed("shiny")
+  local_app_dir_side_effects()
+  before <- getwd()
+  dir <- withr::local_tempdir()
+  dir.create(file.path(dir, "R"))
+  write_app_file(
+    dir,
+    c(
+      "greeting_ui <- function() shiny::textInput('who', 'Who', 'world')",
+      "greet <- function(who) paste(readLines('greeting.txt'), who)"
+    ),
+    "R/helpers.R"
+  )
+  writeLines("Hello,", file.path(dir, "greeting.txt"))
+  write_app_file(
+    dir,
+    c(
+      "ui <- shiny::fluidPage(greeting_ui(), shiny::textOutput('msg'))",
+      "server <- function(input, output, session) output$msg <- shiny::renderText(greet(input$who))",
+      "shiny::shinyApp(ui, server)"
+    )
+  )
+
+  app <- suppressPackageStartupMessages(as_mcp_app(dir, name = "greeter"))
+  res <- app$run_tool("greeter", list(who = "R"))
+  expect_false(isTRUE(res$isError))
+  expect_identical(res$structuredContent$outputs$msg, "Hello, R")
+  expect_identical(getwd(), before)
+})
+
+test_that("shinyAppDir() on an app.R app runs its server function", {
+  skip_if_not_installed("shiny")
+  local_app_dir_side_effects()
+  dir <- withr::local_tempdir()
+  write_app_file(
+    dir,
+    c(
+      "ui <- shiny::fluidPage(shiny::textInput('who', 'Who', 'world'), shiny::textOutput('msg'))",
+      "server <- function(input, output, session) output$msg <- shiny::renderText(paste('Hi', input$who))",
+      "shiny::shinyApp(ui, server)"
+    )
+  )
+  app <- suppressPackageStartupMessages(as_mcp_app(
+    shiny::shinyAppDir(dir),
+    name = "dir_app"
+  ))
+  res <- app$run_tool("dir_app", list(who = "Bo"))
+  expect_false(isTRUE(res$isError))
+  expect_identical(res$structuredContent$outputs$msg, "Hi Bo")
+})
+
 test_that("a path to the app.R file works too", {
   skip_if_not_installed("shiny")
   dir <- withr::local_tempdir()

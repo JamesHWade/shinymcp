@@ -1,34 +1,32 @@
 # generate_tools output is stable for the simple app
 
     Code
-      cat(generate_tools(analysis$tool_groups))
+      cat(generate_tools(analysis$tool_groups, ir$reactives))
     Output
-      # Generated MCP App Tools
-      # Each tool corresponds to a reactive computation group from the original Shiny app
-      
-      library(ellmer)
+      # The app's tools, drafted by shinymcp::convert_app().
+      #
+      # Each tool computes outputs that share inputs in the Shiny app. Its body
+      # holds the app's code for them as comments: rewrite it with the tool's
+      # arguments in place of input$..., and return each output by its id.
       
       update_result <- ellmer::tool(
-        fun = function(x) {
-          # Original logic for output 'result':
-          # renderText({
+        function(x = "a") {
+          # From the Shiny app:
+          #
+          # output$result <- renderText({
           #     paste("You chose:", input$x)
           # })
-          paste("Result for:", x)
+          list(
+            result = "TODO: output$result"
+          )
         },
         name = "update_result",
-        description = "Update result based on Choose:",
+        description = "Update result based on Choose",
         arguments = list(
-          x = ellmer::type_string("Choose:")
+          x = ellmer::type_enum(c("a", "b", "c"), "Choose", required = FALSE)
         ),
-        annotations = ellmer::tool_annotations(
-          read_only_hint = TRUE,
-          destructive_hint = FALSE,
-          open_world_hint = FALSE,
-          idempotent_hint = TRUE
-        )
+        annotations = ellmer::tool_annotations(read_only_hint = TRUE)
       )
       
-      # Collect all tools
       tools <- list(update_result)
 

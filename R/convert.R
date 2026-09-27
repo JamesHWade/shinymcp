@@ -1,21 +1,47 @@
 # Top-level Shiny-to-MCP conversion orchestrator
 
-#' Convert a Shiny app to an MCP App
+#' Start rewriting a Shiny app as tools
 #'
-#' Parses a Shiny app, analyzes its reactive graph, and generates
-#' an MCP App with tools and UI.
+#' @description
+#' `convert_app()` reads a Shiny app's code and writes the first draft of an
+#' MCP App built from tools: one tool for each group of connected inputs,
+#' reactive expressions, and outputs. The draft is a starting point, not a
+#' finished app: each tool takes its inputs as typed arguments with the
+#' app's defaults and returns its outputs by id, and its body holds the
+#' app's code for them (reactive expressions and render calls) as comments
+#' for you to rewrite.
 #'
-#' @param path Path to a Shiny app directory
-#' @param output_dir Output directory for the generated MCP App.
-#'   Defaults to `{path}_mcp/`.
-#' @param mode Conversion mode. `"scaffold"` generates one scaffold app.
-#'   `"cards"` generates compact per-group scaffold cards.
-#' @param selective Whether card mode should split by connected tool groups.
-#' @param max_inputs_per_card Preferred chat-card input budget.
-#' @param compact_layout Whether generated cards should prefer compact layouts.
-#' @return An [McpApp] object or list of [McpApp] objects (invisibly). Generated
-#'   scaffold files are also written to `output_dir`.
+#' Most apps don't need this: [as_mcp_app()] serves a Shiny app as it is.
+#' Rewrite an app as tools when the model should be able to use its
+#' computations without the app open, or when each call should stand alone
+#' with no session in R. `vignette("rewriting-as-tools")` walks through it.
+#'
+#' The steps are also available separately: [parse_shiny_app()] reads the
+#' code, [analyze_reactive_graph()] groups it into tools, and
+#' [generate_mcp_app()] writes the files.
+#'
+#' @param path Path to a Shiny app directory, with `app.R`, or `ui.R` and
+#'   `server.R`.
+#' @param output_dir Where to write the draft. Defaults to the app's
+#'   directory name with `_mcp` added.
+#' @param mode `"scaffold"` writes one app with every tool. `"cards"` writes
+#'   one small app per tool group, sized for a chat card.
+#' @param selective In `"cards"` mode, whether to split by tool group
+#'   (`TRUE`) or make one card of the whole app.
+#' @param max_inputs_per_card In `"cards"` mode, the most inputs a card
+#'   should show.
+#' @param compact_layout In `"cards"` mode, whether cards use a compact
+#'   layout.
+#' @return The draft as an [McpApp] (or, in `"cards"` mode, a list of
+#'   them), invisibly. The files are in `output_dir`: `ui.R`, `tools.R`,
+#'   `app.R`, and, for apps with code that doesn't fit a tool (observers
+#'   with side effects, for example), `CONVERSION_NOTES.md`.
+#' @family conversion
 #' @export
+#' @examples
+#' \dontrun{
+#' convert_app("path/to/my-app")
+#' }
 convert_app <- function(
   path,
   output_dir = NULL,
@@ -158,13 +184,20 @@ convert_app <- function(
   invisible(app)
 }
 
-#' Split a parsed Shiny app into chat-sized MCP App scaffolds
+#' Draft one small app per tool group
 #'
-#' @param app A path to a Shiny app directory or a parsed `ShinyAppIR` object.
-#' @param split Split strategy.
-#' @param max_inputs_per_card Preferred chat-card input budget.
-#' @param compact_layout Whether the generated UIs should prefer compact cards.
-#' @return A list of [McpApp] scaffold apps.
+#' `as_mcp_apps()` is the `"cards"` mode of [convert_app()] without writing
+#' files: it returns one draft [McpApp] for each group of connected inputs
+#' and outputs, each with placeholder tools.
+#'
+#' @param app A path to a Shiny app directory, or the result of
+#'   [parse_shiny_app()].
+#' @param split `"tool_group"` for one app per tool group, or `"manual"`
+#'   for a single app with every input and output.
+#' @param max_inputs_per_card The most inputs a card should show.
+#' @param compact_layout Whether cards use a compact layout.
+#' @return A list of [McpApp] objects.
+#' @family conversion
 #' @export
 as_mcp_apps <- function(
   app,
