@@ -123,10 +123,12 @@ schema_from_formals <- function(fun) {
     list(type = type)
   })
   names(props) <- names(frmls)
-  list(
+  required <- names(frmls)[vapply(frmls, rlang::is_missing, logical(1))]
+  compact_list(list(
     type = "object",
-    properties = if (length(props)) props else json_object()
-  )
+    properties = if (length(props)) props else json_object(),
+    required = if (length(required)) I(required)
+  ))
 }
 
 #' Make a user-supplied schema safe to serialize
@@ -208,10 +210,9 @@ json_schema_to_ellmer_type <- function(prop, required = TRUE) {
           .required = required
         )
       } else {
-        ellmer::type_from_schema(
-          text = as.character(to_json(prop)),
-          required = required
-        )
+        # A free-form object. ellmer's type_object() with no properties
+        # describes one, and unlike type_from_schema() it takes `required`.
+        ellmer::type_object(.description = description, .required = required)
       }
     },
     ellmer::type_string(description, required = required)
@@ -256,7 +257,10 @@ prepare_tool_arguments <- function(
   if (isTRUE(convert)) {
     for (nm in names(arguments)) {
       if (!is.null(types[[nm]])) {
-        arguments[[nm]] <- convert_with_ellmer_type(arguments[[nm]], types[[nm]])
+        arguments[[nm]] <- convert_with_ellmer_type(
+          arguments[[nm]],
+          types[[nm]]
+        )
       } else if (!is.null(schema$properties[[nm]])) {
         arguments[[nm]] <- convert_with_schema(
           arguments[[nm]],
@@ -268,9 +272,9 @@ prepare_tool_arguments <- function(
     }
   }
 
-  if (is.function(fun)) {
+  if (is.function(fun) && !is.primitive(fun)) {
     accepted <- names(formals(fun))
-    if (!is.null(accepted) && !"..." %in% accepted) {
+    if (!"..." %in% accepted) {
       arguments <- arguments[names(arguments) %in% accepted]
     }
   }
@@ -338,7 +342,10 @@ convert_with_schema <- function(x, schema) {
     array = {
       items <- schema$items %||% list()
       item_type <- items$type %||% if (!is.null(items$enum)) "string"
-      if (is.character(item_type) && item_type %in% c("string", "number", "integer", "boolean")) {
+      if (
+        is.character(item_type) &&
+          item_type %in% c("string", "number", "integer", "boolean")
+      ) {
         json_list_to_atomic(x, item_type)
       } else if (identical(item_type, "object")) {
         records_to_data_frame(x)
@@ -379,13 +386,17 @@ coerce_json_scalar <- function(x, type) {
         n <- suppressWarnings(as.numeric(x))
         if (is.na(n)) x else n
       },
-      boolean = if (tolower(x) %in% c("true", "false")) tolower(x) == "true" else x,
+      boolean = if (tolower(x) %in% c("true", "false")) {
+        tolower(x) == "true"
+      } else {
+        x
+      },
       x
     )
   }
   switch(
     type,
-    integer = if (is.numeric(x) && all(x == round(x))) as.integer(x) else x,
+    integer = if (is.numeric(x) && fits_integer(x)) as.integer(x) else x,
     number = if (is.numeric(x)) as.numeric(x) else x,
     x
   )
@@ -406,14 +417,20 @@ json_list_to_atomic <- function(x, type) {
       character()
     ))
   }
-  if (!all(vapply(x, function(v) is.atomic(v) && length(v) <= 1, logical(1)))) {
+  if (
+    !all(vapply(
+      x,
+      function(v) is.null(v) || (is.atomic(v) && length(v) <= 1),
+      logical(1)
+    ))
+  ) {
     return(x)
   }
   x <- lapply(x, function(v) if (is.null(v) || length(v) == 0) NA else v)
   out <- unlist(x, use.names = FALSE)
   switch(
     type,
-    integer = as.integer(out),
+    integer = if (fits_integer(out)) as.integer(out) else as.numeric(out),
     number = as.numeric(out),
     boolean = as.logical(out),
     string = as.character(out),
@@ -421,12 +438,26 @@ json_list_to_atomic <- function(x, type) {
   )
 }
 
+#' Can these numbers be R integers without loss?
+#' @noRd
+fits_integer <- function(x) {
+  n <- suppressWarnings(as.numeric(x))
+  ok <- is.na(n) | (abs(n) <= .Machine$integer.max & n == round(n))
+  all(ok[!is.na(ok)])
+}
+
 #' @noRd
 records_to_data_frame <- function(x) {
   if (!is.list(x) || length(x) == 0) {
     return(x)
   }
-  if (!all(vapply(x, function(row) is.list(row) && !is.null(names(row)), logical(1)))) {
+  if (
+    !all(vapply(
+      x,
+      function(row) is.list(row) && !is.null(names(row)),
+      logical(1)
+    ))
+  ) {
     return(x)
   }
   cols <- unique(unlist(lapply(x, names)))

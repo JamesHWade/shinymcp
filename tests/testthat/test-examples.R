@@ -29,7 +29,10 @@ app_examples <- list(
     args = list(delta = 0.5, sd = 1)
   ),
   "shiny-module" = list(pkgs = "shiny", args = list(bins = 10)),
-  "converted-dashboard" = list(pkgs = "ellmer", args = list(dataset = "iris", obs = 3)),
+  "converted-dashboard" = list(
+    pkgs = "ellmer",
+    args = list(dataset = "iris", obs = 3)
+  ),
   "feature-tour" = list(pkgs = c("ellmer", "bslib"), args = list()),
   "ggplot-builder" = list(
     pkgs = c("ellmer", "bslib", "ggplot2", "palmerpenguins"),
@@ -68,7 +71,10 @@ test_that("the hello example renders through preview_app()", {
 test_that("the posit-connect example is a Shiny app with an MCP endpoint", {
   require_pkgs("shiny")
   env <- new.env()
-  app <- source(file.path(example_dir("posit-connect"), "app.R"), local = env)$value
+  app <- source(
+    file.path(example_dir("posit-connect"), "app.R"),
+    local = env
+  )$value
   expect_s3_class(app, "shiny.appobj")
   expect_true(inherits(app$mcpServer, "McpServer"))
 })
@@ -77,7 +83,10 @@ test_that("the local-clients server serves both of its apps", {
   require_pkgs(c("shiny", "ellmer"))
   env <- new.env()
   env$serve <- function(app, ...) app
-  served <- source(file.path(example_dir("local-clients"), "serve.R"), local = env)$value
+  served <- source(
+    file.path(example_dir("local-clients"), "serve.R"),
+    local = env
+  )$value
   server <- McpServer$new(served)
   expect_true(server$tool_app("faithful")$name == "faithful")
   expect_true(server$tool_app("summarize_dataset")$name == "dataset-summary")

@@ -18,8 +18,9 @@
 #' same way.
 #'
 #' @param id Output id, matching a name in the tool's result.
-#' @param width,height CSS size of the plot area. With `height = NULL` the
-#'   plot keeps its own aspect ratio; with a height, it's scaled to fit.
+#' @param width,height CSS size of the plot area; numbers are pixels. With
+#'   `height = NULL` the plot keeps its own aspect ratio; with a height, it's
+#'   scaled to fit.
 #' @return An htmltools tag.
 #' @family components
 #' @export
@@ -32,10 +33,17 @@
 mcp_plot <- function(id, width = "100%", height = NULL) {
   htmltools::tags$div(
     id = id,
-    class = if (is.null(height)) "shinymcp-output shinymcp-plot" else "shinymcp-output shinymcp-plot shinymcp-plot-fixed",
+    class = if (is.null(height)) {
+      "shinymcp-output shinymcp-plot"
+    } else {
+      "shinymcp-output shinymcp-plot shinymcp-plot-fixed"
+    },
     `data-shinymcp-output` = id,
     `data-shinymcp-output-type` = "plot",
-    style = htmltools::css(width = width, height = height)
+    style = htmltools::css(
+      width = htmltools::validateCssUnit(width),
+      height = if (!is.null(height)) htmltools::validateCssUnit(height)
+    )
   )
 }
 

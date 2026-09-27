@@ -4,7 +4,11 @@
 \alias{mcp_output}
 \title{Mark an element as an MCP output}
 \usage{
-mcp_output(tag, id = NULL, type = c("text", "html", "plot", "table"))
+mcp_output(
+  tag,
+  id = NULL,
+  type = c("text", "html", "plot", "table", "image", "widget")
+)
 }
 \arguments{
 \item{tag}{An \link[htmltools:tag]{htmltools::tag} object.}
@@ -12,7 +16,8 @@ mcp_output(tag, id = NULL, type = c("text", "html", "plot", "table"))
 \item{id}{The output ID. If \code{NULL} (the default), reads the element's
 existing \code{id} attribute.}
 
-\item{type}{Output type: \code{"text"}, \code{"html"}, \code{"plot"}, or \code{"table"}.}
+\item{type}{Output type: \code{"text"}, \code{"html"}, \code{"plot"}, \code{"table"},
+\code{"image"}, or \code{"widget"}.}
 }
 \value{
 The modified \link[htmltools:tag]{htmltools::tag} with output attributes stamped.

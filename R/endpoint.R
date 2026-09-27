@@ -27,6 +27,10 @@
 #' @param path Endpoint path.
 #' @param allowed_origins Browser origins, besides the app's own, allowed to
 #'   call the endpoint. See [serve()].
+#' @param allowed_hosts Host names the app is reached at, when it runs
+#'   somewhere other than Posit Connect, shinyapps.io, or Shiny Server (for
+#'   example in a container behind your own proxy). Elsewhere, requests for
+#'   host names other than `localhost` are refused; see [serve()].
 #' @param preview For apps, whether browsers get a preview page at `/`.
 #' @param ... Passed to [as_mcp_app()] when `x` is a Shiny app.
 #' @return A Shiny app object.
@@ -43,7 +47,14 @@
 #'
 #' shinyApp(ui, server) |> mcp_endpoint(name = "explorer")
 #' }
-mcp_endpoint <- function(x, path = "/mcp", allowed_origins = NULL, preview = TRUE, ...) {
+mcp_endpoint <- function(
+  x,
+  path = "/mcp",
+  allowed_origins = NULL,
+  allowed_hosts = NULL,
+  preview = TRUE,
+  ...
+) {
   rlang::check_installed("shiny", reason = "to serve MCP from a Shiny app.")
   if (inherits(x, "shiny.appobj")) {
     apps <- list(as_mcp_app(x, ...))
@@ -77,14 +88,18 @@ mcp_endpoint <- function(x, path = "/mcp", allowed_origins = NULL, preview = TRU
     server,
     path = path,
     allowed_origins = allowed_origins,
-    local = !on_hosted_platform()
+    local = !on_hosted_platform(),
+    allowed_hosts = allowed_hosts
   )
   wrapped <- base$httpHandler
   base$httpHandler <- function(req) {
     response <- tryCatch(
       handler(req),
       error = function(e) {
-        http_json(500L, jsonrpc_error(NULL, RPC_INTERNAL_ERROR, conditionMessage(e)))
+        http_json(
+          500L,
+          jsonrpc_error(NULL, RPC_INTERNAL_ERROR, conditionMessage(e))
+        )
       }
     )
     if (is.null(response)) {
@@ -112,12 +127,19 @@ rook_to_shiny_response <- function(response) {
 #' Is this process running on a hosting platform?
 #'
 #' On Posit Connect and shinyapps.io the server isn't a developer's local
-#' process, so loopback origins get no special treatment.
+#' process, so loopback hosts and origins get no special treatment.
+#' (`CONNECT_SERVER` doesn't count: people set it on their own machines to
+#' deploy.)
 #' @noRd
 on_hosted_platform <- function() {
-  identical(Sys.getenv("RSTUDIO_PRODUCT"), "CONNECT") ||
-    nzchar(Sys.getenv("CONNECT_SERVER")) ||
-    identical(Sys.getenv("R_CONFIG_ACTIVE"), "shinyapps")
+  on_posit_connect() ||
+    identical(Sys.getenv("R_CONFIG_ACTIVE"), "shinyapps") ||
+    nzchar(Sys.getenv("SHINY_SERVER_VERSION"))
+}
+
+#' @noRd
+on_posit_connect <- function() {
+  identical(Sys.getenv("RSTUDIO_PRODUCT"), "CONNECT")
 }
 
 #' Run an MCP App with shiny::runApp()

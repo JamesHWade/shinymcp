@@ -30,7 +30,13 @@
 #' preview <- preview_app(app, arguments = list(species = "Gentoo"))
 #' preview$stop()
 #' }
-preview_app <- function(app, arguments = NULL, tool = NULL, port = NULL, launch = interactive()) {
+preview_app <- function(
+  app,
+  arguments = NULL,
+  tool = NULL,
+  port = NULL,
+  launch = interactive()
+) {
   rlang::check_installed("httpuv", reason = "to preview MCP Apps in a browser.")
   server <- McpServer$new(app)
   for (a in server$apps) {
@@ -41,36 +47,50 @@ preview_app <- function(app, arguments = NULL, tool = NULL, port = NULL, launch 
   entry <- tool %||% unlist(lapply(server$apps, default_entry_tool))[1]
   page <- preview_page(server, entry, arguments)
 
-  started <- start_local_server(host, port, list(
-    call = function(req) {
-      tryCatch(
-        {
-          path <- req$PATH_INFO %||% "/"
-          if (path %in% c("/", "/index.html")) {
+  started <- start_local_server(
+    host,
+    port,
+    list(
+      call = function(req) {
+        tryCatch(
+          {
+            path <- req$PATH_INFO %||% "/"
+            if (path %in% c("/", "/index.html")) {
+              list(
+                status = 200L,
+                headers = list(
+                  `Content-Type` = "text/html; charset=utf-8",
+                  `Cache-Control` = "no-store"
+                ),
+                body = page
+              )
+            } else {
+              handler(req) %||%
+                list(
+                  status = 404L,
+                  headers = list(`Content-Type` = "text/plain"),
+                  body = "Not found"
+                )
+            }
+          },
+          error = function(e) {
             list(
-              status = 200L,
-              headers = list(`Content-Type` = "text/html; charset=utf-8", `Cache-Control` = "no-store"),
-              body = page
+              status = 500L,
+              headers = list(`Content-Type` = "text/plain"),
+              body = paste("Internal server error:", conditionMessage(e))
             )
-          } else {
-            handler(req) %||%
-              list(status = 404L, headers = list(`Content-Type` = "text/plain"), body = "Not found")
           }
-        },
-        error = function(e) {
-          list(
-            status = 500L,
-            headers = list(`Content-Type` = "text/plain"),
-            body = paste("Internal server error:", conditionMessage(e))
-          )
-        }
-      )
-    }
-  ))
+        )
+      }
+    )
+  )
 
   url <- sprintf("http://%s:%d/", host, started$port)
   cli::cli_inform(
-    c("i" = "Previewing at {.url {url}}", " " = "Call {.code $stop()} on the result to stop."),
+    c(
+      "i" = "Previewing at {.url {url}}",
+      " " = "Call {.code $stop()} on the result to stop."
+    ),
     class = "shinymcp_message"
   )
   if (isTRUE(launch)) {
@@ -90,7 +110,11 @@ preview_app <- function(app, arguments = NULL, tool = NULL, port = NULL, launch 
 #' @noRd
 preview_page <- function(server, entry = NULL, arguments = NULL) {
   config <- list(
-    title = if (length(server$apps) == 1) server$apps[[1]]$title %||% server$apps[[1]]$name else "shinymcp",
+    title = if (length(server$apps) == 1) {
+      server$apps[[1]]$title %||% server$apps[[1]]$name
+    } else {
+      "shinymcp"
+    },
     endpoint = "mcp",
     entryTool = entry,
     arguments = arguments %||% json_object(),
@@ -98,11 +122,17 @@ preview_page <- function(server, entry = NULL, arguments = NULL) {
     appsProtocolVersion = SHINYMCP_APPS_PROTOCOL_VERSION,
     version = as.character(utils::packageVersion("shinymcp"))
   )
-  fill_template(read_package_file("preview", "host.html"), list(
-    TITLE = htmltools::htmlEscape(config$title),
-    HOST_JS = escape_inline_close(read_package_file("js", "shinymcp-host.js"), "script"),
-    CONFIG = json_for_script(config)
-  ))
+  fill_template(
+    read_package_file("preview", "host.html"),
+    list(
+      TITLE = htmltools::htmlEscape(config$title),
+      HOST_JS = escape_inline_close(
+        read_package_file("js", "shinymcp-host.js"),
+        "script"
+      ),
+      CONFIG = json_for_script(config)
+    )
+  )
 }
 
 #' Replace `{{KEY}}` placeholders in one pass
@@ -146,6 +176,9 @@ start_local_server <- function(host, port, app) {
     }
   }
   shinymcp_abort(
-    c("Couldn't start a local server.", "x" = "{conditionMessage(last_error %||% simpleError('no free port'))}")
+    c(
+      "Couldn't start a local server.",
+      "x" = "{conditionMessage(last_error %||% simpleError('no free port'))}"
+    )
   )
 }

@@ -18,14 +18,17 @@ mcp_http_handler <- function(
   path = "/mcp",
   allowed_origins = NULL,
   local = TRUE,
-  max_sessions = 256L
+  max_sessions = 256L,
+  allowed_hosts = NULL
 ) {
   sessions <- new.env(parent = emptyenv())
   path <- normalize_endpoint_path(path)
 
   function(req) {
     req_path <- sub("/+$", "", req$PATH_INFO %||% "")
-    if (!identical(req_path, path) && !(path == "" && req_path %in% c("", "/"))) {
+    if (
+      !identical(req_path, path) && !(path == "" && req_path %in% c("", "/"))
+    ) {
       return(NULL)
     }
     handle_http_request(
@@ -34,7 +37,8 @@ mcp_http_handler <- function(
       sessions = sessions,
       allowed_origins = allowed_origins,
       local = local,
-      max_sessions = max_sessions
+      max_sessions = max_sessions,
+      allowed_hosts = allowed_hosts
     )
   }
 }
@@ -57,18 +61,44 @@ handle_http_request <- function(
   sessions,
   allowed_origins = NULL,
   local = TRUE,
-  max_sessions = 256L
+  max_sessions = 256L,
+  allowed_hosts = NULL
 ) {
   method <- toupper(req$REQUEST_METHOD %||% "GET")
   headers <- request_headers(req)
   origin <- headers[["origin"]]
 
+  # A server on this machine answers to loopback names, IP addresses, and
+  # the names it was told about. A web page that re-points its own host name
+  # at 127.0.0.1 (DNS rebinding) sends that name in Host, and is refused here.
+  host <- headers[["host"]]
+  if (isTRUE(local) && !is.null(host) && !host_trusted(host, allowed_hosts)) {
+    return(http_json(
+      403L,
+      jsonrpc_error(
+        NULL,
+        RPC_INVALID_REQUEST,
+        paste0(
+          "Forbidden host: ",
+          host,
+          ". Add it to `allowed_hosts` to serve requests for it."
+        )
+      )
+    ))
+  }
+
   cors <- list()
   if (!is.null(origin)) {
-    if (!origin_allowed(origin, headers, allowed_origins, local)) {
+    if (
+      !origin_allowed(origin, headers, allowed_origins, local, allowed_hosts)
+    ) {
       return(http_json(
         403L,
-        jsonrpc_error(NULL, RPC_INVALID_REQUEST, paste("Forbidden origin:", origin))
+        jsonrpc_error(
+          NULL,
+          RPC_INVALID_REQUEST,
+          paste("Forbidden origin:", origin)
+        )
       ))
     }
     cors <- cors_headers(origin)
@@ -81,52 +111,91 @@ handle_http_request <- function(
     requested <- headers[["access-control-request-headers"]]
     return(list(
       status = 200L,
-      headers = c(cors, list(
-        `Access-Control-Allow-Methods` = "POST, DELETE, OPTIONS",
-        `Access-Control-Allow-Headers` = requested %||%
-          "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Session-Id, Mcp-Method, Mcp-Name",
-        `Access-Control-Max-Age` = "86400"
-      )),
+      headers = c(
+        cors,
+        list(
+          `Access-Control-Allow-Methods` = "POST, DELETE, OPTIONS",
+          `Access-Control-Allow-Headers` = requested %||%
+            "Content-Type, Accept, Authorization, MCP-Protocol-Version, Mcp-Session-Id, Mcp-Method, Mcp-Name",
+          `Access-Control-Max-Age` = "86400"
+        )
+      ),
       body = ""
     ))
   }
 
-  session_id <- headers[["mcp-session-id"]]
-
   if (method == "DELETE") {
-    if (!is.null(session_id) && !is.null(sessions[[session_id]])) {
+    session_id <- headers[["mcp-session-id"]]
+    if (known_session(sessions, session_id)) {
       rm(list = session_id, envir = sessions)
       return(list(status = 200L, headers = cors, body = ""))
     }
-    return(http_json(404L, jsonrpc_error(NULL, RPC_INVALID_REQUEST, "Session not found"), cors))
+    return(http_json(
+      404L,
+      jsonrpc_error(NULL, RPC_INVALID_REQUEST, "Session not found"),
+      cors
+    ))
   }
 
   if (method != "POST") {
     # No server-to-client stream: shinymcp never sends unsolicited messages.
     return(list(
       status = 405L,
-      headers = c(cors, list(Allow = "POST, DELETE, OPTIONS", `Content-Type` = "application/json")),
-      body = as.character(to_json(jsonrpc_error(NULL, RPC_INVALID_REQUEST, "Method not allowed")))
+      headers = c(
+        cors,
+        list(
+          Allow = "POST, DELETE, OPTIONS",
+          `Content-Type` = "application/json"
+        )
+      ),
+      body = as.character(to_json(jsonrpc_error(
+        NULL,
+        RPC_INVALID_REQUEST,
+        "Method not allowed"
+      )))
     ))
   }
 
   body <- read_request_body(req)
-  message <- tryCatch(from_json(body), error = function(e) NULL)
-  if (is.null(message) || !is.list(message)) {
-    return(http_json(400L, jsonrpc_error(NULL, RPC_PARSE_ERROR, "Parse error: invalid JSON"), cors))
+  message <- tryCatch(from_json(body), error = function(e) e)
+  if (inherits(message, "error")) {
+    return(http_json(
+      400L,
+      jsonrpc_error(NULL, RPC_PARSE_ERROR, "Parse error: invalid JSON"),
+      cors
+    ))
+  }
+  if (!is.list(message)) {
+    return(http_json(
+      400L,
+      jsonrpc_error(
+        NULL,
+        RPC_INVALID_REQUEST,
+        "Invalid Request: expected a JSON-RPC message"
+      ),
+      cors
+    ))
   }
 
+  viewer <- connect_user(headers)
   transport <- list(
     transport = "http",
     headers = headers,
-    user = connect_user(headers)$user,
-    groups = connect_user(headers)$groups
+    user = viewer$user,
+    groups = viewer$groups
   )
 
-  is_batch <- is.null(names(message)) && length(message) > 0 && is.list(message[[1]])
-  if (is_batch) {
+  if (is_json_batch(message)) {
     responses <- compact_list(lapply(message, function(msg) {
-      http_dispatch(msg, server, sessions, headers, transport, max_sessions)$response
+      batch_refusal(msg) %||%
+        http_dispatch(
+          msg,
+          server,
+          sessions,
+          headers,
+          transport,
+          max_sessions
+        )$response
     }))
     if (length(responses) == 0) {
       return(list(status = 202L, headers = cors, body = ""))
@@ -134,10 +203,14 @@ handle_http_request <- function(
     return(http_json(200L, lapply(responses, strip_http_status), cors))
   }
 
-  outcome <- http_dispatch(message, server, sessions, headers, transport, max_sessions)
-  if (!is.null(outcome$status) && is.null(outcome$response)) {
-    return(list(status = outcome$status, headers = cors, body = ""))
-  }
+  outcome <- http_dispatch(
+    message,
+    server,
+    sessions,
+    headers,
+    transport,
+    max_sessions
+  )
   if (is.null(outcome$response)) {
     return(list(status = 202L, headers = c(cors, outcome$headers), body = ""))
   }
@@ -150,9 +223,23 @@ handle_http_request <- function(
 #' @return A list with `response` (or NULL), optional `status`, and extra
 #'   response `headers`.
 #' @noRd
-http_dispatch <- function(message, server, sessions, headers, transport, max_sessions) {
+http_dispatch <- function(
+  message,
+  server,
+  sessions,
+  headers,
+  transport,
+  max_sessions
+) {
   if (!is.list(message) || is.null(names(message))) {
-    return(list(response = jsonrpc_error(NULL, RPC_INVALID_REQUEST, "Invalid Request", status = 400L)))
+    return(list(
+      response = jsonrpc_error(
+        NULL,
+        RPC_INVALID_REQUEST,
+        "Invalid Request",
+        status = 400L
+      )
+    ))
   }
   meta_version <- message$params[["_meta"]][[META_PROTOCOL_VERSION]]
   is_initialize <- identical(message$method, "initialize")
@@ -161,26 +248,35 @@ http_dispatch <- function(message, server, sessions, headers, transport, max_ses
     # Modern request: validate the mirrored headers, then serve statelessly.
     problem <- check_modern_headers(message, headers)
     if (!is.null(problem)) {
-      return(list(response = jsonrpc_error(
-        message$id %||% NULL,
-        RPC_HEADER_MISMATCH,
-        problem,
-        status = 400L
-      )))
+      return(list(
+        response = jsonrpc_error(
+          message$id %||% NULL,
+          RPC_HEADER_MISMATCH,
+          problem,
+          status = 400L
+        )
+      ))
     }
     return(list(response = server$handle(message, transport)))
   }
 
   # Legacy request.
   header_version <- headers[["mcp-protocol-version"]]
-  if (!is.null(header_version) && !header_version %in% SHINYMCP_PROTOCOL_VERSIONS) {
-    return(list(response = jsonrpc_error(
-      message$id %||% NULL,
-      RPC_INVALID_REQUEST,
-      paste("Unsupported MCP-Protocol-Version:", header_version),
-      data = list(supported = I(SHINYMCP_PROTOCOL_VERSIONS), requested = header_version),
-      status = 400L
-    )))
+  if (
+    !is.null(header_version) && !header_version %in% SHINYMCP_PROTOCOL_VERSIONS
+  ) {
+    return(list(
+      response = jsonrpc_error(
+        message$id %||% NULL,
+        RPC_INVALID_REQUEST,
+        paste("Unsupported MCP-Protocol-Version:", header_version),
+        data = list(
+          supported = I(SHINYMCP_PROTOCOL_VERSIONS),
+          requested = header_version
+        ),
+        status = 400L
+      )
+    ))
   }
 
   session_id <- headers[["mcp-session-id"]]
@@ -192,13 +288,18 @@ http_dispatch <- function(message, server, sessions, headers, transport, max_ses
     prune_http_sessions(sessions, max_sessions)
     extra_headers[["Mcp-Session-Id"]] <- session_id
   } else if (!is.null(session_id)) {
-    session <- sessions[[session_id]]
-    if (is.null(session)) {
+    if (!known_session(sessions, session_id)) {
       # The client must start a new session.
       return(list(
-        response = jsonrpc_error(message$id %||% NULL, RPC_INVALID_REQUEST, "Session not found", status = 404L)
+        response = jsonrpc_error(
+          message$id %||% NULL,
+          RPC_INVALID_REQUEST,
+          "Session not found",
+          status = 404L
+        )
       ))
     }
+    session <- sessions[[session_id]]
   } else {
     # Clients that never initialize (or drop the header) are served leniently.
     session <- server$new_session()
@@ -207,6 +308,15 @@ http_dispatch <- function(message, server, sessions, headers, transport, max_ses
   transport$session <- session
   session$last_used <- as.numeric(Sys.time())
   list(response = server$handle(message, transport), headers = extra_headers)
+}
+
+#' Is a session id one this server handed out and still holds?
+#' @noRd
+known_session <- function(sessions, session_id) {
+  is.character(session_id) &&
+    length(session_id) == 1 &&
+    nzchar(session_id) &&
+    exists(session_id, envir = sessions, inherits = FALSE)
 }
 
 #' Check modern request headers against the body
@@ -290,9 +400,18 @@ decode_header_value <- function(value) {
 #' Allowed: origins listed in `allowed_origins` (or `"*"`); the server's own
 #' origin, judged from the Host header or, behind a proxy, the forwarded
 #' host or Posit Connect's app URL; and for a server bound to loopback, any
-#' loopback origin (local development hosts on another port).
+#' loopback origin (local development hosts on another port). A local
+#' server counts a name as its own only if `host_trusted()`: a page that
+#' re-points its own name at 127.0.0.1 sends matching Origin and Host
+#' headers.
 #' @noRd
-origin_allowed <- function(origin, headers, allowed_origins = NULL, local = TRUE) {
+origin_allowed <- function(
+  origin,
+  headers,
+  allowed_origins = NULL,
+  local = TRUE,
+  allowed_hosts = NULL
+) {
   if ("*" %in% allowed_origins || origin %in% allowed_origins) {
     return(TRUE)
   }
@@ -307,16 +426,65 @@ origin_allowed <- function(origin, headers, allowed_origins = NULL, local = TRUE
     url_host(headers[["rstudio-connect-app-base-url"]])
   ))
   own_hosts <- unlist(strsplit(own_hosts, ",\\s*"))
+  if (isTRUE(local)) {
+    own_hosts <- Filter(function(h) host_trusted(h, allowed_hosts), own_hosts)
+  }
   if (origin_host %in% own_hosts) {
     return(TRUE)
   }
-  if (isTRUE(local)) {
-    bare <- sub(":[0-9]+$", "", origin_host)
-    if (bare %in% c("localhost", "127.0.0.1", "[::1]") || grepl("^127\\.", bare)) {
-      return(TRUE)
-    }
+  if (isTRUE(local) && is_loopback_host(origin_host)) {
+    return(TRUE)
   }
   FALSE
+}
+
+#' Can a local server answer requests for this Host?
+#'
+#' Loopback names, IP addresses, and `allowed_hosts`. DNS rebinding needs a
+#' domain name, so a host given as an address is safe.
+#' @noRd
+host_trusted <- function(host, allowed_hosts = NULL) {
+  is_loopback_host(host) ||
+    is_ip_literal(host) ||
+    host_allowed(host, allowed_hosts)
+}
+
+#' @noRd
+is_ip_literal <- function(host) {
+  host <- tolower(host)
+  if (grepl("^\\[", host)) {
+    return(grepl("^\\[[0-9a-f:.]+\\](:[0-9]*)?$", host))
+  }
+  grepl("^[0-9]{1,3}(\\.[0-9]{1,3}){3}(:[0-9]*)?$", host)
+}
+
+#' Is a Host header one of the allowed host names?
+#'
+#' Entries may name a port ("apps.example.com:8443") or not, in which case
+#' any port matches.
+#' @noRd
+host_allowed <- function(host, allowed_hosts) {
+  if (length(allowed_hosts) == 0) {
+    return(FALSE)
+  }
+  host <- tolower(host)
+  allowed <- tolower(allowed_hosts)
+  "*" %in%
+    allowed ||
+    host %in% allowed ||
+    sub(":[0-9]*$", "", host) %in% allowed
+}
+
+#' Is a host (with or without a port) this machine's loopback interface?
+#' @noRd
+is_loopback_host <- function(host) {
+  host <- tolower(host)
+  bare <- if (grepl("^\\[", host)) {
+    sub("^(\\[[^]]*\\]).*$", "\\1", host)
+  } else {
+    sub(":[0-9]*$", "", host)
+  }
+  bare %in% c("localhost", "[::1]") || grepl("^127(\\.[0-9]{1,3}){3}$", bare)
 }
 
 #' @noRd
@@ -389,7 +557,11 @@ prune_http_sessions <- function(sessions, max_sessions = 256L) {
   if (length(ids) <= max_sessions) {
     return(invisible(NULL))
   }
-  last <- vapply(ids, function(id) sessions[[id]]$last_used %||% sessions[[id]]$created, numeric(1))
+  last <- vapply(
+    ids,
+    function(id) sessions[[id]]$last_used %||% sessions[[id]]$created,
+    numeric(1)
+  )
   drop <- ids[order(last)][seq_len(length(ids) - max_sessions)]
   rm(list = drop, envir = sessions)
   invisible(NULL)
@@ -401,30 +573,55 @@ prune_http_sessions <- function(sessions, max_sessions = 256L) {
 #' `RStudio-Connect-Credentials` header as JSON.
 #' @noRd
 connect_user <- function(headers) {
+  none <- list(user = NULL, groups = NULL)
+  # Only Posit Connect sets this header, and it replaces one a client sends.
+  # Anywhere else a client could claim to be anyone.
+  if (!on_posit_connect()) {
+    return(none)
+  }
   creds <- headers[["rstudio-connect-credentials"]]
   if (is.null(creds) || !nzchar(creds)) {
-    return(list(user = NULL, groups = NULL))
+    return(none)
   }
   parsed <- tryCatch(from_json(creds), error = function(e) NULL)
+  if (!is_json_object(parsed)) {
+    return(none)
+  }
   list(
-    user = parsed$user %||% NULL,
+    user = if (is_string(parsed$user)) parsed$user,
     groups = if (length(parsed$groups)) as.character(unlist(parsed$groups))
   )
 }
 
 #' Run an MCP server over HTTP with httpuv
 #' @noRd
-serve_http <- function(server, host = "127.0.0.1", port = 8080, path = "/mcp", allowed_origins = NULL) {
+serve_http <- function(
+  server,
+  host = "127.0.0.1",
+  port = 8080,
+  path = "/mcp",
+  allowed_origins = NULL,
+  allowed_hosts = NULL
+) {
   rlang::check_installed("httpuv", reason = "to serve MCP over HTTP.")
-  local <- host %in% c("127.0.0.1", "localhost", "::1")
-  handler <- mcp_http_handler(server, path = path, allowed_origins = allowed_origins, local = local)
+  local <- is_loopback_host(host) || identical(host, "::1")
+  handler <- mcp_http_handler(
+    server,
+    path = path,
+    allowed_origins = allowed_origins,
+    local = local,
+    allowed_hosts = allowed_hosts
+  )
   app <- list(
     call = function(req) {
       response <- tryCatch(
         handler(req),
         error = function(e) {
           cli::cli_alert_danger("Internal error: {conditionMessage(e)}")
-          http_json(500L, jsonrpc_error(NULL, RPC_INTERNAL_ERROR, conditionMessage(e)))
+          http_json(
+            500L,
+            jsonrpc_error(NULL, RPC_INTERNAL_ERROR, conditionMessage(e))
+          )
         }
       )
       response %||%
@@ -435,9 +632,17 @@ serve_http <- function(server, host = "127.0.0.1", port = 8080, path = "/mcp", a
         )
     }
   )
-  url <- sprintf("http://%s:%d%s", if (grepl(":", host)) paste0("[", host, "]") else host, port, path)
+  url <- sprintf(
+    "http://%s:%d%s",
+    if (grepl(":", host)) paste0("[", host, "]") else host,
+    port,
+    path
+  )
   cli::cli_inform(
-    c("i" = "shinymcp: serving MCP at {.url {url}}", " " = "Press Ctrl+C to stop."),
+    c(
+      "i" = "shinymcp: serving MCP at {.url {url}}",
+      " " = "Press Ctrl+C to stop."
+    ),
     class = "shinymcp_message"
   )
   httpuv::runServer(host = host, port = port, app = app)

@@ -82,6 +82,18 @@ McpApp <- R6::R6Class(
           c("debounce", "change", "submit", "manual")
         )
       }
+      if (
+        !is.null(debounce_ms) &&
+          !(is.numeric(debounce_ms) &&
+            length(debounce_ms) == 1 &&
+            !is.na(debounce_ms) &&
+            debounce_ms >= 0)
+      ) {
+        shinymcp_abort(
+          "{.arg debounce_ms} must be a single non-negative number of milliseconds.",
+          class = "shinymcp_error_validation"
+        )
+      }
 
       self$name <- name
       self$version <- version
@@ -213,14 +225,19 @@ McpApp <- R6::R6Class(
     #' @param include_ui_meta Include the nested `_meta.ui` block. `FALSE`
     #'   for clients that did not declare MCP Apps support.
     #' @param include_app_only Include tools only the app's UI can call.
-    tool_definitions = function(include_ui_meta = TRUE, include_app_only = TRUE) {
+    tool_definitions = function(
+      include_ui_meta = TRUE,
+      include_app_only = TRUE
+    ) {
       tools <- private$.tools
       if (!include_app_only) {
         tools <- Filter(function(t) tool_visible_to(t, "model"), tools)
       }
       ui_outputs <- private$ui_outputs()
       unname(lapply(tools, function(tool) {
-        output_schema <- if (is.null(tool$output_schema) && length(tool$outputs)) {
+        output_schema <- if (
+          is.null(tool$output_schema) && length(tool$outputs)
+        ) {
           build_output_schema(tool$outputs, ui_outputs)
         }
         tool_wire_definition(
@@ -243,7 +260,10 @@ McpApp <- R6::R6Class(
         list(caller = "model", transport = "in-process"),
         context %||% list()
       )
-      with_request_context(context, tool$handler(arguments %||% list(), context))
+      with_request_context(
+        context,
+        tool$handler(arguments %||% list(), context)
+      )
     },
 
     #' @description Run a tool and return an MCP `tools/call` result.
@@ -258,7 +278,10 @@ McpApp <- R6::R6Class(
         context %||% list()
       )
       raw <- tryCatch(
-        with_request_context(context, tool$handler(arguments %||% list(), context)),
+        with_request_context(
+          context,
+          tool$handler(arguments %||% list(), context)
+        ),
         error = function(e) e
       )
       if (inherits(raw, "error")) {
@@ -306,32 +329,39 @@ McpApp <- R6::R6Class(
     #' @param ... Ignored.
     print = function(...) {
       tools <- private$.tools
-      cli::cli_text("{.cls McpApp} {.strong {self$name}} {.field {self$version}}")
-      if (!is.null(self$description)) {
-        cli::cli_text(self$description)
-      }
-      cli::cli_text("UI resource: {.url {self$resource_uri()}}")
-      if (!is.null(private$.runtime)) {
-        cli::cli_text("Runs a live Shiny server function for each view.")
-      }
-      if (length(tools) == 0) {
-        cli::cli_text("No tools.")
-      } else {
-        cli::cli_text("Tools:")
-        items <- vapply(
-          tools,
-          function(t) {
-            scope <- if (!is.null(t$visibility) && !"model" %in% t$visibility) {
-              " (app only)"
-            } else {
-              ""
-            }
-            paste0(t$name, scope)
-          },
-          character(1)
-        )
-        cli::cli_ul(items)
-      }
+      lines <- c(
+        paste0("<McpApp> ", self$name, " ", self$version),
+        if (!is.null(self$title)) paste0("Title: ", self$title),
+        if (!is.null(self$description)) {
+          strwrap(self$description, width = getOption("width", 80))
+        },
+        paste0("UI resource: ", self$resource_uri()),
+        if (!is.null(private$.runtime)) {
+          "Runs the Shiny app's server function, one session per view."
+        },
+        if (length(tools) == 0) {
+          "No tools."
+        } else {
+          c(
+            "Tools:",
+            vapply(
+              tools,
+              function(t) {
+                scope <- if (
+                  !is.null(t$visibility) && !"model" %in% t$visibility
+                ) {
+                  " (app only)"
+                } else {
+                  ""
+                }
+                paste0("* ", t$name, scope)
+              },
+              character(1)
+            )
+          )
+        }
+      )
+      cli::cat_line(lines)
       invisible(self)
     }
   ),
@@ -530,7 +560,11 @@ mcp_app <- function(
 # ---- Construction helpers ----
 
 #' @noRd
-apply_tool_visibility <- function(tools, tool_visibility, call = rlang::caller_env()) {
+apply_tool_visibility <- function(
+  tools,
+  tool_visibility,
+  call = rlang::caller_env()
+) {
   if (is.null(tool_visibility)) {
     return(tools)
   }
@@ -548,13 +582,21 @@ apply_tool_visibility <- function(tools, tool_visibility, call = rlang::caller_e
     )
   }
   for (nm in intersect(names(tool_visibility), names(tools))) {
-    tools[[nm]]$visibility <- validate_visibility(tool_visibility[[nm]], nm, call = call)
+    tools[[nm]]$visibility <- validate_visibility(
+      tool_visibility[[nm]],
+      nm,
+      call = call
+    )
   }
   tools
 }
 
 #' @noRd
-apply_tool_outputs <- function(tools, tool_outputs, call = rlang::caller_env()) {
+apply_tool_outputs <- function(
+  tools,
+  tool_outputs,
+  call = rlang::caller_env()
+) {
   if (is.null(tool_outputs)) {
     return(tools)
   }
@@ -630,7 +672,11 @@ permissions_to_meta <- function(permissions, call = rlang::caller_env()) {
     clipboardWrite = "clipboardWrite"
   )
   # Accept the older list(camera = list()) form as well as a character vector.
-  requested <- if (is.character(permissions)) permissions else names(permissions)
+  requested <- if (is.character(permissions)) {
+    permissions
+  } else {
+    names(permissions)
+  }
   unknown <- setdiff(requested, names(key_map))
   if (length(unknown) || length(requested) == 0) {
     shinymcp_abort(
@@ -650,7 +696,11 @@ normalize_extra_resources <- function(resources, call = rlang::caller_env()) {
   if (is.null(resources)) {
     return(list())
   }
-  if (!is.list(resources) || is.null(names(resources)) || any(!nzchar(names(resources)))) {
+  if (
+    !is.list(resources) ||
+      is.null(names(resources)) ||
+      any(!nzchar(names(resources)))
+  ) {
     shinymcp_abort(
       "{.arg resources} must be a named list (URI -> content).",
       class = "shinymcp_error_validation",
@@ -712,11 +762,12 @@ coerce_resource_text <- function(content) {
 #' A tool error as an MCP result the model can read
 #' @noRd
 tool_error_result <- function(e) {
-  message <- conditionMessage(e)
-  if (inherits(e, "rlang_error")) {
-    message <- cli::ansi_strip(paste(format(e, backtrace = FALSE), collapse = "\n"))
-    message <- sub("^Error[^:]*:\\s*", "", message)
+  message <- if (inherits(e, "rlang_error")) {
+    rlang::cnd_message(e)
+  } else {
+    conditionMessage(e)
   }
+  message <- cli::ansi_strip(message)
   list(
     content = list(text_block(paste("Error:", message))),
     isError = TRUE

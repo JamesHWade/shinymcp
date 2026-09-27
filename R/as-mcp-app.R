@@ -106,7 +106,10 @@ as_mcp_app.shiny.appobj <- function(
   version = "0.1.0",
   ...
 ) {
-  rlang::check_installed("shiny", reason = "to serve a Shiny app as an MCP App.")
+  rlang::check_installed(
+    "shiny",
+    reason = "to serve a Shiny app as an MCP App."
+  )
   # A Shiny app from mcp_endpoint() already carries its MCP App.
   if (inherits(x$mcpServer, "McpServer") && length(x$mcpServer$apps) == 1) {
     return(x$mcpServer$apps[[1]])
@@ -115,7 +118,16 @@ as_mcp_app.shiny.appobj <- function(
   ui <- extract_shiny_ui(x)
 
   if (!isTRUE(live)) {
-    return(explicit_tools_app(ui, tools, name, title, description, selective, version, ...))
+    return(explicit_tools_app(
+      ui,
+      tools,
+      name,
+      title,
+      description,
+      selective,
+      version,
+      ...
+    ))
   }
 
   runtime <- ShinyRuntime$new(
@@ -176,7 +188,10 @@ as_mcp_app.character <- function(x, name = NULL, ...) {
     return(as_mcp_app(found, name = name, ...))
   }
   if (file.exists(file.path(dir, "server.R"))) {
-    rlang::check_installed("shiny", reason = "to serve a Shiny app as an MCP App.")
+    rlang::check_installed(
+      "shiny",
+      reason = "to serve a Shiny app as an MCP App."
+    )
     return(as_mcp_app(shiny::shinyAppDir(dir), name = name, ...))
   }
   shinymcp_abort(
@@ -216,7 +231,10 @@ source_app_file <- function(app_file) {
       )
     }
   )
-  candidates <- c(list(sourced$value), mget(ls(env), envir = env, inherits = FALSE))
+  candidates <- c(
+    list(sourced$value),
+    mget(ls(env), envir = env, inherits = FALSE)
+  )
   for (obj in candidates) {
     if (inherits(obj, "McpApp")) {
       return(obj)
@@ -235,7 +253,16 @@ source_app_file <- function(app_file) {
 
 #' The pre-runtime behaviour: explicit tools fill the Shiny UI's outputs
 #' @noRd
-explicit_tools_app <- function(ui, tools, name, title, description, selective, version, ...) {
+explicit_tools_app <- function(
+  ui,
+  tools,
+  name,
+  title,
+  description,
+  selective,
+  version,
+  ...
+) {
   if (is.null(selective)) {
     selective <- has_any_mcp_annotations(ui)
   }
@@ -328,7 +355,10 @@ ui_from_http_handler <- function(app) {
       return(NULL)
     }
     if (exists("uiHandlerSource", envir = env, inherits = FALSE)) {
-      handler <- tryCatch(get("uiHandlerSource", envir = env)(), error = function(e) NULL)
+      handler <- tryCatch(
+        get("uiHandlerSource", envir = env)(),
+        error = function(e) NULL
+      )
       found <- search(handler, depth + 1)
       if (!is.null(found)) return(found)
     }

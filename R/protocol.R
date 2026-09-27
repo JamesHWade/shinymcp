@@ -21,11 +21,19 @@ SHINYMCP_MODERN_VERSIONS <- c("2026-07-28")
 
 #' Legacy (handshake) protocol versions, newest first
 #' @noRd
-SHINYMCP_LEGACY_VERSIONS <- c("2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05")
+SHINYMCP_LEGACY_VERSIONS <- c(
+  "2025-11-25",
+  "2025-06-18",
+  "2025-03-26",
+  "2024-11-05"
+)
 
 #' Every protocol version shinymcp serves
 #' @noRd
-SHINYMCP_PROTOCOL_VERSIONS <- c(SHINYMCP_MODERN_VERSIONS, SHINYMCP_LEGACY_VERSIONS)
+SHINYMCP_PROTOCOL_VERSIONS <- c(
+  SHINYMCP_MODERN_VERSIONS,
+  SHINYMCP_LEGACY_VERSIONS
+)
 
 #' Latest legacy version, used when a client asks for one we don't know
 #' @noRd
@@ -101,17 +109,40 @@ negotiate_protocol_version <- function(requested) {
 #' @param capabilities The client's capabilities (a list).
 #' @noRd
 capabilities_support_ui <- function(capabilities) {
+  if (
+    !is_json_object(capabilities) || !is_json_object(capabilities$extensions)
+  ) {
+    return(FALSE)
+  }
   ui <- capabilities$extensions[[SHINYMCP_UI_EXTENSION_ID]]
   if (is.null(ui)) {
     return(FALSE)
   }
-  mime_types <- unlist(ui$mimeTypes, use.names = FALSE)
-  is.null(mime_types) || SHINYMCP_UI_MIME_TYPE %in% mime_types
+  if (!is_json_object(ui) || is.null(ui$mimeTypes)) {
+    return(TRUE)
+  }
+  SHINYMCP_UI_MIME_TYPE %in% unlist(ui$mimeTypes, use.names = FALSE)
 }
 
 #' @noRd
 client_supports_mcp_apps <- function(params) {
   capabilities_support_ui(params$capabilities)
+}
+
+#' Is a parsed JSON value an object (a named list, or an empty one)?
+#' @noRd
+is_json_object <- function(x) {
+  is.list(x) && (length(x) == 0 || !is.null(names(x)))
+}
+
+#' The id of a message, if it has a usable one
+#' @noRd
+request_id <- function(message) {
+  if (!is.list(message) || is.null(names(message))) {
+    return(NULL)
+  }
+  id <- message$id
+  if ((is.character(id) || is.numeric(id)) && length(id) == 1) id else NULL
 }
 
 # ---- Server ----
@@ -130,12 +161,22 @@ McpServer <- R6::R6Class(
     version = NULL,
     instructions = NULL,
 
-    initialize = function(apps, name = NULL, version = NULL, instructions = NULL) {
+    initialize = function(
+      apps,
+      name = NULL,
+      version = NULL,
+      instructions = NULL
+    ) {
       apps <- as_app_list(apps)
       self$apps <- apps
       self$name <- name %||%
-        if (length(apps) == 1) paste0("shinymcp-", apps[[1]]$name) else "shinymcp"
-      self$version <- version %||% as.character(utils::packageVersion("shinymcp"))
+        if (length(apps) == 1) {
+          paste0("shinymcp-", apps[[1]]$name)
+        } else {
+          "shinymcp"
+        }
+      self$version <- version %||%
+        as.character(utils::packageVersion("shinymcp"))
       self$instructions <- instructions %||% server_instructions(apps)
       private$index_tools()
       invisible(self)
@@ -148,9 +189,13 @@ McpServer <- R6::R6Class(
     #   session environment, or NULL), `headers`, `user`, `groups`.
     # @return A response list, or NULL for notifications.
     handle = function(message, context = list()) {
-      if (!is.list(message) || !identical(message$jsonrpc, "2.0")) {
+      if (
+        !is.list(message) ||
+          is.null(names(message)) ||
+          !identical(message$jsonrpc, "2.0")
+      ) {
         return(jsonrpc_error(
-          message$id %||% NULL,
+          request_id(message),
           RPC_INVALID_REQUEST,
           "Invalid Request: expected a JSON-RPC 2.0 message.",
           status = 400L
@@ -161,9 +206,68 @@ McpServer <- R6::R6Class(
         # A response from the client: nothing to do.
         return(NULL)
       }
+      if (!is_string(method)) {
+        return(jsonrpc_error(
+          request_id(message),
+          RPC_INVALID_REQUEST,
+          "Invalid Request: method must be a string.",
+          status = 400L
+        ))
+      }
       is_notification <- is.null(message$id)
-      meta <- message$params[["_meta"]]
+      params <- message$params
+      if (!is.null(params) && !is_json_object(params)) {
+        return(
+          if (!is_notification) {
+            jsonrpc_error(
+              message$id,
+              RPC_INVALID_PARAMS,
+              "Invalid params: expected an object.",
+              status = 400L
+            )
+          }
+        )
+      }
+      meta <- params[["_meta"]]
+      if (!is.null(meta) && !is_json_object(meta)) {
+        return(
+          if (!is_notification) {
+            jsonrpc_error(
+              message$id,
+              RPC_INVALID_PARAMS,
+              "Invalid params: _meta must be an object.",
+              status = 400L
+            )
+          }
+        )
+      }
+      for (key in c(META_CLIENT_CAPABILITIES, META_CLIENT_INFO)) {
+        if (!is.null(meta[[key]]) && !is_json_object(meta[[key]])) {
+          return(
+            if (!is_notification) {
+              jsonrpc_error(
+                message$id,
+                RPC_INVALID_PARAMS,
+                paste0("Invalid params: ", key, " must be an object."),
+                status = 400L
+              )
+            }
+          )
+        }
+      }
       modern_version <- meta[[META_PROTOCOL_VERSION]]
+      if (!is.null(modern_version) && !is_string(modern_version)) {
+        return(
+          if (!is_notification) {
+            jsonrpc_error(
+              message$id,
+              RPC_INVALID_PARAMS,
+              "Invalid params: the protocol version in _meta must be a string.",
+              status = 400L
+            )
+          }
+        )
+      }
 
       if (!is.null(modern_version) && !identical(method, "initialize")) {
         request <- private$modern_request(message, modern_version, context)
@@ -295,12 +399,16 @@ McpServer <- R6::R6Class(
         )))
       }
       meta <- message$params[["_meta"]]
-      capabilities <- meta[[META_CLIENT_CAPABILITIES]] %||% list()
+      capabilities <- meta[[META_CLIENT_CAPABILITIES]]
+      if (!is_json_object(capabilities)) {
+        capabilities <- list()
+      }
+      client <- meta[[META_CLIENT_INFO]]
       list(
         era = "modern",
         protocol_version = version,
         supports_ui = capabilities_support_ui(capabilities),
-        client = meta[[META_CLIENT_INFO]],
+        client = if (is_json_object(client)) client,
         context = context,
         meta = meta
       )
@@ -351,7 +459,9 @@ McpServer <- R6::R6Class(
       if (!is.null(session)) {
         session$protocol_version <- version
         session$client_supports_ui <- client_supports_mcp_apps(params)
-        session$client_info <- params$clientInfo
+        session$client_info <- if (is_json_object(params$clientInfo)) {
+          params$clientInfo
+        }
         session$initialized <- TRUE
       }
       compact_list(list(
@@ -393,7 +503,7 @@ McpServer <- R6::R6Class(
         rpc_stop(paste0("Unknown tool: ", name), code = RPC_INVALID_PARAMS)
       }
       arguments <- params$arguments %||% list()
-      if (!is.list(arguments)) {
+      if (!is_json_object(arguments)) {
         rpc_stop("Tool arguments must be an object.", code = RPC_INVALID_PARAMS)
       }
       call_context <- private$call_context(params, request)
@@ -409,7 +519,11 @@ McpServer <- R6::R6Class(
       if (is.null(app)) {
         rpc_stop(
           paste0("Resource not found: ", uri),
-          code = if (request$era == "modern") RPC_INVALID_PARAMS else RPC_RESOURCE_NOT_FOUND_LEGACY,
+          code = if (request$era == "modern") {
+            RPC_INVALID_PARAMS
+          } else {
+            RPC_RESOURCE_NOT_FOUND_LEGACY
+          },
           data = list(uri = uri)
         )
       }
@@ -421,7 +535,10 @@ McpServer <- R6::R6Class(
     },
 
     all_resources = function() {
-      unlist(lapply(self$apps, function(app) app$resources()), recursive = FALSE)
+      unlist(
+        lapply(self$apps, function(app) app$resources()),
+        recursive = FALSE
+      )
     },
 
     # Modern results for list and read calls carry caching hints.
@@ -456,8 +573,9 @@ McpServer <- R6::R6Class(
 
 #' @noRd
 as_app_list <- function(apps) {
-  if (inherits(apps, "McpApp")) {
-    return(list(apps))
+  # A Shiny app object is a list too, but it is one app.
+  if (inherits(apps, c("McpApp", "shiny.appobj")) || is.character(apps)) {
+    return(list(as_mcp_app(apps)))
   }
   if (is.list(apps) && length(apps) > 0) {
     apps <- lapply(apps, as_mcp_app)
@@ -508,7 +626,13 @@ new_mcp_session <- function() {
 rpc_stop <- function(message, code, data = NULL, status = 200L) {
   cnd <- structure(
     class = c("shinymcp_rpc_error", "error", "condition"),
-    list(message = message, code = code, data = data, status = status, call = NULL)
+    list(
+      message = message,
+      code = code,
+      data = data,
+      status = status,
+      call = NULL
+    )
   )
   stop(cnd)
 }

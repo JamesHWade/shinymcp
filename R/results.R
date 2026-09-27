@@ -181,7 +181,9 @@ mcp_result_widget <- function(ui, model_value = NULL, text = NULL) {
 #' @export
 mcp_tool_result <- function(..., text = NULL, data = NULL, error = FALSE) {
   outputs <- list(...)
-  if (length(outputs) && (is.null(names(outputs)) || any(!nzchar(names(outputs))))) {
+  if (
+    length(outputs) && (is.null(names(outputs)) || any(!nzchar(names(outputs))))
+  ) {
     shinymcp_abort(
       "Outputs passed to {.fn mcp_tool_result} must be named by output id.",
       class = "shinymcp_error_validation"
@@ -265,7 +267,11 @@ as_typed_result <- function(x, hint = NULL) {
     return(mcp_result_plot(x))
   }
   if (is.character(x)) {
-    if (length(hint) == 1 && hint %in% c("plot", "image") && looks_like_image_data(x)) {
+    if (
+      length(hint) == 1 &&
+        hint %in% c("plot", "image") &&
+        looks_like_image_data(x)
+    ) {
       return(mcp_result_image(x))
     }
     return(mcp_result_text(x))
@@ -334,7 +340,7 @@ resolve_plot_output <- function(value) {
     res = opts$res %||% 96,
     scale = opts$scale %||% 1.5
   )
-  text <- value$text %||% "A plot, shown in the app."
+  text <- value$text %||% "A plot."
   list(
     kind = "plot",
     render = list(
@@ -352,14 +358,16 @@ resolve_plot_output <- function(value) {
 #' @noRd
 resolve_image_output <- function(value) {
   img <- read_binary_input(value$value, default_mime = "image/png")
-  text <- value$text %||% "An image, shown in the app."
+  text <- value$text %||% "An image."
   list(
     kind = "image",
     render = list(
       src = paste0("data:", img$mime, ";base64,", img$data),
       alt = text
     ),
-    image = if (img$mime %in% c("image/png", "image/jpeg", "image/gif", "image/webp")) {
+    image = if (
+      img$mime %in% c("image/png", "image/jpeg", "image/gif", "image/webp")
+    ) {
       list(data = img$data, mimeType = img$mime)
     },
     model = value$model_value %||% text,
@@ -371,11 +379,15 @@ resolve_image_output <- function(value) {
 resolve_pdf_output <- function(value) {
   pdf <- read_binary_input(value$value, default_mime = "application/pdf")
   filename <- value$options$filename %||%
-    (if (is.character(value$value) && length(value$value) == 1 && file.exists(value$value)) {
+    (if (
+      is.character(value$value) &&
+        length(value$value) == 1 &&
+        file.exists(value$value)
+    ) {
       basename(value$value)
     }) %||%
     "document.pdf"
-  text <- value$text %||% paste("A PDF,", filename, ", available in the app.")
+  text <- value$text %||% paste0("A PDF, ", filename, ".")
   list(
     kind = "download",
     render = list(
@@ -395,7 +407,8 @@ looks_like_image_data <- function(x) {
   is.character(x) &&
     length(x) == 1 &&
     !is.na(x) &&
-    (startsWith(x, "data:image/") || (nchar(x) > 64 && !is.na(sniff_image_mime(x))))
+    (startsWith(x, "data:image/") ||
+      (nchar(x) > 64 && !is.na(sniff_image_mime(x))))
 }
 
 #' The image type of base64 data, from its first bytes
@@ -429,7 +442,11 @@ read_binary_input <- function(x, default_mime) {
       mime <- sub("^data:([^;,]+).*$", "\\1", x)
       return(list(data = sub("^data:[^,]*,", "", x), mime = mime))
     }
-    mime <- if (startsWith(default_mime, "image/")) sniff_image_mime(x) else NA_character_
+    mime <- if (startsWith(default_mime, "image/")) {
+      sniff_image_mime(x)
+    } else {
+      NA_character_
+    }
     return(list(data = x, mime = if (is.na(mime)) default_mime else mime))
   }
   shinymcp_abort(
@@ -472,9 +489,14 @@ build_tool_result <- function(
   }
 
   if (is.null(outputs)) {
-    # A single unnamed value: the view routes it to its only output.
-    entry <- resolve_output(raw, skip_deps)
-    content <- list(text_block(text %||% entry$text))
+    # A single unnamed value: the view routes it to its only output, whose
+    # type says how to read it.
+    hint <- if (length(output_types) == 1) output_types[[1]]
+    entry <- resolve_output(raw, skip_deps, hint = hint)
+    limit <- getOption("shinymcp.max_text_chars", 4000)
+    content <- list(text_block(
+      text %||% truncate_text(entry$text %||% "", limit)
+    ))
     if (images && !is.null(entry$image)) {
       content <- c(content, list(image_block(entry$image)))
     }
@@ -507,7 +529,8 @@ build_tool_result <- function(
     ))
     result <- list(
       content = content,
-      structuredContent = data %||% lapply(entries, function(e) json_safe(e$model))
+      structuredContent = data %||%
+        lapply(entries, function(e) json_safe(e$model))
     )
   }
 
@@ -549,7 +572,7 @@ single_structured_value <- function(entry) {
   if (is.list(model) && !is.null(names(model)) && all(nzchar(names(model)))) {
     return(model)
   }
-  if (identical(entry$kind, "text")) {
+  if (identical(entry$kind, "text") && is.character(model)) {
     return(NULL)
   }
   list(value = model)
@@ -592,7 +615,12 @@ truncate_text <- function(text, limit) {
   if (is.null(limit) || nchar(text) <= limit) {
     return(text)
   }
-  paste0(substr(text, 1, limit), "\n... [", nchar(text) - limit, " more characters]")
+  paste0(
+    substr(text, 1, limit),
+    "\n... [",
+    nchar(text) - limit,
+    " more characters]"
+  )
 }
 
 #' Make a model value serializable
@@ -712,7 +740,11 @@ table_records <- function(data) {
     data <- utils::head(data, limit)
   }
   data[] <- lapply(data, function(col) {
-    if (is.factor(col) || inherits(col, c("Date", "POSIXt"))) format(col) else col
+    if (is.factor(col) || inherits(col, c("Date", "POSIXt"))) {
+      format(col)
+    } else {
+      col
+    }
   })
   if (nrow(data) == 0) {
     return(list())
@@ -750,7 +782,13 @@ as_data_frame_safely <- function(x) {
 
 #' Render a plot to base64 PNG
 #' @noRd
-render_plot_png <- function(x, width = 800, height = 500, res = 96, scale = 1.5) {
+render_plot_png <- function(
+  x,
+  width = 800,
+  height = 500,
+  res = 96,
+  scale = 1.5
+) {
   if (is.character(x) && length(x) == 1 && file.exists(x)) {
     return(base64_file(x))
   }
@@ -782,14 +820,47 @@ render_plot_png <- function(x, width = 800, height = 500, res = 96, scale = 1.5)
 html_to_text <- function(html) {
   html <- paste(as.character(html), collapse = "\n")
   html <- gsub("(?is)<(script|style)[^>]*>.*?</\\1>", " ", html, perl = TRUE)
+  # Preformatted text keeps its line breaks; set it aside while the rest
+  # is reflowed.
+  pre <- regmatches(
+    html,
+    gregexpr("(?is)<pre\\b.*?</pre>", html, perl = TRUE)
+  )[[1]]
+  for (i in seq_along(pre)) {
+    html <- sub(pre[[i]], paste0("\u0001", i, "\u0001"), html, fixed = TRUE)
+  }
   html <- tables_to_markdown(html)
+  # Line breaks in the source are layout; tags decide where lines break.
+  html <- gsub("[ \t]*\n[ \t]*", " ", html, perl = TRUE)
+  html <- gsub("[ \t]+", " ", html, perl = TRUE)
   html <- gsub("(?i)<br\\s*/?>", "\n", html, perl = TRUE)
-  html <- gsub("(?i)</(p|div|li|tr|h[1-6])>", "\n", html, perl = TRUE)
+  html <- gsub(
+    "(?i)</(p|div|li|tr|h[1-6]|table|ul|ol|section|article)>",
+    "\n",
+    html,
+    perl = TRUE
+  )
+  html <- gsub(
+    "(?i)<(p|div|li|h[1-6]|ul|ol|section|article)\\b[^>]*>",
+    "\n",
+    html,
+    perl = TRUE
+  )
+  html <- gsub("\u0002", "\n", html, fixed = TRUE)
+  for (i in seq_along(pre)) {
+    text <- gsub("(?is)^<pre\\b[^>]*>|</pre>$", "", pre[[i]], perl = TRUE)
+    html <- sub(
+      paste0("\u0001", i, "\u0001"),
+      paste0("\n", text, "\n"),
+      html,
+      fixed = TRUE
+    )
+  }
   html <- gsub("<[^>]+>", "", html)
   html <- unescape_html(html)
-  lines <- trimws(strsplit(html, "\n", fixed = TRUE)[[1]])
-  lines <- gsub("[ \t]+", " ", lines)
-  paste(lines[nzchar(lines)], collapse = "\n")
+  lines <- strsplit(html, "\n", fixed = TRUE)[[1]]
+  lines <- sub("[ \t]+$", "", sub("^[ \t]+(?=\\S)", "", lines, perl = TRUE))
+  paste(lines[nzchar(trimws(lines))], collapse = "\n")
 }
 
 #' Replace each HTML table with a Markdown table
@@ -800,28 +871,53 @@ tables_to_markdown <- function(html) {
   if (length(tables) == 0) {
     return(html)
   }
-  regmatches(html, matches) <- list(vapply(tables, html_table_markdown, character(1), USE.NAMES = FALSE))
+  regmatches(html, matches) <- list(vapply(
+    tables,
+    html_table_markdown,
+    character(1),
+    USE.NAMES = FALSE
+  ))
   html
 }
 
 #' @noRd
 html_table_markdown <- function(table) {
-  rows <- regmatches(table, gregexpr("(?is)<tr\\b.*?</tr>", table, perl = TRUE))[[1]]
+  rows <- regmatches(
+    table,
+    gregexpr("(?is)<tr\\b.*?</tr>", table, perl = TRUE)
+  )[[1]]
   cells <- lapply(rows, function(row) {
-    found <- regmatches(row, gregexpr("(?is)<t[hd]\\b[^>]*>.*?</t[hd]>", row, perl = TRUE))[[1]]
+    found <- regmatches(
+      row,
+      gregexpr("(?is)<t[hd]\\b[^>]*>.*?</t[hd]>", row, perl = TRUE)
+    )[[1]]
+    # Entities stay escaped here: html_to_text() strips tags from the whole
+    # text afterwards and only then unescapes, so "&lt; 0.001" survives.
     text <- gsub("(?is)^<t[hd]\\b[^>]*>|</t[hd]>$", "", found, perl = TRUE)
-    text <- unescape_html(gsub("<[^>]+>", "", text))
+    text <- gsub("<[^>]+>", "", text)
     text <- trimws(gsub("\\s+", " ", text))
     gsub("|", "\\|", text, fixed = TRUE)
   })
   cells <- Filter(length, cells)
   if (length(cells) == 0) {
-    return("\n")
+    return("\u0002")
   }
   width <- max(lengths(cells))
-  line <- function(x) paste0("| ", paste(c(x, rep("", width - length(x))), collapse = " | "), " |")
+  line <- function(x) {
+    x <- c(x, rep("", width - length(x)))
+    paste0(
+      "|",
+      paste0(ifelse(nzchar(x), paste0(" ", x, " "), " "), collapse = "|"),
+      "|"
+    )
+  }
   body <- vapply(cells, line, character(1))
-  paste0("\n", paste(c(body[1], line(rep("---", width)), body[-1]), collapse = "\n"), "\n")
+  # U+0002 marks line breaks that survive html_to_text()'s reflow.
+  paste0(
+    "\u0002",
+    paste(c(body[1], line(rep("---", width)), body[-1]), collapse = "\u0002"),
+    "\u0002"
+  )
 }
 
 #' @noRd

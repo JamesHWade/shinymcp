@@ -9,7 +9,10 @@ system_file <- function(...) {
 #' Read a text file installed with the package
 #' @noRd
 read_package_file <- function(...) {
-  paste(readLines(system_file(...), warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  paste(
+    readLines(system_file(...), warn = FALSE, encoding = "UTF-8"),
+    collapse = "\n"
+  )
 }
 
 #' A hard-to-guess identifier
@@ -54,10 +57,14 @@ to_json <- function(x, pretty = FALSE) {
   )
 }
 
-#' Parse JSON without simplifying arrays
+#' Parse JSON text without simplifying arrays
+#'
+#' jsonlite::parse_json() only ever reads its argument as JSON.
+#' jsonlite::fromJSON() would read a string that names a file, or fetch one
+#' that is a URL, which a request body must never be able to do.
 #' @noRd
 from_json <- function(x) {
-  jsonlite::fromJSON(x, simplifyVector = FALSE)
+  jsonlite::parse_json(x, simplifyVector = FALSE)
 }
 
 #' Remove NULL entries from a list
@@ -130,7 +137,9 @@ inline_dependency <- function(dep) {
         parts <- c(
           parts,
           paste0(
-            "<style data-shinymcp-dep=\"", htmltools::htmlEscape(label, TRUE), "\">\n",
+            "<style data-shinymcp-dep=\"",
+            htmltools::htmlEscape(label, TRUE),
+            "\">\n",
             escape_inline_close(read_text_file(path), "style"),
             "\n</style>"
           )
@@ -151,7 +160,11 @@ inline_dependency <- function(dep) {
       parts <- c(
         parts,
         paste0(
-          "<script", type, " data-shinymcp-dep=\"", htmltools::htmlEscape(label, TRUE), "\">\n",
+          "<script",
+          type,
+          " data-shinymcp-dep=\"",
+          htmltools::htmlEscape(label, TRUE),
+          "\">\n",
           escape_inline_close(read_text_file(path), "script"),
           "\n</script>"
         )
@@ -160,7 +173,10 @@ inline_dependency <- function(dep) {
   } else if (!is.null(dep$src$href)) {
     href <- dep$src$href
     for (css in dep$stylesheet) {
-      parts <- c(parts, sprintf("<link rel=\"stylesheet\" href=\"%s/%s\">", href, css))
+      parts <- c(
+        parts,
+        sprintf("<link rel=\"stylesheet\" href=\"%s/%s\">", href, css)
+      )
     }
     for (js in dep$script) {
       file <- if (is.list(js)) js$src else js
@@ -183,7 +199,13 @@ read_text_file <- function(path) {
 #' A literal `</script>` inside inlined JavaScript would end the element.
 #' @noRd
 escape_inline_close <- function(text, tag) {
-  gsub(paste0("</(", tag, ")"), "<\\\\/\\1", text, ignore.case = TRUE, perl = TRUE)
+  gsub(
+    paste0("</(", tag, ")"),
+    "<\\\\/\\1",
+    text,
+    ignore.case = TRUE,
+    perl = TRUE
+  )
 }
 
 #' Is a value a single non-empty string?

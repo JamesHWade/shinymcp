@@ -39,7 +39,11 @@ build_app_html <- function(app, private, config = NULL) {
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     '<meta name="color-scheme" content="light dark">',
-    paste0("<title>", htmltools::htmlEscape(app$title %||% app$name), "</title>"),
+    paste0(
+      "<title>",
+      htmltools::htmlEscape(app$title %||% app$name),
+      "</title>"
+    ),
     paste0('<style id="shinymcp-style">\n', bridge_css(), "\n</style>"),
     vapply(deps, inline_dependency, character(1)),
     if (nzchar(rendered$head %||% "")) as.character(rendered$head)
@@ -58,7 +62,9 @@ build_app_html <- function(app, private, config = NULL) {
   classes <- paste(
     c(
       "shinymcp",
-      if (!is.null(bootstrap_major)) c("shinymcp-bootstrap", paste0("shinymcp-bs", bootstrap_major))
+      if (!is.null(bootstrap_major)) {
+        c("shinymcp-bootstrap", paste0("shinymcp-bs", bootstrap_major))
+      }
     ),
     collapse = " "
   )
@@ -82,7 +88,9 @@ build_app_html <- function(app, private, config = NULL) {
   }
 
   paste0(
-    "<!DOCTYPE html>\n<html lang=\"en\" class=\"", classes, "\">\n<head>\n",
+    "<!DOCTYPE html>\n<html lang=\"en\" class=\"",
+    classes,
+    "\">\n<head>\n",
     paste(head, collapse = "\n"),
     "\n</head>\n",
     body,
@@ -125,9 +133,9 @@ app_bridge_config <- function(app, private, deps = list()) {
 #' JSON safe to embed in a <script> element
 #' @noRd
 json_for_script <- function(x) {
-  json <- as.character(to_json(x))
-  json <- gsub("</", "<\\/", json, fixed = TRUE)
-  gsub("<!--", "<\\!--", json, fixed = TRUE)
+  # "\u003c" is "<" to a JSON parser, and no "</script>" or "<!--" is left
+  # for the HTML parser to see. ("<" only occurs inside JSON strings.)
+  gsub("<", "\\u003c", as.character(to_json(x)), fixed = TRUE)
 }
 
 #' @noRd

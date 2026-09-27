@@ -4,7 +4,14 @@
 \alias{mcp_endpoint}
 \title{Add an MCP endpoint to a Shiny app}
 \usage{
-mcp_endpoint(x, path = "/mcp", allowed_origins = NULL, preview = TRUE, ...)
+mcp_endpoint(
+  x,
+  path = "/mcp",
+  allowed_origins = NULL,
+  allowed_hosts = NULL,
+  preview = TRUE,
+  ...
+)
 }
 \arguments{
 \item{x}{An \link{McpApp}, a list of apps, or a Shiny app.}
@@ -13,6 +20,11 @@ mcp_endpoint(x, path = "/mcp", allowed_origins = NULL, preview = TRUE, ...)
 
 \item{allowed_origins}{Browser origins, besides the app's own, allowed to
 call the endpoint. See \code{\link[=serve]{serve()}}.}
+
+\item{allowed_hosts}{Host names the app is reached at, when it runs
+somewhere other than Posit Connect, shinyapps.io, or Shiny Server (for
+example in a container behind your own proxy). Elsewhere, requests for
+host names other than \code{localhost} are refused; see \code{\link[=serve]{serve()}}.}
 
 \item{preview}{For apps, whether browsers get a preview page at \code{/}.}
 

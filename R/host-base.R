@@ -28,7 +28,9 @@ mcp_host_callback <- function(state, name, value) {
     tryCatch(
       callback(value),
       error = function(e) {
-        cli::cli_warn("Host callback {.field {name}} failed: {conditionMessage(e)}")
+        cli::cli_warn(
+          "Host callback {.field {name}} failed: {conditionMessage(e)}"
+        )
       }
     )
   }
@@ -62,7 +64,10 @@ mcp_host_notification <- function(state, method, params) {
       mcp_host_callback(state, "on_message", params)
     },
     "ui/notifications/size-changed" = {
-      state$last_size <- compact_list(list(width = params$width, height = params$height))
+      state$last_size <- compact_list(list(
+        width = params$width,
+        height = params$height
+      ))
       mcp_host_callback(state, "on_size", state$last_size)
     },
     "ui/resource-teardown" = mcp_host_dispose(state),

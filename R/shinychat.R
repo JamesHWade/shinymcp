@@ -46,11 +46,21 @@ as_shinychat_tool <- function(
   show_request = FALSE,
   full_screen = TRUE
 ) {
-  rlang::check_installed("ellmer", reason = "to wrap MCP Apps as shinychat tools.")
+  rlang::check_installed(
+    "ellmer",
+    reason = "to wrap MCP Apps as shinychat tools."
+  )
   app <- as_mcp_app(app)
   tools <- app$tools("model")
   if (!is.null(tool)) {
-    tools <- tools[intersect(tool, names(tools))]
+    unknown <- setdiff(tool, names(tools))
+    if (length(unknown)) {
+      shinymcp_abort(
+        "App {.val {app$name}} has no tool the model can call named {.val {unknown}}.",
+        class = "shinymcp_error_validation"
+      )
+    }
+    tools <- tools[tool]
   }
   if (length(tools) == 0) {
     shinymcp_abort("App {.val {app$name}} has no tools for the model to call.")
@@ -148,11 +158,20 @@ run_shinychat_tool <- function(
   full_screen
 ) {
   run <- function() {
-    raw <- app$call_tool(tool$name, arguments, list(caller = "model", transport = "shinychat"))
+    raw <- app$call_tool(
+      tool$name,
+      arguments,
+      list(caller = "model", transport = "shinychat")
+    )
     result <- if (inherits(raw, "shinymcp_wire_result")) {
       unclass(raw)
     } else {
-      build_tool_result(raw, images = FALSE)
+      build_tool_result(
+        raw,
+        images = FALSE,
+        view = list(tool = tool$name),
+        output_types = app$output_types()
+      )
     }
     context <- list(raw_result = raw, result = result, arguments = arguments)
     value <- if (is.function(value_fn)) {
@@ -160,8 +179,16 @@ run_shinychat_tool <- function(
     } else {
       default_model_value(result)
     }
-    card_title <- if (is.function(title)) call_with_supported_args(title, context) else title
-    card_icon <- if (is.function(icon)) call_with_supported_args(icon, context) else icon
+    card_title <- if (is.function(title)) {
+      call_with_supported_args(title, context)
+    } else {
+      title
+    }
+    card_icon <- if (is.function(icon)) {
+      call_with_supported_args(icon, context)
+    } else {
+      icon
+    }
     text <- if (is.function(summary)) {
       call_with_supported_args(summary, context)
     } else {
@@ -193,15 +220,31 @@ run_shinychat_tool <- function(
 }
 
 #' The value the model sees for a tool result
+#'
+#' The structured result, except for a single value that was wrapped only
+#' because structuredContent has to be an object: that reads better as text.
 #' @noRd
 default_model_value <- function(result) {
-  result$structuredContent %||% result_text(result)
+  structured <- result$structuredContent
+  lone_value <- identical(names(structured), "value") &&
+    is.atomic(structured$value) &&
+    length(structured$value) <= 1
+  if (is.null(structured) || lone_value) {
+    return(result_text(result))
+  }
+  structured
 }
 
 #' @noRd
 result_text <- function(result) {
-  blocks <- Filter(function(b) identical(b$type, "text"), result$content %||% list())
-  paste(vapply(blocks, function(b) b$text %||% "", character(1)), collapse = "\n")
+  blocks <- Filter(
+    function(b) identical(b$type, "text"),
+    result$content %||% list()
+  )
+  paste(
+    vapply(blocks, function(b) b$text %||% "", character(1)),
+    collapse = "\n"
+  )
 }
 
 #' @noRd
@@ -296,7 +339,12 @@ mcp_content_result <- function(
     open = open,
     show_request = show_request,
     full_screen = full_screen,
-    text = text %||% if (is.character(value)) paste(value, collapse = "\n"),
+    text = text %||%
+      if (is.character(value)) {
+        paste(value, collapse = "\n")
+      } else {
+        as.character(to_json(value, pretty = TRUE))
+      },
     tool = tool,
     arguments = arguments,
     request = request

@@ -37,7 +37,10 @@ describe_ui_inputs <- function(ui) {
       for (child in x$children) {
         visit(child)
       }
-    } else if (inherits(x, "shiny.tag.list") || (is.list(x) && !inherits(x, "html_dependency"))) {
+    } else if (
+      inherits(x, "shiny.tag.list") ||
+        (is.list(x) && !inherits(x, "html_dependency"))
+    ) {
       for (child in x) {
         visit(child)
       }
@@ -60,7 +63,10 @@ tag_is_bound <- function(tag, id) {
   }
   found <- FALSE
   walk_tag_tree(tag$children, function(child) {
-    if (!found && identical(htmltools::tagGetAttribute(child, "data-shinymcp-input"), id)) {
+    if (
+      !found &&
+        identical(htmltools::tagGetAttribute(child, "data-shinymcp-input"), id)
+    ) {
       found <<- TRUE
     }
   })
@@ -72,11 +78,16 @@ tag_is_bound <- function(tag, id) {
 describe_input_tag <- function(tag) {
   name <- tolower(tag$name %||% "")
   id <- htmltools::tagGetAttribute(tag, "id")
-  classes <- strsplit(htmltools::tagGetAttribute(tag, "class") %||% "", "\\s+")[[1]]
+  classes <- strsplit(
+    htmltools::tagGetAttribute(tag, "class") %||% "",
+    "\\s+"
+  )[[1]]
   has_class <- function(cls) cls %in% classes
 
   # shinymcp's own radio group carries its id in data attributes.
-  if (identical(htmltools::tagGetAttribute(tag, "data-shinymcp-type"), "radio")) {
+  if (
+    identical(htmltools::tagGetAttribute(tag, "data-shinymcp-type"), "radio")
+  ) {
     id <- htmltools::tagGetAttribute(tag, "data-shinymcp-input")
     opts <- group_options(tag, "radio")
     return(new_input_spec(
@@ -94,7 +105,13 @@ describe_input_tag <- function(tag) {
     return(NULL)
   }
 
-  if (name == "input" && identical(tolower(htmltools::tagGetAttribute(tag, "type") %||% ""), "range")) {
+  if (
+    name == "input" &&
+      identical(
+        tolower(htmltools::tagGetAttribute(tag, "type") %||% ""),
+        "range"
+      )
+  ) {
     return(new_input_spec(
       id,
       "slider",
@@ -135,7 +152,9 @@ describe_input_tag <- function(tag) {
     inputs <- find_tags(tag, "input")
     dates <- vapply(
       inputs,
-      function(t) htmltools::tagGetAttribute(t, "data-initial-date") %||% NA_character_,
+      function(t) {
+        htmltools::tagGetAttribute(t, "data-initial-date") %||% NA_character_
+      },
       character(1)
     )
     first <- if (length(inputs)) inputs[[1]] else NULL
@@ -220,7 +239,10 @@ describe_input_tag <- function(tag) {
         id,
         "date",
         tag,
-        value = parse_initial_dates(htmltools::tagGetAttribute(tag, "value") %||% NA_character_, 1)
+        value = parse_initial_dates(
+          htmltools::tagGetAttribute(tag, "value") %||% NA_character_,
+          1
+        )
       ),
       new_input_spec(
         id,
@@ -312,10 +334,16 @@ input_label <- function(tag, id) {
 #' @noRd
 group_options <- function(tag, type) {
   inputs <- Filter(
-    function(t) identical(tolower(htmltools::tagGetAttribute(t, "type") %||% ""), type),
+    function(t) {
+      identical(tolower(htmltools::tagGetAttribute(t, "type") %||% ""), type)
+    },
     find_tags(tag, "input")
   )
-  values <- vapply(inputs, function(t) htmltools::tagGetAttribute(t, "value") %||% "", character(1))
+  values <- vapply(
+    inputs,
+    function(t) htmltools::tagGetAttribute(t, "value") %||% "",
+    character(1)
+  )
   checked <- values[vapply(
     inputs,
     function(t) !is.null(htmltools::tagGetAttribute(t, "checked")),
@@ -326,7 +354,9 @@ group_options <- function(tag, type) {
   wrappers <- find_tags(tag, "label")
   for (w in wrappers) {
     inner <- Filter(
-      function(t) identical(tolower(htmltools::tagGetAttribute(t, "type") %||% ""), type),
+      function(t) {
+        identical(tolower(htmltools::tagGetAttribute(t, "type") %||% ""), type)
+      },
       find_tags(w, "input")
     )
     if (length(inner) == 1) {
@@ -337,7 +367,11 @@ group_options <- function(tag, type) {
       }
     }
   }
-  list(values = unname(values), labels = unname(labels), checked = unname(checked))
+  list(
+    values = unname(values),
+    labels = unname(labels),
+    checked = unname(checked)
+  )
 }
 
 #' Options of a <select>
@@ -356,7 +390,9 @@ select_options <- function(tag) {
           selected <<- c(selected, value)
         }
       } else {
-        for (child in x$children) walk(child)
+        for (child in x$children) {
+          walk(child)
+        }
       }
     } else if (is.character(x)) {
       # selectInput() writes its options as an HTML string.
@@ -365,36 +401,78 @@ select_options <- function(tag) {
       labels <<- c(labels, parsed$labels)
       selected <<- c(selected, parsed$selected)
     } else if (is.list(x) && !inherits(x, "html_dependency")) {
-      for (child in x) walk(child)
+      for (child in x) {
+        walk(child)
+      }
     }
   }
   walk(tag$children)
-  list(values = unname(values), labels = unname(labels), selected = unname(selected))
+  list(
+    values = unname(values),
+    labels = unname(labels),
+    selected = unname(selected)
+  )
 }
 
 #' `<option>` elements in an HTML string
 #' @noRd
 html_options <- function(html) {
-  empty <- list(values = character(), labels = character(), selected = character())
+  empty <- list(
+    values = character(),
+    labels = character(),
+    selected = character()
+  )
   if (!nzchar(html) || !grepl("<option", html, ignore.case = TRUE)) {
     return(empty)
   }
   matches <- regmatches(
     html,
-    gregexpr("<option\\b([^>]*)>(.*?)</option>", html, perl = TRUE, ignore.case = TRUE)
+    gregexpr(
+      "<option\\b([^>]*)>(.*?)</option>",
+      html,
+      perl = TRUE,
+      ignore.case = TRUE
+    )
   )[[1]]
   if (length(matches) == 0) {
     return(empty)
   }
-  attrs <- sub("^<option\\b([^>]*)>.*$", "\\1", matches, perl = TRUE, ignore.case = TRUE)
-  labels <- unescape_html(trimws(gsub("<[^>]*>", "", sub("^<option\\b[^>]*>(.*?)</option>$", "\\1", matches, perl = TRUE, ignore.case = TRUE))))
-  values <- vapply(seq_along(attrs), function(i) {
-    m <- regmatches(attrs[[i]], regexec("\\bvalue\\s*=\\s*(\"([^\"]*)\"|'([^']*)')", attrs[[i]], perl = TRUE))[[1]]
-    if (length(m) == 0) {
-      return(labels[[i]])
-    }
-    unescape_html(if (nzchar(m[[3]])) m[[3]] else m[[4]])
-  }, character(1))
+  attrs <- sub(
+    "^<option\\b([^>]*)>.*$",
+    "\\1",
+    matches,
+    perl = TRUE,
+    ignore.case = TRUE
+  )
+  labels <- unescape_html(trimws(gsub(
+    "<[^>]*>",
+    "",
+    sub(
+      "^<option\\b[^>]*>(.*?)</option>$",
+      "\\1",
+      matches,
+      perl = TRUE,
+      ignore.case = TRUE
+    )
+  )))
+  values <- vapply(
+    seq_along(attrs),
+    function(i) {
+      m <- regmatches(
+        attrs[[i]],
+        regexec(
+          "\\bvalue\\s*=\\s*(\"([^\"]*)\"|'([^']*)')",
+          attrs[[i]],
+          perl = TRUE
+        )
+      )[[1]]
+      if (length(m) == 0) {
+        return(labels[[i]])
+      }
+      unescape_html(if (nzchar(m[[3]])) m[[3]] else m[[4]])
+    },
+    character(1)
+  )
   is_selected <- grepl("(^|\\s)selected(\\s|=|$)", attrs, perl = TRUE)
   list(values = values, labels = labels, selected = values[is_selected])
 }
@@ -408,12 +486,18 @@ find_tags <- function(tag, name) {
       if (identical(tolower(x$name), name)) {
         found[[length(found) + 1]] <<- x
       }
-      for (child in x$children) walk(child)
+      for (child in x$children) {
+        walk(child)
+      }
     } else if (is.list(x) && !inherits(x, "html_dependency")) {
-      for (child in x) walk(child)
+      for (child in x) {
+        walk(child)
+      }
     }
   }
-  for (child in tag$children) walk(child)
+  for (child in tag$children) {
+    walk(child)
+  }
   found
 }
 
@@ -424,12 +508,16 @@ tag_text <- function(tag) {
   walk <- function(x) {
     if (inherits(x, "shiny.tag")) {
       if (!tolower(x$name) %in% c("script", "style", "input", "select")) {
-        for (child in x$children) walk(child)
+        for (child in x$children) {
+          walk(child)
+        }
       }
     } else if (is.character(x)) {
       out <<- c(out, x)
     } else if (is.list(x) && !inherits(x, "html_dependency")) {
-      for (child in x) walk(child)
+      for (child in x) {
+        walk(child)
+      }
     }
   }
   walk(tag$children)
@@ -507,7 +595,12 @@ input_json_schema <- function(spec) {
     if (length(choices) == 0 || enum_ok) {
       return(NULL)
     }
-    paste0("one of ", length(choices), " values, e.g. ", paste(utils::head(choices, 5), collapse = ", "))
+    paste0(
+      "one of ",
+      length(choices),
+      " values, e.g. ",
+      paste(utils::head(choices, 5), collapse = ", ")
+    )
   }
   bounds <- function(prefix = NULL) {
     parts <- c(
@@ -517,8 +610,12 @@ input_json_schema <- function(spec) {
     if (length(parts)) paste(c(prefix, parts), collapse = ", ") else prefix
   }
   numeric_bounds <- function(schema) {
-    if (is.numeric(spec$min)) schema$minimum <- spec$min
-    if (is.numeric(spec$max)) schema$maximum <- spec$max
+    if (is.numeric(spec$min)) {
+      schema$minimum <- spec$min
+    }
+    if (is.numeric(spec$max)) {
+      schema$maximum <- spec$max
+    }
     schema
   }
 
@@ -533,11 +630,17 @@ input_json_schema <- function(spec) {
     "select-multiple" = ,
     "checkbox-group" = list(
       type = "array",
-      items = compact_list(list(type = "string", enum = if (enum_ok) I(choices))),
+      items = compact_list(list(
+        type = "string",
+        enum = if (enum_ok) I(choices)
+      )),
       description = describe(choice_hint() %||% "any number of values")
     ),
     checkbox = list(type = "boolean", description = describe()),
-    number = numeric_bounds(list(type = "number", description = describe(bounds()))),
+    number = numeric_bounds(list(
+      type = "number",
+      description = describe(bounds())
+    )),
     slider = if (spec$data_type %in% c("date", "datetime")) {
       list(
         type = "string",
@@ -550,7 +653,10 @@ input_json_schema <- function(spec) {
     "slider-range" = if (spec$data_type %in% c("date", "datetime")) {
       list(
         type = "array",
-        items = list(type = "string", format = if (spec$data_type == "date") "date" else "date-time"),
+        items = list(
+          type = "string",
+          format = if (spec$data_type == "date") "date" else "date-time"
+        ),
         minItems = 2L,
         maxItems = 2L,
         description = describe(bounds("start and end"))
@@ -564,7 +670,11 @@ input_json_schema <- function(spec) {
         description = describe(bounds("start and end"))
       )
     },
-    date = list(type = "string", format = "date", description = describe(bounds("YYYY-MM-DD"))),
+    date = list(
+      type = "string",
+      format = "date",
+      description = describe(bounds("YYYY-MM-DD"))
+    ),
     "date-range" = list(
       type = "array",
       items = list(type = "string", format = "date"),
@@ -574,7 +684,11 @@ input_json_schema <- function(spec) {
     ),
     action = list(
       type = "boolean",
-      description = paste0("Set to true to press the '", label, "' button after the other inputs are set.")
+      description = paste0(
+        "Set to true to press the '",
+        label,
+        "' button after the other inputs are set."
+      )
     ),
     list(type = "string", description = describe())
   )
@@ -644,20 +758,36 @@ coerce_input_value <- function(value, spec, previous = NULL, strict = FALSE) {
   switch(
     kind,
     select = ,
-    radio = if (length(value) == 0) NULL else check_choices(as.character(unlist(value))[1]),
+    radio = if (length(value) == 0) {
+      NULL
+    } else {
+      check_choices(as.character(unlist(value))[1])
+    },
     "select-multiple" = ,
     "checkbox-group" = {
-      if (is.null(value) || length(value) == 0) NULL else check_choices(as.character(unlist(value)))
+      if (is.null(value) || length(value) == 0) {
+        NULL
+      } else {
+        check_choices(as.character(unlist(value)))
+      }
     },
     checkbox = ,
     switch = isTRUE(as.logical(value)),
     number = {
-      if (is.null(value) || identical(value, "")) NA_real_ else as_number_strict(value, label, strict)
+      if (is.null(value) || identical(value, "")) {
+        NA_real_
+      } else {
+        as_number_strict(value, label, strict)
+      }
     },
     slider = coerce_slider_value(value, spec, label, strict, n = 1),
     "slider-range" = coerce_slider_value(value, spec, label, strict, n = 2),
     date = {
-      if (is.null(value) || identical(value, "")) NULL else as_date_strict(value, label, strict)
+      if (is.null(value) || identical(value, "")) {
+        NULL
+      } else {
+        as_date_strict(value, label, strict)
+      }
     },
     "date-range" = {
       v <- unlist(value)
@@ -665,7 +795,11 @@ coerce_input_value <- function(value, spec, previous = NULL, strict = FALSE) {
     },
     text = ,
     textarea = ,
-    password = if (is.null(value)) "" else paste(as.character(unlist(value)), collapse = ""),
+    password = if (is.null(value)) {
+      ""
+    } else {
+      paste(as.character(unlist(value)), collapse = "")
+    },
     action = {
       current <- as.integer(previous %||% 0L)
       if (is.logical(value)) {
@@ -687,9 +821,17 @@ coerce_slider_value <- function(value, spec, label, strict, n) {
   data_type <- spec$data_type %||% "number"
   v <- unlist(value)
   out <- if (data_type == "date") {
-    if (is.numeric(v)) slider_value_from_number(v, "date") else as_date_strict(v, label, strict)
+    if (is.numeric(v)) {
+      slider_value_from_number(v, "date")
+    } else {
+      as_date_strict(v, label, strict)
+    }
   } else if (data_type == "datetime") {
-    if (is.numeric(v)) slider_value_from_number(v, "datetime") else as.POSIXct(v, tz = "UTC")
+    if (is.numeric(v)) {
+      slider_value_from_number(v, "datetime")
+    } else {
+      as.POSIXct(v, tz = "UTC")
+    }
   } else {
     as_number_strict(v, label, strict)
   }

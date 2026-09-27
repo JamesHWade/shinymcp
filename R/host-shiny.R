@@ -43,12 +43,24 @@ active_shiny_session <- function() {
     return(NULL)
   }
   session <- root_shiny_session(shiny::getDefaultReactiveDomain())
-  if (inherits(session, c("ShinySession", "session_proxy"))) session else NULL
+  if (
+    inherits(session, c("ShinySession", "MockShinySession", "session_proxy"))
+  ) {
+    session
+  } else {
+    NULL
+  }
 }
 
 #' Host markup: a toolbar, an error area, and the iframe
 #' @noRd
-mcp_host_markup <- function(id, config = NULL, height = "auto", toolbar = TRUE, title = NULL) {
+mcp_host_markup <- function(
+  id,
+  config = NULL,
+  height = "auto",
+  toolbar = TRUE,
+  title = NULL
+) {
   root <- htmltools::tags$div(
     id = id,
     class = "shinymcp-host",
@@ -58,7 +70,10 @@ mcp_host_markup <- function(id, config = NULL, height = "auto", toolbar = TRUE, 
     if (toolbar) {
       htmltools::tags$div(
         class = "shinymcp-host-toolbar",
-        htmltools::tags$span(class = "shinymcp-host-title", title %||% config$title),
+        htmltools::tags$span(
+          class = "shinymcp-host-title",
+          title %||% config$title
+        ),
         htmltools::tags$span(
           class = "shinymcp-host-busy",
           `data-shinymcp-host-busy` = "",
@@ -124,12 +139,6 @@ register_shiny_host_instance <- function(
   height = "auto"
 ) {
   app <- as_mcp_app(app)
-  registry <- ensure_shiny_host_registry(session)
-  interaction <- resolve_host_interaction(app, trigger, debounce_ms)
-
-  state <- new_mcp_host_state(app, instance_id)
-  registry$instances[[instance_id]] <- state
-
   entry <- tool %||% default_entry_tool(app)
   if (!is.null(entry) && !app$has_tool(entry)) {
     shinymcp_abort(
@@ -137,15 +146,23 @@ register_shiny_host_instance <- function(
       class = "shinymcp_error_validation"
     )
   }
+  registry <- ensure_shiny_host_registry(session)
+  interaction <- resolve_host_interaction(app, trigger, debounce_ms)
+
+  state <- new_mcp_host_state(app, instance_id)
+  registry$instances[[instance_id]] <- state
+
   ui_meta <- app$resource_meta()$ui
   config <- compact_list(list(
     instanceId = instance_id,
     title = app$title %||% app$name,
     version = as.character(utils::packageVersion("shinymcp")),
-    html = app$html_resource(config = compact_list(list(
-      trigger = interaction$trigger,
-      debounceMs = interaction$debounce_ms
-    ))),
+    html = app$html_resource(
+      config = compact_list(list(
+        trigger = interaction$trigger,
+        debounceMs = interaction$debounce_ms
+      ))
+    ),
     csp = ui_meta$csp,
     permissions = ui_meta$permissions,
     prefersBorder = ui_meta$prefersBorder,
@@ -185,7 +202,10 @@ resolve_host_interaction <- function(app, trigger = NULL, debounce_ms = NULL) {
   } else {
     rlang::arg_match0(trigger, c("debounce", "change", "submit", "manual"))
   }
-  list(trigger = trigger, debounce_ms = debounce_ms %||% defaults$debounce_ms %||% 250)
+  list(
+    trigger = trigger,
+    debounce_ms = debounce_ms %||% defaults$debounce_ms %||% 250
+  )
 }
 
 #' The per-session registry of hosted apps, and the observer that serves them
@@ -251,11 +271,19 @@ handle_host_event <- function(session, registry, event) {
   reply <- function(response) {
     session$sendCustomMessage(
       "shinymcp-host-response",
-      list(instanceId = instance_id, requestId = event$requestId, response = strip_http_status(response))
+      list(
+        instanceId = instance_id,
+        requestId = event$requestId,
+        response = strip_http_status(response)
+      )
     )
   }
   if (is.null(state)) {
-    reply(jsonrpc_error(message$id %||% NULL, RPC_INVALID_REQUEST, "This app is no longer running."))
+    reply(jsonrpc_error(
+      message$id %||% NULL,
+      RPC_INVALID_REQUEST,
+      "This app is no longer running."
+    ))
     return(invisible())
   }
 
@@ -265,14 +293,28 @@ handle_host_event <- function(session, registry, event) {
     response <- tryCatch(
       state$server$handle(
         message,
-        list(transport = "in-process", session = state$session, user = user, groups = groups)
+        list(
+          transport = "in-process",
+          session = state$session,
+          user = user,
+          groups = groups
+        )
       ),
       error = function(e) {
-        jsonrpc_error(message$id %||% NULL, RPC_INTERNAL_ERROR, conditionMessage(e))
+        jsonrpc_error(
+          message$id %||% NULL,
+          RPC_INTERNAL_ERROR,
+          conditionMessage(e)
+        )
       }
     )
     if (identical(message$method, "tools/call") && !is.null(response$result)) {
-      mcp_host_record_call(state, message$params$name, message$params$arguments, response$result)
+      mcp_host_record_call(
+        state,
+        message$params$name,
+        message$params$arguments,
+        response$result
+      )
     }
     reply(response)
   })
@@ -375,7 +417,11 @@ mcp_host_server <- function(
         execute = function(arguments = NULL) {
           session$sendCustomMessage(
             "shinymcp-host-command",
-            compact_list(list(instanceId = state$instance_id, command = "execute", arguments = arguments))
+            compact_list(list(
+              instanceId = state$instance_id,
+              command = "execute",
+              arguments = arguments
+            ))
           )
         },
         reset = function() {
@@ -413,7 +459,8 @@ mcp_embed <- function(
   if (is.null(session)) {
     if (is.null(id)) {
       shinymcp_abort(
-        "Call {.fn mcp_embed} inside a running Shiny session, or use {.fn mcp_host_ui} and {.fn mcp_host_server}."
+        "Call {.fn mcp_embed} inside a running Shiny session, or use {.fn mcp_host_ui} and {.fn mcp_host_server}.",
+        class = "shinymcp_error_validation"
       )
     }
     return(mcp_host_ui(id, height = height))
@@ -440,7 +487,9 @@ host_reactives <- function(state) {
   messages <- shiny::reactiveVal(list())
   state$on_model_context <- function(value) model_context(value)
   state$on_tool_call <- function(value) last_tool_call(value)
-  state$on_message <- function(value) messages(c(shiny::isolate(messages()), list(value)))
+  state$on_message <- function(value) {
+    messages(c(shiny::isolate(messages()), list(value)))
+  }
   list(
     model_context = shiny::reactive(model_context()),
     last_tool_call = shiny::reactive(last_tool_call()),

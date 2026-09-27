@@ -31,6 +31,11 @@
 #' @param allowed_origins Browser origins, besides the server's own and
 #'   loopback ones for a local server, allowed to call the HTTP endpoint,
 #'   for example `"https://chat.example.com"`. Use `"*"` to allow any.
+#' @param allowed_hosts For a server listening on this machine only, the
+#'   host names it may be reached at besides `localhost` and `127.0.0.1`,
+#'   such as the public name of a reverse proxy in front of it. Requests for
+#'   any other host are refused, which protects a local server from web
+#'   pages that point their own host name at it (DNS rebinding).
 #' @param ... Unused; for future extensions.
 #' @return Nothing; `serve()` runs until the connection closes.
 #' @family serving
@@ -55,6 +60,7 @@ serve <- function(
   host = "127.0.0.1",
   path = "/mcp",
   allowed_origins = NULL,
+  allowed_hosts = NULL,
   ...
 ) {
   type <- match.arg(type)
@@ -70,7 +76,8 @@ serve <- function(
       host = host,
       port = port,
       path = path,
-      allowed_origins = allowed_origins
+      allowed_origins = allowed_origins,
+      allowed_hosts = allowed_hosts
     )
   )
 }

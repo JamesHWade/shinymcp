@@ -47,8 +47,8 @@ ShinyRuntime <- R6::R6Class(
       on_start = NULL,
       selective = NULL,
       ns = NULL,
-      max_instances = 50L,
-      idle_seconds = 3600
+      max_instances = getOption("shinymcp.max_views", 50L),
+      idle_seconds = getOption("shinymcp.view_timeout", 3600)
     ) {
       if (!is.function(server)) {
         shinymcp_abort(
@@ -77,7 +77,11 @@ ShinyRuntime <- R6::R6Class(
       self$outputs <- outputs
 
       if (is.null(selective)) {
-        selective <- any(vapply(inputs, function(i) isTRUE(i$bound), logical(1))) ||
+        selective <- any(vapply(
+          inputs,
+          function(i) isTRUE(i$bound),
+          logical(1)
+        )) ||
           any(vapply(outputs, function(o) isTRUE(o$bound), logical(1)))
       }
       private$selective <- selective
@@ -103,7 +107,9 @@ ShinyRuntime <- R6::R6Class(
 
     # The two tools the runtime adds to its app.
     tools = function() {
-      properties <- lapply(self$model_inputs, function(id) input_json_schema(self$inputs[[id]]))
+      properties <- lapply(self$model_inputs, function(id) {
+        input_json_schema(self$inputs[[id]])
+      })
       names(properties) <- self$model_inputs
       if (!"view" %in% names(properties)) {
         properties$view <- list(
@@ -128,18 +134,23 @@ ShinyRuntime <- R6::R6Class(
           input_schema = open_schema,
           outputs = self$model_outputs,
           annotations = list(readOnlyHint = FALSE, openWorldHint = FALSE),
-          handler = function(arguments, context) runtime$open(arguments, context),
+          handler = function(arguments, context) {
+            runtime$open(arguments, context)
+          },
           source = "runtime"
         ),
         new_mcp_tool(
           name = self$view_tool_name,
           description = paste0(
-            "Used by the ", self$title %||% self$app_name,
+            "Used by the ",
+            self$title %||% self$app_name,
             " app to send input changes to its R session. Not for the model."
           ),
           input_schema = view_tool_schema(),
           visibility = "app",
-          handler = function(arguments, context) runtime$view(arguments, context),
+          handler = function(arguments, context) {
+            runtime$view(arguments, context)
+          },
           source = "runtime"
         )
       )
@@ -185,7 +196,9 @@ ShinyRuntime <- R6::R6Class(
       if (length(pressed)) {
         presses <- lapply(pressed, function(id) {
           dom_id <- self$inputs[[id]]$dom_id %||% private$namespaced(id)
-          current <- if (continued) shiny::isolate(instance$session$input[[dom_id]])
+          current <- if (continued) {
+            shiny::isolate(instance$session$input[[dom_id]])
+          }
           action_value(as.integer(current %||% 0L) + 1L)
         })
         names(presses) <- pressed
@@ -217,7 +230,12 @@ ShinyRuntime <- R6::R6Class(
         return(wire_result(list(content = list(text_block("closed")))))
       }
       if (identical(action, "data")) {
-        return(private$data_request(instance, arguments$output, arguments$body, context))
+        return(private$data_request(
+          instance,
+          arguments$output,
+          arguments$body,
+          context
+        ))
       }
 
       page_inputs <- arguments$inputs %||% list()
@@ -226,7 +244,11 @@ ShinyRuntime <- R6::R6Class(
         # A new view, or one whose session is gone: rebuild it from the
         # page's full input state.
         values <- private$page_values(page_inputs, kinds, NULL)
-        instance <- private$create_instance(values, context, id = if (is_string(id)) id)
+        instance <- private$create_instance(
+          values,
+          context,
+          id = if (is_string(id)) id
+        )
         instance$page_sent <- private$dom_keys(values)
         restarted <- is_string(id)
         all_outputs <- TRUE
@@ -240,7 +262,11 @@ ShinyRuntime <- R6::R6Class(
         if (length(changed) == 0 || stale) {
           changed <- names(page_inputs)
         }
-        values <- private$page_values(page_inputs[intersect(changed, names(page_inputs))], kinds, instance)
+        values <- private$page_values(
+          page_inputs[intersect(changed, names(page_inputs))],
+          kinds,
+          instance
+        )
         instance$page_sent <- private$dom_keys(values)
         private$set_inputs(instance, values, dedupe = TRUE)
         all_outputs <- isTRUE(arguments$all) || stale
@@ -300,7 +326,10 @@ ShinyRuntime <- R6::R6Class(
     create_instance = function(values, context, id = NULL) {
       private$ensure_started()
       private$evict()
-      rlang::check_installed("shiny", reason = "to run a Shiny app as an MCP App.")
+      rlang::check_installed(
+        "shiny",
+        reason = "to run a Shiny app as an MCP App."
+      )
 
       inst <- new.env(parent = emptyenv())
       inst$id <- id %||% unique_id("view")
@@ -328,10 +357,22 @@ ShinyRuntime <- R6::R6Class(
       inst$client <- shiny::reactiveValues(pixelratio = 1)
       for (out in self$outputs) {
         size <- out$size %||% list()
-        inst$client[[paste0("output_", out$dom_id %||% out$id, "_width")]] <- size$width %||% 640
-        inst$client[[paste0("output_", out$dom_id %||% out$id, "_height")]] <- size$height %||% 400
+        inst$client[[paste0(
+          "output_",
+          out$dom_id %||% out$id,
+          "_width"
+        )]] <- size$width %||% 640
+        inst$client[[paste0(
+          "output_",
+          out$dom_id %||% out$id,
+          "_height"
+        )]] <- size$height %||% 400
       }
-      session$clientData <- structure(list(), class = "shinymcp_clientdata", instance = inst)
+      session$clientData <- structure(
+        list(),
+        class = "shinymcp_clientdata",
+        instance = inst
+      )
       session$user <- context$user
       session$groups <- context$groups
       session$userData$.shinymcp <- inst
@@ -339,16 +380,28 @@ ShinyRuntime <- R6::R6Class(
 
       # Inputs first, as Shiny's client sends them before the server runs.
       defaults <- lapply(self$inputs, function(spec) spec$value)
-      names(defaults) <- vapply(self$inputs, function(s) s$dom_id %||% s$id, character(1))
+      names(defaults) <- vapply(
+        self$inputs,
+        function(s) s$dom_id %||% s$id,
+        character(1)
+      )
       defaults <- defaults[!vapply(defaults, is.null, logical(1))]
-      initial <- utils::modifyList(defaults, private$dom_keys(values), keep.null = TRUE)
+      initial <- utils::modifyList(
+        defaults,
+        private$dom_keys(values),
+        keep.null = TRUE
+      )
       initial <- initial[!vapply(initial, is.null, logical(1))]
       if (length(initial)) {
         with_mock_context(session, do.call(session$setInputs, initial))
       }
 
       server <- private$server_function()
-      args <- list(input = session$input, output = session$output, session = session)
+      args <- list(
+        input = session$input,
+        output = session$output,
+        session = session
+      )
       accepted <- names(formals(server))
       if (!"..." %in% accepted) {
         args <- args[intersect(names(args), accepted)]
@@ -379,7 +432,10 @@ ShinyRuntime <- R6::R6Class(
         rm(list = inst$id, envir = private$instances)
       }
       if (!inst$session$isClosed()) {
-        try(with_mock_context(inst$session, inst$session$close()), silent = TRUE)
+        try(
+          with_mock_context(inst$session, inst$session$close()),
+          silent = TRUE
+        )
       }
     },
 
@@ -389,12 +445,19 @@ ShinyRuntime <- R6::R6Class(
         return()
       }
       now <- as.numeric(Sys.time())
-      last <- vapply(ids, function(id) private$instances[[id]]$last_used, numeric(1))
+      last <- vapply(
+        ids,
+        function(id) private$instances[[id]]$last_used,
+        numeric(1)
+      )
       stale <- ids[now - last > self$idle_seconds]
       keep <- setdiff(ids, stale)
       if (length(keep) >= self$max_instances) {
         ordered <- keep[order(last[keep])]
-        stale <- c(stale, ordered[seq_len(length(keep) - self$max_instances + 1)])
+        stale <- c(
+          stale,
+          ordered[seq_len(length(keep) - self$max_instances + 1)]
+        )
       }
       for (id in stale) {
         private$close_instance(private$instances[[id]])
@@ -429,14 +492,21 @@ ShinyRuntime <- R6::R6Class(
         }
         public_id <- private$public_id(dom_id)
         spec <- self$inputs[[public_id]] %||%
-          list(id = dom_id, kind = kinds[[dom_id]]$kind %||% kinds[[dom_id]] %||% "unknown")
+          list(
+            id = dom_id,
+            kind = kinds[[dom_id]]$kind %||% kinds[[dom_id]] %||% "unknown"
+          )
         if (is.list(kinds[[dom_id]]) && !is.null(kinds[[dom_id]]$dataType)) {
           spec$data_type <- kinds[[dom_id]]$dataType
         }
         previous <- if (!is.null(instance)) {
           shiny::isolate(instance$session$input[[dom_id]])
         }
-        out[[public_id]] <- coerce_input_value(page_inputs[[dom_id]], spec, previous = previous)
+        out[[public_id]] <- coerce_input_value(
+          page_inputs[[dom_id]],
+          spec,
+          previous = previous
+        )
       }
       out
     },
@@ -486,7 +556,9 @@ ShinyRuntime <- R6::R6Class(
           key <- paste0("output_", id, "_", dim)
           current <- shiny::isolate(inst$client[[key]])
           # Ignore jitter: small changes aren't worth a redraw.
-          if (is.null(current) || abs(current - value) > max(8, 0.05 * current)) {
+          if (
+            is.null(current) || abs(current - value) > max(8, 0.05 * current)
+          ) {
             inst$client[[key]] <- round(value)
           }
         }
@@ -539,11 +611,17 @@ ShinyRuntime <- R6::R6Class(
 
     # Input values implied by messages the server sent since the last echo.
     echo_input_messages = function(inst) {
-      pending <- inst$input_messages[seq_along(inst$input_messages) > (inst$echoed %||% 0)]
+      pending <- inst$input_messages[
+        seq_along(inst$input_messages) > (inst$echoed %||% 0)
+      ]
       inst$echoed <- length(inst$input_messages)
       values <- list()
       for (msg in pending) {
-        value <- implied_input_value(msg, self$inputs[[private$public_id(msg$id)]], inst$session)
+        value <- implied_input_value(
+          msg,
+          self$inputs[[private$public_id(msg$id)]],
+          inst$session
+        )
         if (!is.null(value)) {
           values[[msg$id]] <- value$value
         }
@@ -563,14 +641,20 @@ ShinyRuntime <- R6::R6Class(
     ) {
       collected <- with_request_context(
         context,
-        collect_runtime_outputs(inst, self$outputs, skip_deps = context$skip_deps %||% character())
+        collect_runtime_outputs(
+          inst,
+          self$outputs,
+          skip_deps = context$skip_deps %||% character()
+        )
       )
       changed <- if (all_outputs) {
         names(collected)
       } else {
         names(collected)[vapply(
           names(collected),
-          function(id) !identical(inst$digests[[id]] %||% "", collected[[id]]$digest),
+          function(id) {
+            !identical(inst$digests[[id]] %||% "", collected[[id]]$digest)
+          },
           logical(1)
         )]
       }
@@ -590,7 +674,12 @@ ShinyRuntime <- R6::R6Class(
         uiChanges = drain(inst, "ui_changes"),
         customMessages = drain(inst, "custom_messages"),
         messages = drain(inst, "messages"),
-        modelContext = runtime_model_context(inst, self, collected, publish = !model),
+        modelContext = runtime_model_context(
+          inst,
+          self,
+          collected,
+          publish = !model
+        ),
         restarted = if (restarted) TRUE
       ))
       if (length(view$outputs) == 0) {
@@ -616,7 +705,9 @@ ShinyRuntime <- R6::R6Class(
       }
       result <- list(content = content)
       if (model) {
-        outputs <- lapply(self$model_outputs, function(id) json_safe(collected[[id]]$model))
+        outputs <- lapply(self$model_outputs, function(id) {
+          json_safe(collected[[id]]$model)
+        })
         names(outputs) <- self$model_outputs
         outputs <- compact_list(outputs)
         result$structuredContent <- list(
@@ -637,7 +728,11 @@ ShinyRuntime <- R6::R6Class(
       obj <- if (!is.null(inst)) inst$data_objects[[name %||% ""]]
       if (is.null(obj)) {
         return(wire_result(list(
-          content = list(text_block(paste0("No data named '", name %||% "", "' in this view."))),
+          content = list(text_block(paste0(
+            "No data named '",
+            name %||% "",
+            "' in this view."
+          ))),
           isError = TRUE
         )))
       }
@@ -647,16 +742,26 @@ ShinyRuntime <- R6::R6Class(
       req$PATH_INFO <- paste0("/dataobj/", name)
       req$QUERY_STRING <- ""
       req$HTTP_CONTENT_TYPE <- "application/x-www-form-urlencoded; charset=UTF-8"
-      req$rook.input <- list(read = function(...) raw_body, rewind = function() invisible(NULL))
+      req$rook.input <- list(
+        read = function(...) raw_body,
+        rewind = function() invisible(NULL)
+      )
       response <- tryCatch(
-        with_request_context(context, with_mock_context(inst$session, obj$filter(obj$data, req))),
+        with_request_context(
+          context,
+          with_mock_context(inst$session, obj$filter(obj$data, req))
+        ),
         error = function(e) e
       )
       if (inherits(response, "error")) {
         return(wire_result(tool_error_result(response)))
       }
       content <- response$content
-      text <- if (is.raw(content)) rawToChar(content) else paste(content, collapse = "\n")
+      text <- if (is.raw(content)) {
+        rawToChar(content)
+      } else {
+        paste(content, collapse = "\n")
+      }
       Encoding(text) <- "UTF-8"
       wire_result(list(
         content = list(text_block(paste0("Data for ", name, "."))),
@@ -669,15 +774,23 @@ ShinyRuntime <- R6::R6Class(
     },
 
     download = function(inst, output_id, context) {
-      dom_id <- self$outputs[[output_id %||% ""]]$dom_id %||% private$namespaced(output_id %||% "")
+      dom_id <- self$outputs[[output_id %||% ""]]$dom_id %||%
+        private$namespaced(output_id %||% "")
       if (is.null(inst$downloads[[dom_id]])) {
         return(wire_result(list(
-          content = list(text_block(paste0("No download named '", output_id, "'."))),
+          content = list(text_block(paste0(
+            "No download named '",
+            output_id,
+            "'."
+          ))),
           isError = TRUE
         )))
       }
       path <- tryCatch(
-        with_request_context(context, with_mock_context(inst$session, inst$session$getOutput(dom_id))),
+        with_request_context(
+          context,
+          with_mock_context(inst$session, inst$session$getOutput(dom_id))
+        ),
         error = function(e) e
       )
       if (inherits(path, "error")) {
@@ -699,15 +812,17 @@ ShinyRuntime <- R6::R6Class(
       mime <- inst$downloads[[dom_id]]$content_type %||% mime_type_for(filename)
       wire_result(list(
         content = list(text_block(paste("Prepared", filename))),
-        `_meta` = list(`shinymcp/view` = list(
-          instance = inst$id,
-          download = list(
-            output = output_id,
-            filename = filename,
-            mimeType = mime,
-            data = base64_file(path)
+        `_meta` = list(
+          `shinymcp/view` = list(
+            instance = inst$id,
+            download = list(
+              output = output_id,
+              filename = filename,
+              mimeType = mime,
+              data = base64_file(path)
+            )
           )
-        ))
+        )
       ))
     }
   )
@@ -723,7 +838,10 @@ view_tool_schema <- function() {
   list(
     type = "object",
     properties = list(
-      action = list(type = "string", enum = I(c("update", "download", "data", "close"))),
+      action = list(
+        type = "string",
+        enum = I(c("update", "download", "data", "close"))
+      ),
       instance = list(type = "string"),
       inputs = list(type = "object"),
       changed = list(type = "array", items = list(type = "string")),
@@ -745,7 +863,9 @@ default_runtime_description <- function(runtime) {
   inputs <- runtime$model_inputs
   outputs <- runtime$model_outputs
   paste0(
-    "Show the interactive ", title, " app in the conversation. ",
+    "Show the interactive ",
+    title,
+    " app in the conversation. ",
     if (length(inputs)) {
       paste0(
         "Arguments set the app's inputs (",
@@ -756,7 +876,11 @@ default_runtime_description <- function(runtime) {
       ""
     },
     if (length(outputs)) {
-      paste0("The result reports what the app shows (", paste(outputs, collapse = ", "), "). ")
+      paste0(
+        "The result reports what the app shows (",
+        paste(outputs, collapse = ", "),
+        "). "
+      )
     } else {
       ""
     },
@@ -787,25 +911,37 @@ install_session_hooks <- function(session, inst) {
     push("input_messages", list(id = inputId, message = message))
   }
   session$sendNotification <- function(type, message) {
-    push("notifications", compact_list(list(
-      type = type,
-      message = runtime_html_message(message)
-    )))
+    push(
+      "notifications",
+      compact_list(list(
+        type = type,
+        message = runtime_html_message(message)
+      ))
+    )
   }
   session$sendModal <- function(type, message) {
-    push("modals", compact_list(list(type = type, message = runtime_html_message(message))))
+    push(
+      "modals",
+      compact_list(list(type = type, message = runtime_html_message(message)))
+    )
   }
   session$sendInsertUI <- function(selector, multiple, where, content) {
-    push("ui_changes", list(
-      op = "insert",
-      selector = selector,
-      multiple = isTRUE(multiple),
-      where = where,
-      content = runtime_html_message(content)
-    ))
+    push(
+      "ui_changes",
+      list(
+        op = "insert",
+        selector = selector,
+        multiple = isTRUE(multiple),
+        where = where,
+        content = runtime_html_message(content)
+      )
+    )
   }
   session$sendRemoveUI <- function(selector, multiple) {
-    push("ui_changes", list(op = "remove", selector = selector, multiple = isTRUE(multiple)))
+    push(
+      "ui_changes",
+      list(op = "remove", selector = selector, multiple = isTRUE(multiple))
+    )
   }
   session$sendCustomMessage <- function(type, message) {
     push("custom_messages", list(type = type, message = message))
@@ -877,7 +1013,11 @@ runtime_session_class <- function() {
           if (!is.null(inst)) {
             inst$downloads[[name]] <- list(
               content_type = contentType,
-              filename = if (is.function(filename)) filename else function() filename
+              filename = if (is.function(filename)) {
+                filename
+              } else {
+                function() filename
+              }
             )
           }
           super$registerDownload(name, filename, contentType, content)
@@ -927,7 +1067,9 @@ drain <- function(inst, field, reset_echo = FALSE) {
   if (grepl("^output_.+_hidden$", name)) {
     return(FALSE)
   }
-  value <- tryCatch(inst$client[[name]], error = function(e) shiny::isolate(inst$client[[name]]))
+  value <- tryCatch(inst$client[[name]], error = function(e) {
+    shiny::isolate(inst$client[[name]])
+  })
   if (!is.null(value)) {
     return(value)
   }
@@ -964,10 +1106,17 @@ describe_ui_outputs <- function(ui) {
     mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-output")
     role <- detect_mcp_role(tag)
     if (is.null(mcp_id) && (role$role != "output" || is.null(role$id))) {
-      if (!has_class(tag, "shiny-download-link") || is.null(htmltools::tagGetAttribute(tag, "id"))) {
+      if (
+        !has_class(tag, "shiny-download-link") ||
+          is.null(htmltools::tagGetAttribute(tag, "id"))
+      ) {
         return()
       }
-      role <- list(role = "output", id = htmltools::tagGetAttribute(tag, "id"), type = "download")
+      role <- list(
+        role = "output",
+        id = htmltools::tagGetAttribute(tag, "id"),
+        type = "download"
+      )
     }
     dom_id <- htmltools::tagGetAttribute(tag, "id") %||% mcp_id
     id <- mcp_id %||% role$id
@@ -990,7 +1139,8 @@ describe_ui_outputs <- function(ui) {
 
 #' @noRd
 has_class <- function(tag, cls) {
-  cls %in% strsplit(htmltools::tagGetAttribute(tag, "class") %||% "", "\\s+")[[1]]
+  cls %in%
+    strsplit(htmltools::tagGetAttribute(tag, "class") %||% "", "\\s+")[[1]]
 }
 
 #' Pixel width and height from an output's inline style
@@ -1004,10 +1154,16 @@ output_size_from_style <- function(style) {
     return(NULL)
   }
   px <- function(prop) {
-    m <- regmatches(style, regexec(paste0(prop, "\\s*:\\s*([0-9.]+)px"), style, perl = TRUE))[[1]]
+    m <- regmatches(
+      style,
+      regexec(paste0(prop, "\\s*:\\s*([0-9.]+)px"), style, perl = TRUE)
+    )[[1]]
     if (length(m) == 2) as.numeric(m[[2]]) else NULL
   }
-  compact_list(list(width = px("(?<![a-z-])width"), height = px("(?<![a-z-])height")))
+  compact_list(list(
+    width = px("(?<![a-z-])width"),
+    height = px("(?<![a-z-])height")
+  ))
 }
 
 #' @noRd
@@ -1040,17 +1196,33 @@ collect_runtime_outputs <- function(inst, specs, skip_deps = character()) {
     if (!dom_id %in% inst$outputs) {
       next
     }
-    public_id <- if (dom_id %in% names(dom_to_public)) dom_to_public[[dom_id]] else dom_id
-    spec <- specs[[public_id]] %||% list(id = public_id, dom_id = dom_id, type = NULL)
+    public_id <- if (dom_id %in% names(dom_to_public)) {
+      dom_to_public[[dom_id]]
+    } else {
+      dom_id
+    }
+    spec <- specs[[public_id]] %||%
+      list(id = public_id, dom_id = dom_id, type = NULL)
     if (!is.null(inst$downloads[[dom_id]])) {
       filename <- tryCatch(
-        with_mock_context(inst$session, as.character(inst$downloads[[dom_id]]$filename())),
+        with_mock_context(
+          inst$session,
+          as.character(inst$downloads[[dom_id]]$filename())
+        ),
         error = function(e) NULL
       )
-      payload <- list(kind = "download", dom = dom_id, value = list(filename = filename))
+      payload <- list(
+        kind = "download",
+        dom = dom_id,
+        value = list(filename = filename)
+      )
       out[[public_id]] <- list(
         payload = payload,
-        model = paste0("A file (", filename %||% "download", ") the user can download from the app."),
+        model = paste0(
+          "A file (",
+          filename %||% "download",
+          ") the user can download from the app."
+        ),
         text = NULL,
         digest = rlang::hash(payload)
       )
@@ -1130,14 +1302,14 @@ runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
         deps = if (length(deps)) lapply(deps, dependency_payload)
       )),
       digest = rlang::hash(as.character(value)),
-      model = "An interactive widget, shown in the app.",
-      text = "An interactive widget, shown in the app."
+      model = "An interactive widget.",
+      text = "An interactive widget."
     )
   } else if (is.list(value) && !is.null(value$src)) {
     alt <- value$alt
     if (is.null(alt) || identical(alt, "Plot object")) {
       alt <- sprintf(
-        "A plot (%s x %s), shown in the app.",
+        "A plot (%s x %s).",
         value$width %||% "?",
         value$height %||% "?"
       )
@@ -1183,7 +1355,11 @@ runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
     text_output <- identical(type, "text") ||
       identical(type, "verbatimText") ||
       (is.null(type) && !grepl("<[a-zA-Z][^>]*>", value[[1]]))
-    text <- if (text_output) paste(value, collapse = "\n") else html_to_text(value)
+    text <- if (text_output) {
+      paste(value, collapse = "\n")
+    } else {
+      html_to_text(value)
+    }
     list(
       payload = list(
         kind = if (text_output) "text" else "html",
@@ -1220,7 +1396,10 @@ runtime_error_entry <- function(e) {
       text = message
     ))
   }
-  if (isTRUE(getOption("shiny.sanitize.errors")) && !inherits(e, "shiny.custom.error")) {
+  if (
+    isTRUE(getOption("shiny.sanitize.errors")) &&
+      !inherits(e, "shiny.custom.error")
+  ) {
     message <- "An error has occurred. Check your logs or contact the app author for clarification."
   }
   list(
@@ -1252,7 +1431,9 @@ page_input_updates <- function(inst, full) {
   inst$page_sent <- NULL
   echoed_back <- vapply(
     names(sent),
-    function(id) id %in% names(from_page) && identical(sent[[id]], from_page[[id]]),
+    function(id) {
+      id %in% names(from_page) && identical(sent[[id]], from_page[[id]])
+    },
     logical(1)
   )
   sent <- sent[!echoed_back]
@@ -1290,7 +1471,11 @@ implied_input_value <- function(msg, spec, session) {
     if (is.list(value) && !is.null(value$start)) {
       value <- c(value$start, value$end)
     }
-    new <- coerce_input_value(value, spec %||% list(id = id, kind = kind), previous = current)
+    new <- coerce_input_value(
+      value,
+      spec %||% list(id = id, kind = kind),
+      previous = current
+    )
     return(if (identical(new, current)) NULL else list(value = new))
   }
   if (!is.null(message$options) && kind %in% c("select", "radio")) {
@@ -1305,11 +1490,16 @@ implied_input_value <- function(msg, spec, session) {
     }
     return(if (identical(new, current)) NULL else list(value = new))
   }
-  if (!is.null(message$options) && kind %in% c("select-multiple", "checkbox-group")) {
+  if (
+    !is.null(message$options) &&
+      kind %in% c("select-multiple", "checkbox-group")
+  ) {
     values <- option_values(message$options)
     selected <- attr(values, "selected")
     new <- if (length(selected)) selected else intersect(current, values)
-    if (length(new) == 0) new <- NULL
+    if (length(new) == 0) {
+      new <- NULL
+    }
     return(if (identical(new, current)) NULL else list(value = new))
   }
   NULL
@@ -1320,18 +1510,30 @@ guess_kind_from_message <- function(message, current) {
   if (!is.null(message$options)) {
     return(if (length(current) > 1) "select-multiple" else "select")
   }
-  if (is.logical(current)) "checkbox" else if (is.numeric(current)) "number" else "text"
+  if (is.logical(current)) {
+    "checkbox"
+  } else if (is.numeric(current)) {
+    "number"
+  } else {
+    "text"
+  }
 }
 
 #' Values (and selected values) in an HTML options fragment
 #' @noRd
 option_values <- function(html) {
   html <- paste(as.character(html), collapse = "")
-  tags <- regmatches(html, gregexpr("<(option|input)\\b[^>]*>", html, ignore.case = TRUE))[[1]]
+  tags <- regmatches(
+    html,
+    gregexpr("<(option|input)\\b[^>]*>", html, ignore.case = TRUE)
+  )[[1]]
   values <- character()
   selected <- character()
   for (tag in tags) {
-    if (grepl("^<input", tag, ignore.case = TRUE) && !grepl("type=[\"']?(radio|checkbox)", tag, ignore.case = TRUE)) {
+    if (
+      grepl("^<input", tag, ignore.case = TRUE) &&
+        !grepl("type=[\"']?(radio|checkbox)", tag, ignore.case = TRUE)
+    ) {
       next
     }
     value <- sub(".*\\bvalue=\"([^\"]*)\".*", "\\1", tag)
@@ -1366,10 +1568,18 @@ runtime_result_text <- function(
     paste0("Updated the ", title, " app (view ", inst$id, ").")
   } else {
     c(
-      paste0("The ", title, " app is open in the conversation (view ", inst$id, ")."),
+      paste0(
+        "The ",
+        title,
+        " app is open in the conversation (view ",
+        inst$id,
+        ")."
+      ),
       if (!is.null(lost_view)) {
         paste0(
-          "View ", lost_view, " is no longer running, so this is a new view; ",
+          "View ",
+          lost_view,
+          " is no longer running, so this is a new view; ",
           "inputs you didn't set are back to their defaults."
         )
       }
@@ -1385,7 +1595,9 @@ runtime_result_text <- function(
           paste(
             vapply(
               names(snapshot),
-              function(id) paste0(id, " = ", format_snapshot_value(snapshot[[id]])),
+              function(id) {
+                paste0(id, " = ", format_snapshot_value(snapshot[[id]]))
+              },
               character(1)
             ),
             collapse = "; "
@@ -1395,7 +1607,14 @@ runtime_result_text <- function(
       )
     }
     if (length(unknown)) {
-      lines <- c(lines, paste0("Ignored unknown arguments: ", paste(unknown, collapse = ", "), "."))
+      lines <- c(
+        lines,
+        paste0(
+          "Ignored unknown arguments: ",
+          paste(unknown, collapse = ", "),
+          "."
+        )
+      )
     }
   }
   ids <- if (model) runtime$model_outputs else names(collected)
@@ -1406,7 +1625,11 @@ runtime_result_text <- function(
     }
     lines <- c(
       lines,
-      if (grepl("\n", text, fixed = TRUE)) paste0(id, ":\n", text) else paste0(id, ": ", text)
+      if (grepl("\n", text, fixed = TRUE)) {
+        paste0(id, ":\n", text)
+      } else {
+        paste0(id, ": ", text)
+      }
     )
   }
   paste(lines, collapse = "\n\n")
@@ -1438,10 +1661,18 @@ runtime_model_context <- function(inst, runtime, collected, publish = TRUE) {
     names(summary) <- runtime$model_outputs
     summary <- summary[nzchar(unlist(summary))]
     text <- paste0(
-      "In the ", runtime$title %||% runtime$app_name, " app, the user has: ",
+      "In the ",
+      runtime$title %||% runtime$app_name,
+      " app, the user has: ",
       if (length(snapshot)) {
         paste(
-          vapply(names(snapshot), function(id) paste0(id, " = ", format_snapshot_value(snapshot[[id]])), character(1)),
+          vapply(
+            names(snapshot),
+            function(id) {
+              paste0(id, " = ", format_snapshot_value(snapshot[[id]]))
+            },
+            character(1)
+          ),
           collapse = "; "
         )
       } else {
@@ -1528,7 +1759,10 @@ mcp_model_context <- function(
 
 #' @rdname mcp_model_context
 #' @export
-mcp_send_message <- function(text, session = shiny::getDefaultReactiveDomain()) {
+mcp_send_message <- function(
+  text,
+  session = shiny::getDefaultReactiveDomain()
+) {
   if (!is_string(text)) {
     shinymcp_abort("{.arg text} must be a single non-empty string.")
   }

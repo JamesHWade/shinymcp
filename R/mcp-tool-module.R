@@ -65,16 +65,28 @@ mcp_tool_module <- function(
   ...
 ) {
   if (!is.function(module_ui)) {
-    shinymcp_abort("{.arg module_ui} must be a function.", class = "shinymcp_error_validation")
+    shinymcp_abort(
+      "{.arg module_ui} must be a function.",
+      class = "shinymcp_error_validation"
+    )
   }
   if (!is.function(module_server)) {
-    shinymcp_abort("{.arg module_server} must be a function.", class = "shinymcp_error_validation")
+    shinymcp_abort(
+      "{.arg module_server} must be a function.",
+      class = "shinymcp_error_validation"
+    )
   }
   if (!is_string(name)) {
-    shinymcp_abort("{.arg name} must be a non-empty string.", class = "shinymcp_error_validation")
+    shinymcp_abort(
+      "{.arg name} must be a non-empty string.",
+      class = "shinymcp_error_validation"
+    )
   }
   if (!is.character(description) || length(description) != 1) {
-    shinymcp_abort("{.arg description} must be a single string.", class = "shinymcp_error_validation")
+    shinymcp_abort(
+      "{.arg description} must be a single string.",
+      class = "shinymcp_error_validation"
+    )
   }
 
   ns_id <- paste0("mcp-", sanitize_name(name))
@@ -82,7 +94,10 @@ mcp_tool_module <- function(
     module_ui(ns_id),
     error = function(e) {
       shinymcp_abort(
-        c("Couldn't render {.arg module_ui} with id {.val {ns_id}}.", "x" = "{conditionMessage(e)}"),
+        c(
+          "Couldn't render {.arg module_ui} with id {.val {ns_id}}.",
+          "x" = "{conditionMessage(e)}"
+        ),
         class = "shinymcp_error_validation",
         parent = e
       )
@@ -111,12 +126,23 @@ mcp_tool_module <- function(
   }
 
   # A handler: the module's UI with a stateless tool behind it.
-  inputs <- normalize_module_bindings(extract_inputs_from_tags(ui, selective = FALSE), ns_id)
-  outputs <- normalize_module_bindings(extract_outputs_from_tags(ui, selective = FALSE), ns_id)
+  inputs <- normalize_module_bindings(
+    extract_inputs_from_tags(ui, selective = FALSE),
+    ns_id
+  )
+  outputs <- normalize_module_bindings(
+    extract_outputs_from_tags(ui, selective = FALSE),
+    ns_id
+  )
   ui <- annotate_module_ui(ui, inputs, outputs)
   tool <- if (!is.null(arguments)) {
     rlang::check_installed("ellmer", reason = "for typed tool arguments.")
-    ellmer::tool(handler, name = name, description = description, arguments = arguments)
+    ellmer::tool(
+      handler,
+      name = name,
+      description = description,
+      arguments = arguments
+    )
   } else {
     list(
       name = name,
@@ -126,7 +152,13 @@ mcp_tool_module <- function(
       outputs = vapply(outputs, `[[`, character(1), "id")
     )
   }
-  mcp_app(ui = ui, tools = list(tool), name = name, description = description, version = version)
+  mcp_app(
+    ui = ui,
+    tools = list(tool),
+    name = name,
+    description = description,
+    version = version
+  )
 }
 
 #' Strip a module namespace from binding ids, keeping DOM ids separately
@@ -152,22 +184,44 @@ annotate_module_ui <- function(ui, inputs, outputs) {
   input_ids <- vapply(inputs, function(x) x$id, character(1))
   input_dom_ids <- vapply(inputs, function(x) x$dom_id %||% x$id, character(1))
   output_ids <- vapply(outputs, function(x) x$id, character(1))
-  output_dom_ids <- vapply(outputs, function(x) x$dom_id %||% x$id, character(1))
+  output_dom_ids <- vapply(
+    outputs,
+    function(x) x$dom_id %||% x$id,
+    character(1)
+  )
   output_types <- vapply(outputs, function(x) x$type %||% "html", character(1))
 
   annotate_node <- function(node) {
     if (inherits(node, "shiny.tag")) {
       detected <- detect_mcp_role(node)
-      if (!is.null(detected$id) && detected$role == "output" && detected$id %in% output_dom_ids) {
+      if (
+        !is.null(detected$id) &&
+          detected$role == "output" &&
+          detected$id %in% output_dom_ids
+      ) {
         idx <- match(detected$id, output_dom_ids)
         if (
-          !identical(htmltools::tagGetAttribute(node, "data-shinymcp-output"), output_ids[[idx]]) ||
-            !identical(htmltools::tagGetAttribute(node, "data-shinymcp-output-type"), output_types[[idx]])
+          !identical(
+            htmltools::tagGetAttribute(node, "data-shinymcp-output"),
+            output_ids[[idx]]
+          ) ||
+            !identical(
+              htmltools::tagGetAttribute(node, "data-shinymcp-output-type"),
+              output_types[[idx]]
+            )
         ) {
-          node <- mcp_output(node, id = output_ids[[idx]], type = output_types[[idx]])
+          node <- mcp_output(
+            node,
+            id = output_ids[[idx]],
+            type = output_types[[idx]]
+          )
         }
       }
-      if (!is.null(detected$id) && detected$role == "input" && detected$id %in% input_dom_ids) {
+      if (
+        !is.null(detected$id) &&
+          detected$role == "input" &&
+          detected$id %in% input_dom_ids
+      ) {
         idx <- match(detected$id, input_dom_ids)
         if (!has_mcp_annotation(node)) {
           node <- mcp_input(node, id = input_ids[[idx]])

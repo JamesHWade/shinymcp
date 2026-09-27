@@ -25,13 +25,21 @@ mcp_input <- function(tag, id = NULL) {
   # groups, date inputs) are matched as a whole, before the <input>s inside
   # them.
   tq <- htmltools::tagQuery(tag)
-  for (selector in c(INPUT_GROUP_SELECTORS, "select", "input", "textarea", "button")) {
+  for (selector in c(
+    INPUT_GROUP_SELECTORS,
+    "select",
+    "input",
+    "textarea",
+    "button"
+  )) {
     found <- tq$find(selector)
     if (found$length() > 0) {
       first <- found$selectedTags()[[1]]
       resolved <- id %||% htmltools::tagGetAttribute(first, "id")
       check_input_id(resolved)
-      found$filter(function(x, i) i == 1)$addAttrs(`data-shinymcp-input` = resolved)
+      found$filter(function(x, i) i == 1)$addAttrs(
+        `data-shinymcp-input` = resolved
+      )
       return(tq$allTags())
     }
   }
@@ -50,10 +58,15 @@ INPUT_GROUP_SELECTORS <- c(
 
 #' @noRd
 is_input_element <- function(tag) {
-  if (tolower(tag$name %||% "") %in% c("input", "select", "textarea", "button")) {
+  if (
+    tolower(tag$name %||% "") %in% c("input", "select", "textarea", "button")
+  ) {
     return(TRUE)
   }
-  classes <- strsplit(htmltools::tagGetAttribute(tag, "class") %||% "", "\\s+")[[1]]
+  classes <- strsplit(
+    htmltools::tagGetAttribute(tag, "class") %||% "",
+    "\\s+"
+  )[[1]]
   any(sub("^\\.", "", INPUT_GROUP_SELECTORS) %in% classes)
 }
 
@@ -83,21 +96,20 @@ check_input_id <- function(id, call = rlang::caller_env()) {
 #' @param tag An [htmltools::tag] object.
 #' @param id The output ID. If `NULL` (the default), reads the element's
 #'   existing `id` attribute.
-#' @param type Output type: `"text"`, `"html"`, `"plot"`, or `"table"`.
+#' @param type Output type: `"text"`, `"html"`, `"plot"`, `"table"`,
+#'   `"image"`, or `"widget"`.
 #' @return The modified [htmltools::tag] with output attributes stamped.
 #' @export
 mcp_output <- function(
   tag,
   id = NULL,
-  type = c("text", "html", "plot", "table")
+  type = c("text", "html", "plot", "table", "image", "widget")
 ) {
   type <- rlang::arg_match(type)
   resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
-  if (is.null(resolved_id)) {
-    rlang::abort(
-      cli::format_inline(
-        "Cannot determine output ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
-      ),
+  if (!is_string(resolved_id)) {
+    shinymcp_abort(
+      "Can't tell which output this is. Supply {.arg id}, or give the element an {.field id} attribute.",
       class = "shinymcp_error_validation"
     )
   }
@@ -326,5 +338,28 @@ mcp_action_button <- function(id, label) {
       `data-shinymcp-type` = "button",
       label
     )
+  )
+}
+
+#' An apply button for apps that wait for it
+#'
+#' In an app made with `mcp_app(trigger = "submit")`, input changes wait
+#' until the user presses an apply button. Without one in the UI, the page
+#' adds its own at the bottom; use `mcp_submit_button()` to choose where it
+#' goes and what it says. The button is disabled until something changes.
+#'
+#' @param label Button text.
+#' @param class CSS classes for the button.
+#' @return An htmltools `<button>` tag.
+#' @family components
+#' @export
+#' @examples
+#' mcp_submit_button("Run analysis")
+mcp_submit_button <- function(label = "Apply", class = "btn btn-primary") {
+  htmltools::tags$button(
+    type = "button",
+    class = class,
+    `data-shinymcp-submit` = "",
+    label
   )
 }

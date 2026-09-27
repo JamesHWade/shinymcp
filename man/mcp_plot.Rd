@@ -18,8 +18,9 @@ mcp_html(id)
 \arguments{
 \item{id}{Output id, matching a name in the tool's result.}
 
-\item{width, height}{CSS size of the plot area. With \code{height = NULL} the
-plot keeps its own aspect ratio; with a height, it's scaled to fit.}
+\item{width, height}{CSS size of the plot area; numbers are pixels. With
+\code{height = NULL} the plot keeps its own aspect ratio; with a height, it's
+scaled to fit.}
 }
 \value{
 An htmltools tag.
@@ -46,5 +47,9 @@ htmltools::tagList(
   mcp_plot("histogram"),
   mcp_table("rows")
 )
+}
+\seealso{
+Other components:
+\code{\link[=mcp_submit_button]{mcp_submit_button()}}
 }
 \concept{components}
