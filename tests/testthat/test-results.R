@@ -871,3 +871,19 @@ test_that("base64 data has no line breaks", {
   expect_false(grepl("\n", result$content[[2]]$data, fixed = TRUE))
   expect_identical(jsonlite::base64_dec(result$content[[2]]$data), png)
 })
+
+test_that("a result sends each library once", {
+  dep <- htmltools::htmlDependency(
+    "shared-lib",
+    "1.0",
+    src = c(file = withr::local_tempdir()),
+    head = "<script>window.sharedLib = 1;</script>"
+  )
+  result <- build_tool_result(list(
+    a = mcp_result_html(htmltools::tagList(htmltools::p("a"), dep)),
+    b = mcp_result_html(htmltools::tagList(htmltools::p("b"), dep))
+  ))
+  outputs <- view_of(result)$outputs
+  expect_length(outputs$a$deps, 1)
+  expect_null(outputs$b$deps)
+})

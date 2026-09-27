@@ -510,10 +510,18 @@ build_tool_result <- function(
       result$structuredContent <- structured
     }
   } else {
-    entries <- lapply(names(outputs), function(id) {
+    # Each library once per result: an output skips what earlier ones
+    # brought.
+    entries <- list()
+    for (id in names(outputs)) {
       hint <- if (id %in% names(output_types)) output_types[[id]]
-      resolve_output(outputs[[id]], skip_deps = skip_deps, hint = hint)
-    })
+      entry <- resolve_output(outputs[[id]], skip_deps = skip_deps, hint = hint)
+      skip_deps <- c(
+        skip_deps,
+        vapply(entry$deps %||% list(), function(d) d$name, character(1))
+      )
+      entries[[length(entries) + 1]] <- entry
+    }
     names(entries) <- names(outputs)
     content <- list(text_block(text %||% summarize_entries(entries)))
     if (images) {

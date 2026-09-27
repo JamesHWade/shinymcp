@@ -615,8 +615,9 @@ test_that("apps backed by a Shiny server say so", {
 
 test_that("print() returns the app invisibly", {
   app <- mcp_app(htmltools::div())
-  expect_invisible(suppressMessages(print(app)))
-  expect_identical(suppressMessages(print(app)), app)
+  utils::capture.output(out <- withVisible(print(app)))
+  expect_false(out$visible)
+  expect_identical(out$value, app)
 })
 
 test_that("app names that aren't URI-safe are encoded in the resource URI", {

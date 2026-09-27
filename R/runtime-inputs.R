@@ -16,6 +16,7 @@
 #'   `bound` (annotated with [bindMcp()]).
 #' @noRd
 describe_ui_inputs <- function(ui) {
+  ui <- resolve_tag_functions(ui)
   specs <- list()
   labels <- ui_labels(ui)
   add <- function(spec) {
@@ -53,6 +54,31 @@ describe_ui_inputs <- function(ui) {
   }
   visit(ui)
   specs
+}
+
+#' Evaluate the tag functions in a UI
+#'
+#' Components that depend on the page's theme (shinyWidgets' button groups,
+#' many of bslib's) are functions until the page is rendered.
+#' @noRd
+resolve_tag_functions <- function(x, depth = 0) {
+  if (depth > 50) {
+    return(x)
+  }
+  if (inherits(x, "shiny.tag.function")) {
+    value <- tryCatch(x(), error = function(e) NULL)
+    return(resolve_tag_functions(value, depth + 1))
+  }
+  if (inherits(x, "shiny.tag")) {
+    x$children <- lapply(x$children, resolve_tag_functions, depth = depth + 1)
+    return(x)
+  }
+  if (is.list(x) && !inherits(x, "html_dependency")) {
+    kept <- attributes(x)
+    x <- lapply(x, resolve_tag_functions, depth = depth + 1)
+    attributes(x) <- kept
+  }
+  x
 }
 
 #' The text of each input's label, by input id
@@ -226,6 +252,37 @@ describe_input_tag <- function(tag) {
     return(describe_tabset(tag, id))
   }
 
+  # Packages' button groups and styled radios and checkboxes
+  # (shinyWidgets' radioGroupButtons(), for one): an element with the id,
+  # holding inputs named after it.
+  if (name %in% c("div", "span", "fieldset")) {
+    grouped <- Filter(
+      function(t) identical(htmltools::tagGetAttribute(t, "name"), id),
+      find_tags(tag, "input")
+    )
+    types <- unique(tolower(vapply(
+      grouped,
+      function(t) htmltools::tagGetAttribute(t, "type") %||% "",
+      character(1)
+    )))
+    if (
+      length(grouped) && length(types) == 1 && types %in% c("radio", "checkbox")
+    ) {
+      opts <- group_options(tag, types)
+      return(new_input_spec(
+        id,
+        if (types == "radio") "radio" else "checkbox-group",
+        tag,
+        choices = opts$values,
+        choice_labels = opts$labels,
+        value = if (length(opts$checked)) {
+          if (types == "radio") opts$checked[[1]] else opts$checked
+        },
+        container = TRUE
+      ))
+    }
+  }
+
   if (name == "select") {
     opts <- select_options(tag)
     multiple <- !is.null(htmltools::tagGetAttribute(tag, "multiple"))
@@ -255,6 +312,10 @@ describe_input_tag <- function(tag) {
 
   if (name == "input") {
     type <- tolower(htmltools::tagGetAttribute(tag, "type") %||% "text")
+    # shinyWidgets' sliderTextInput(): a slider over labels.
+    if (has_class("sw-slider-text")) {
+      return(describe_text_slider(tag, id))
+    }
     if (has_class("js-range-slider")) {
       return(describe_slider(tag, id))
     }
@@ -378,7 +439,9 @@ new_input_spec <- function(id, kind, tag, value = NULL, label = NULL, ...) {
   spec <- list(
     id = id,
     kind = kind,
-    label = label %||% input_label(tag, id),
+    label = label %||%
+      input_label(tag, id) %||%
+      attr_string(tag, "data-label-text"),
     value = value,
     ...
   )
@@ -408,6 +471,35 @@ describe_slider <- function(tag, id) {
     max = convert(attr("data-max")),
     step = as_number_or_null(attr("data-step")),
     data_type = data_type
+  )
+}
+
+#' @noRd
+describe_text_slider <- function(tag, id) {
+  values <- tryCatch(
+    as.character(unlist(jsonlite::parse_json(
+      attr_string(tag, "data-swvalues") %||% "[]"
+    ))),
+    error = function(e) character()
+  )
+  index <- function(name) {
+    i <- suppressWarnings(as.integer(attr_string(tag, name)))
+    if (length(i) == 1 && !is.na(i) && i >= 0 && i < length(values)) {
+      values[[i + 1]]
+    }
+  }
+  range <- identical(attr_string(tag, "data-type"), "double")
+  new_input_spec(
+    id,
+    if (range) "select-multiple" else "select",
+    tag,
+    choices = values,
+    choice_labels = values,
+    value = if (range) {
+      c(index("data-from"), index("data-to"))
+    } else {
+      index("data-from")
+    }
   )
 }
 
@@ -486,7 +578,7 @@ group_options <- function(tag, type) {
   )
   values <- vapply(
     inputs,
-    function(t) htmltools::tagGetAttribute(t, "value") %||% "",
+    function(t) attr_string(t, "value") %||% "",
     character(1)
   )
   checked <- values[vapply(
@@ -505,7 +597,7 @@ group_options <- function(tag, type) {
       find_tags(w, "input")
     )
     if (length(inner) == 1) {
-      v <- htmltools::tagGetAttribute(inner[[1]], "value") %||% ""
+      v <- attr_string(inner[[1]], "value") %||% ""
       text <- trimws(tag_text(w))
       if (nzchar(text) && v %in% values) {
         labels[match(v, values)] <- text
@@ -690,6 +782,17 @@ tag_text <- function(tag) {
   }
   walk(tag$children)
   gsub("\\s+", " ", paste(out, collapse = " "))
+}
+
+#' An attribute as one string, however the tag stores it
+#' @noRd
+attr_string <- function(tag, name) {
+  value <- htmltools::tagGetAttribute(tag, name)
+  if (is.null(value)) {
+    return(NULL)
+  }
+  value <- unlist(value)
+  if (length(value) == 0) "" else paste(as.character(value), collapse = " ")
 }
 
 #' @noRd

@@ -480,3 +480,79 @@ test_that("inlined stylesheets drop @imports of relative URLs", {
     )
   )
 })
+
+test_that("files the UI refers to locally are written into the page", {
+  www <- withr::local_tempdir()
+  writeLines("window.fromWww = 1;", file.path(www, "app.js"))
+  writeLines(".from-www { color: red; }", file.path(www, "app.css"))
+  png <- as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1:20))
+  writeBin(png, file.path(www, "logo.png"))
+  ui <- htmltools::tagList(
+    htmltools::tags$head(
+      htmltools::tags$script(src = "app.js"),
+      htmltools::tags$link(rel = "stylesheet", href = "app.css"),
+      htmltools::tags$script(src = "https://cdn.example.com/x.js")
+    ),
+    htmltools::tags$img(src = "logo.png", alt = "Logo"),
+    htmltools::tags$img(src = "missing.png")
+  )
+  html <- mcp_app(ui, www = www)$html_resource()
+  expect_match(html, "window.fromWww = 1;", fixed = TRUE)
+  expect_match(html, ".from-www { color: red; }", fixed = TRUE)
+  expect_match(html, "<img src=\"data:image/png;base64,", fixed = TRUE)
+  expect_match(html, "alt=\"Logo\"", fixed = TRUE)
+  expect_no_match(html, "src=\"app.js\"", fixed = TRUE)
+  # Remote and missing files are left as they are.
+  expect_match(html, "src=\"https://cdn.example.com/x.js\"", fixed = TRUE)
+  expect_match(html, "src=\"missing.png\"", fixed = TRUE)
+
+  expect_error(
+    mcp_app(ui, www = "no/such/dir"),
+    class = "shinymcp_error_validation"
+  )
+})
+
+test_that("paths added with addResourcePath() are found without www", {
+  skip_if_not_installed("shiny")
+  dir <- withr::local_tempdir()
+  writeLines("window.fromResource = 1;", file.path(dir, "lib.js"))
+  shiny::addResourcePath("shinymcp-test-res", dir)
+  withr::defer(shiny::removeResourcePath("shinymcp-test-res"))
+  ui <- htmltools::tags$script(src = "shinymcp-test-res/lib.js")
+  expect_match(
+    mcp_app(ui)$html_resource(),
+    "window.fromResource = 1;",
+    fixed = TRUE
+  )
+  # Paths can't climb out of the directory.
+  expect_null(resolve_local_asset("shinymcp-test-res/../secret", asset_roots()))
+})
+
+test_that("stylesheets keep images and lose fonts they can't load", {
+  dir <- withr::local_tempdir()
+  dir.create(file.path(dir, "img"))
+  writeBin(
+    as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a)),
+    file.path(dir, "img", "a.png")
+  )
+  css <- paste(
+    "@font-face{font-family:x;src:url(../fonts/x.woff2)}",
+    "@font-face{font-family:y;src:url(https://fonts.example.com/y.woff2)}",
+    ".a{background:url(img/a.png)}",
+    ".b{background:url(\"https://example.com/b.png\")}"
+  )
+  out <- inline_css(css, dir)
+  expect_no_match(out, "x.woff2", fixed = TRUE)
+  expect_match(out, "https://fonts.example.com/y.woff2", fixed = TRUE)
+  expect_match(out, "url(\"data:image/png;base64,", fixed = TRUE)
+  expect_match(out, "https://example.com/b.png", fixed = TRUE)
+})
+
+test_that("pages load the stand-in for Shiny's browser API first", {
+  html <- mcp_app(htmltools::div("x"))$html_resource()
+  shim <- regexpr("<script id=\"shinymcp-shiny\"", html, fixed = TRUE)
+  style <- regexpr("<style id=\"shinymcp-style\"", html, fixed = TRUE)
+  expect_gt(shim, 0)
+  expect_lt(shim, style)
+  expect_match(html, "window.Shiny = Shiny;", fixed = TRUE)
+})

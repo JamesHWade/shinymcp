@@ -286,6 +286,7 @@ test_that("the runtime adds a model tool and an app-only view tool", {
       "instance",
       "inputs",
       "changed",
+      "events",
       "kinds",
       "sizes",
       "pixelRatio",
@@ -293,12 +294,14 @@ test_that("the runtime adds a model tool and an app-only view tool", {
       "host",
       "output",
       "body",
+      "sync",
+      "dependency",
       "all"
     )
   )
   expect_setequal(
     unclass(view_props$action$enum),
-    c("update", "download", "data", "close")
+    c("update", "download", "data", "dependency", "close")
   )
   expect_match(tools$cars_view$description, "Not for the model", fixed = TRUE)
 
@@ -1867,7 +1870,9 @@ test_that("widget dependencies are inlined, and skipped when the page has them",
   app <- rt_app(ui, server, name = "dt")
   tbl <- rt_meta(rt_open(app))$outputs$tbl
   names <- vapply(tbl$deps, function(d) d$name, character(1))
-  expect_true("jquery" %in% names)
+  expect_true("dt-core" %in% names)
+  # The page was built with jQuery.
+  expect_false("jquery" %in% names)
   heads <- vapply(tbl$deps, function(d) d$head, character(1))
   # Inlined, not links to paths only a Shiny server could serve.
   expect_false(any(grepl("<script src=", heads, fixed = TRUE)))
@@ -1875,10 +1880,10 @@ test_that("widget dependencies are inlined, and skipped when the page has them",
 
   skipped <- rt_meta(rt_open(
     app,
-    context = list(skip_deps = "jquery@0.0.1")
+    context = list(skip_deps = "dt-core@0.0.1")
   ))$outputs$tbl
   expect_false(
-    "jquery" %in% vapply(skipped$deps, function(d) d$name, character(1))
+    "dt-core" %in% vapply(skipped$deps, function(d) d$name, character(1))
   )
   expect_identical(skipped$value, tbl$value)
 
@@ -1887,7 +1892,7 @@ test_that("widget dependencies are inlined, and skipped when the page has them",
   meta <- rt_meta(rt_update(
     app,
     view,
-    context = list(skip_deps = "jquery@0.0.1")
+    context = list(skip_deps = "dt-core@0.0.1")
   ))
   expect_length(meta$outputs, 0)
 })
@@ -2764,4 +2769,121 @@ test_that("choices the server sets are valid when the model changes a view", {
 
   wrong <- rt_open(app, list(view = opened$instance, model = "F150"))
   expect_true(wrong$isError)
+})
+
+test_that("inputs the page marks as events count even when they repeat", {
+  skip_if_not_installed("shiny")
+  clicks <- 0
+  ui <- shiny::fluidPage(shiny::textOutput("o"))
+  server <- function(input, output, session) {
+    shiny::observeEvent(input$map_click, clicks <<- clicks + 1)
+    output$o <- shiny::renderText(paste("clicks", clicks, input$map_click$lat))
+  }
+  app <- rt_app(ui, server, name = "clicks")
+  view <- rt_meta(rt_open(app))
+  point <- list(lat = 1, lng = 2)
+  first <- rt_meta(rt_update(
+    app,
+    view,
+    inputs = list(map_click = point),
+    changed = "map_click",
+    kinds = list(map_click = list(kind = "value")),
+    events = "map_click"
+  ))
+  expect_identical(clicks, 1)
+  rt_update(
+    app,
+    first,
+    inputs = list(map_click = point),
+    changed = "map_click",
+    kinds = list(map_click = list(kind = "value")),
+    events = "map_click"
+  )
+  expect_identical(clicks, 2)
+  # Without the event mark, a repeated value is no change.
+  rt_update(app, first, inputs = list(map_click = point), changed = "map_click")
+  expect_identical(clicks, 2)
+})
+
+test_that("values from JavaScript go through the input handler for their type", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::textOutput("o"))
+  server <- function(input, output, session) {
+    output$o <- shiny::renderText(class(input$when)[1])
+  }
+  app <- rt_app(ui, server, name = "typed")
+  view <- rt_meta(rt_open(app))
+  meta <- rt_meta(rt_update(
+    app,
+    view,
+    inputs = list(when = "2024-05-01", .clientValue_x = 1),
+    changed = c("when", ".clientValue_x"),
+    kinds = list(when = list(kind = "value", type = "shiny.date"))
+  ))
+  expect_identical(meta$outputs$o$value, "Date")
+})
+
+test_that("the model's result names large libraries, and the page fetches them", {
+  skip_if_not_installed("shiny")
+  withr::local_options(shinymcp.max_inline_dependency_bytes = 100)
+  dir <- withr::local_tempdir()
+  writeLines(strrep("window.bigLibrary = 1;\n", 20), file.path(dir, "big.js"))
+  big <- htmltools::htmlDependency(
+    "big-lib",
+    "2.0.0",
+    src = c(file = dir),
+    script = "big.js"
+  )
+  ui <- shiny::fluidPage(shiny::uiOutput("dyn"))
+  server <- function(input, output, session) {
+    output$dyn <- shiny::renderUI(htmltools::tagList(htmltools::div("hi"), big))
+  }
+  app <- rt_app(ui, server, name = "big")
+  view <- rt_meta(rt_open(app))
+  dep <- view$outputs$dyn$deps[[1]]
+  expect_identical(dep, list(name = "big-lib", version = "2.0.0", fetch = TRUE))
+
+  fetched <- app$run_tool(
+    "big_view",
+    list(action = "dependency", dependency = "big-lib@2.0.0"),
+    context = list(caller = "app")
+  )
+  expect_null(fetched$isError)
+  expect_match(
+    rt_meta(fetched)$dependency$head,
+    "window.bigLibrary = 1;",
+    fixed = TRUE
+  )
+
+  missing <- app$run_tool(
+    "big_view",
+    list(action = "dependency", dependency = "nope@1"),
+    context = list(caller = "app")
+  )
+  expect_true(missing$isError)
+
+  # The page's own calls carry libraries whole.
+  update <- rt_meta(rt_update(app, view, all = TRUE))
+  expect_match(
+    update$outputs$dyn$deps[[1]]$head,
+    "window.bigLibrary",
+    fixed = TRUE
+  )
+})
+
+test_that("results leave out libraries the page was built with", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::uiOutput("dyn"))
+  server <- function(input, output, session) {
+    output$dyn <- shiny::renderUI(shiny::fluidRow(shiny::column(6, "x")))
+  }
+  app <- rt_app(ui, server, name = "own")
+  view <- rt_meta(rt_open(app))
+  names <- vapply(
+    view$outputs$dyn$deps %||% list(),
+    function(d) d$name,
+    character(1)
+  )
+  expect_false("jquery" %in% names)
+  expect_false("bootstrap" %in% names)
 })

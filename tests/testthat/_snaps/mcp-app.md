@@ -2,10 +2,10 @@
 
     Code
       print(app)
-    Message
+    Output
       <McpApp> two-tools 0.1.0
       Greets people.
-      UI resource: <ui://two-tools>
+      UI resource: ui://two-tools
       Tools:
       * greet
       * approve (app only)
@@ -14,18 +14,18 @@
 
     Code
       print(mcp_app(htmltools::div(), name = "empty", version = "2.0.0"))
-    Message
+    Output
       <McpApp> empty 2.0.0
-      UI resource: <ui://empty>
+      UI resource: ui://empty
       No tools.
 
 # apps backed by a Shiny server say so
 
     Code
       print(app)
-    Message
+    Output
       <McpApp> live 0.1.0
-      UI resource: <ui://live>
-      Runs a live Shiny server function for each view.
+      UI resource: ui://live
+      Runs the Shiny app's server function, one session per view.
       No tools.
 

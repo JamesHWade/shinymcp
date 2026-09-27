@@ -102,6 +102,7 @@ ShinyRuntime <- R6::R6Class(
         outputs
       ))
       private$instances <- new.env(parent = emptyenv())
+      private$dep_cache <- new.env(parent = emptyenv())
       invisible(self)
     },
 
@@ -202,6 +203,7 @@ ShinyRuntime <- R6::R6Class(
     ns_prefix = NULL,
     selective = FALSE,
     instances = NULL,
+    dep_cache = NULL,
 
     open_view = function(arguments, context) {
       arguments <- arguments %||% list()
@@ -266,6 +268,9 @@ ShinyRuntime <- R6::R6Class(
         }
         return(wire_result(list(content = list(text_block("closed")))))
       }
+      if (identical(action, "dependency")) {
+        return(private$dependency_request(arguments$dependency))
+      }
       if (identical(action, "data")) {
         return(private$data_request(
           instance,
@@ -308,7 +313,7 @@ ShinyRuntime <- R6::R6Class(
         stale <- is.numeric(arguments$revision) &&
           !identical(as.integer(arguments$revision), instance$revision)
         changed <- as.character(unlist(arguments$changed))
-        if (length(changed) == 0 || stale) {
+        if (length(changed) == 0 || stale || isTRUE(arguments$sync)) {
           changed <- names(page_inputs)
         }
         values <- private$page_values(
@@ -317,7 +322,12 @@ ShinyRuntime <- R6::R6Class(
           instance
         )
         instance$page_sent <- private$dom_keys(values)
-        private$set_inputs(instance, values, dedupe = TRUE)
+        private$set_inputs(
+          instance,
+          values,
+          dedupe = TRUE,
+          events = as.character(unlist(arguments$events))
+        )
         all_outputs <- isTRUE(arguments$all) || stale
       }
       private$apply_sizes(instance, arguments$sizes, arguments$pixelRatio)
@@ -510,7 +520,7 @@ ShinyRuntime <- R6::R6Class(
     page_values = function(page_inputs, kinds, instance) {
       out <- list()
       for (dom_id in names(page_inputs)) {
-        if (startsWith(dom_id, ".") || !nzchar(dom_id)) {
+        if (!nzchar(dom_id)) {
           next
         }
         public_id <- private$public_id(dom_id)
@@ -531,11 +541,20 @@ ShinyRuntime <- R6::R6Class(
         previous <- if (!is.null(instance)) {
           shiny::isolate(instance$session$input[[dom_id]])
         }
-        out[[public_id]] <- coerce_input_value(
-          page_inputs[[dom_id]],
-          spec,
-          previous = previous
-        )
+        value <- page_inputs[[dom_id]]
+        # Inputs from packages' own bindings, and values set from
+        # JavaScript, may name an input handler, as they would in Shiny.
+        if (is_string(described$type)) {
+          value <- apply_input_handler(
+            value,
+            described$type,
+            dom_id,
+            if (!is.null(instance)) instance$session
+          )
+          out[[public_id]] <- value
+          next
+        }
+        out[[public_id]] <- coerce_input_value(value, spec, previous = previous)
       }
       out
     },
@@ -592,13 +611,16 @@ ShinyRuntime <- R6::R6Class(
       }
     },
 
-    set_inputs = function(inst, values, dedupe = FALSE) {
+    set_inputs = function(inst, values, dedupe = FALSE, events = character()) {
       values <- private$dom_keys(values)
       if (dedupe && length(values)) {
+        # An event (a click, say) counts even when it repeats the value.
+        # Both are keyed by the ids on the page.
         same <- vapply(
           names(values),
           function(id) {
-            identical(shiny::isolate(inst$session$input[[id]]), values[[id]])
+            !id %in% events &&
+              identical(shiny::isolate(inst$session$input[[id]]), values[[id]])
           },
           logical(1)
         )
@@ -737,10 +759,14 @@ ShinyRuntime <- R6::R6Class(
       }
 
       inst$revision <- (inst$revision %||% 0L) + 1L
+      payloads <- lapply(collected[changed], function(o) o$payload)
+      if (model) {
+        payloads <- lapply(payloads, private$refer_large_deps)
+      }
       view <- compact_list(list(
         instance = inst$id,
         revision = inst$revision,
-        outputs = lapply(collected[changed], function(o) o$payload),
+        outputs = payloads,
         inputs = page_input_updates(inst, model),
         inputMessages = drain(inst, "input_messages", reset_echo = TRUE),
         notifications = drain(inst, "notifications"),
@@ -792,6 +818,42 @@ ShinyRuntime <- R6::R6Class(
       }
       result[["_meta"]] <- list(`shinymcp/view` = view)
       wire_result(result)
+    },
+
+    # The model's call result stays in the conversation, so large libraries
+    # (plotly's is 3.5 MB) go in it by name. The page fetches them through
+    # the view tool, whose calls the conversation doesn't keep.
+    refer_large_deps = function(payload) {
+      limit <- getOption("shinymcp.max_inline_dependency_bytes", 256 * 1024)
+      if (length(payload$deps) == 0) {
+        return(payload)
+      }
+      payload$deps <- lapply(payload$deps, function(dep) {
+        if (nchar(dep$head %||% "", type = "bytes") <= limit) {
+          return(dep)
+        }
+        private$dep_cache[[paste0(dep$name, "@", dep$version)]] <- dep
+        list(name = dep$name, version = dep$version, fetch = TRUE)
+      })
+      payload
+    },
+
+    dependency_request = function(key) {
+      dep <- if (is_string(key)) private$dep_cache[[key]]
+      if (is.null(dep)) {
+        return(wire_result(list(
+          content = list(text_block(paste0(
+            "No dependency '",
+            key %||% "",
+            "' here."
+          ))),
+          isError = TRUE
+        )))
+      }
+      wire_result(list(
+        content = list(text_block(paste0(dep$name, " ", dep$version))),
+        `_meta` = list(`shinymcp/view` = list(dependency = dep))
+      ))
     },
 
     # A request from a widget for data kept in R, such as the rows of a
@@ -914,11 +976,12 @@ view_tool_schema <- function() {
     properties = list(
       action = list(
         type = "string",
-        enum = I(c("update", "download", "data", "close"))
+        enum = I(c("update", "download", "data", "dependency", "close"))
       ),
       instance = list(type = "string"),
       inputs = list(type = "object"),
       changed = list(type = "array", items = list(type = "string")),
+      events = list(type = "array", items = list(type = "string")),
       kinds = list(type = "object"),
       sizes = list(type = "object"),
       pixelRatio = list(type = "number"),
@@ -926,7 +989,9 @@ view_tool_schema <- function() {
       host = list(type = "object"),
       output = list(type = "string"),
       body = list(type = "string"),
-      all = list(type = "boolean")
+      all = list(type = "boolean"),
+      sync = list(type = "boolean"),
+      dependency = list(type = "string")
     )
   )
 }
@@ -959,6 +1024,31 @@ default_runtime_description <- function(runtime) {
       ""
     },
     "The user can keep adjusting the app after it opens."
+  )
+}
+
+#' Apply the input handler Shiny has registered for a type
+#'
+#' Packages register handlers with shiny::registerInputHandler() for the
+#' values their own inputs send (shinyWidgets' "air.date", for one). Shiny
+#' applies them as values arrive; so does the runtime.
+#' @noRd
+apply_input_handler <- function(value, type, name, session = NULL) {
+  handler <- tryCatch(
+    utils::getFromNamespace("inputHandlers", "shiny")$get(type),
+    error = function(e) NULL
+  )
+  if (!is.function(handler)) {
+    return(simplify_json_value(value))
+  }
+  tryCatch(
+    handler(value, session, name),
+    error = function(e) {
+      cli::cli_warn(
+        "The {.val {type}} input handler failed for {.field {name}}: {conditionMessage(e)}"
+      )
+      simplify_json_value(value)
+    }
   )
 }
 
@@ -1019,7 +1109,8 @@ app_lifecycle <- function(on_start = NULL, on_stop = NULL) {
     start = start,
     within = within,
     stop = stop,
-    started = function() state$started
+    started = function() state$started,
+    dir = function() state$dir
   )
 }
 
@@ -1207,7 +1298,7 @@ runtime_html_message <- function(message) {
     message$html <- as.character(message$html)
   }
   if (length(message$deps)) {
-    message$deps <- page_dependencies(message$deps)
+    message$deps <- payload_dependencies(message$deps)
   }
   message
 }
@@ -1267,6 +1358,7 @@ drain <- function(inst, field, reset_echo = FALSE) {
 #' Describe the outputs in a Shiny UI
 #' @noRd
 describe_ui_outputs <- function(ui) {
+  ui <- resolve_tag_functions(ui)
   specs <- list()
   walk_tag_tree(ui, function(tag) {
     mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-output")
@@ -1358,6 +1450,10 @@ collect_runtime_outputs <- function(inst, specs, skip_deps = character()) {
   )
   ids <- unique(c(names(dom_to_public), inst$outputs))
   out <- list()
+  # Each library once per result: an output skips what earlier ones brought.
+  sent <- function(entry) {
+    vapply(entry$payload$deps %||% list(), function(d) d$name, character(1))
+  }
   for (dom_id in ids) {
     if (!dom_id %in% inst$outputs) {
       next
@@ -1399,6 +1495,7 @@ collect_runtime_outputs <- function(inst, specs, skip_deps = character()) {
       error = function(e) e
     )
     out[[public_id]] <- runtime_output_entry(value, spec, dom_id, skip_deps)
+    skip_deps <- c(skip_deps, sent(out[[public_id]]))
   }
   out
 }
@@ -1468,7 +1565,7 @@ local_dependencies <- function(deps) {
 
 #' Dependencies as payloads for the page, minus those it has
 #' @noRd
-page_dependencies <- function(deps, skip_deps = character()) {
+payload_dependencies <- function(deps, skip_deps = character()) {
   deps <- local_dependencies(deps)
   deps <- Filter(function(d) !dependency_loaded(d, skip_deps), deps)
   if (length(deps) == 0) {
@@ -1538,7 +1635,7 @@ runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
       payload = compact_list(list(
         kind = "html",
         value = html,
-        deps = page_dependencies(value$deps, skip_deps)
+        deps = payload_dependencies(value$deps, skip_deps)
       )),
       model = text,
       text = text

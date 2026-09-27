@@ -251,7 +251,10 @@
     loadedDeps: {},
     loadedNames: {},
     customHandlers: {},
-    contextListeners: []
+    contextListeners: [],
+    events: {},
+    syncedInstance: null,
+    shinyAnnounced: false
   };
   each(config.deps || [], function (key) {
     state.loadedDeps[key] = true;
@@ -367,6 +370,8 @@
     if ((tag === "button" || tag === "a") && hasClass(el, "action-button")) return "action";
     if (tag === "button" && el.getAttribute("data-shinymcp-type") === "button") return "action";
     if (tag === "input") {
+      // shinyWidgets' text sliders belong to their own binding.
+      if (hasClass(el, "sw-slider-text")) return null;
       if (hasClass(el, "js-range-slider")) return el.getAttribute("data-type") === "double" ? "slider-range" : "slider";
       if (type === "range") return "slider";
       if (type === "checkbox") return "checkbox";
@@ -934,6 +939,226 @@
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Shiny's browser API
+  // ---------------------------------------------------------------------------
+
+  // shinymcp-shiny.js defines window.Shiny before any other script, so
+  // packages can register bindings and message handlers as they load. Here
+  // the page takes over what they registered.
+  var shinyApi = window.Shiny && window.Shiny.__shinymcp ? window.Shiny : null;
+
+  function toArray(list) {
+    if (!list) return [];
+    if (list.nodeType === 1) return [list];
+    return Array.prototype.slice.call(list);
+  }
+
+  function shinyEvent(el, type, props) {
+    var $ = window.jQuery;
+    if (!$ || !el) return;
+    try {
+      $(el).trigger($.Event(type, props || {}));
+    } catch (e) {
+      logWarn(type + " handler failed", e);
+    }
+  }
+
+  function connectShiny() {
+    if (!shinyApi) return;
+    var internal = shinyApi.__shinymcp;
+    each(keys(internal.handlers), function (type) {
+      state.customHandlers[type] = internal.handlers[type];
+    });
+    shinyApi.addCustomMessageHandler = function (type, fn) {
+      state.customHandlers[type] = fn;
+    };
+    shinyApi.setInputValue = function (name, value, opts) {
+      setShinyInput(name, value, opts || {});
+    };
+    shinyApi.bindAll = function (scope) {
+      var root = scope && scope.jquery ? scope[0] : scope;
+      scanInputs(root || document);
+      announceOutputs(root || document);
+    };
+    shinyApi.initializeInputs = function () {};
+    shinyApi.renderContent = function (el, content, where) {
+      el = el && el.jquery ? el[0] : el;
+      if (!el) return;
+      var html = typeof content === "string" ? content : (content && content.html) || "";
+      loadDeps(content && content.deps && content.deps[0] && content.deps[0].head ? content.deps : null);
+      if (!where || where === "replace") {
+        setHtml(el, html);
+      } else {
+        el.insertAdjacentHTML(where, html);
+        runScripts(el);
+        afterDomChange(el);
+      }
+    };
+    // Bindings registered later (from a dependency that came with
+    // renderUI() output, say) bind what's already on the page.
+    internal.onRegister = function () {
+      if (state.scanned) scanInputs(document);
+    };
+    var waiting = internal.pending.inputs.splice(0);
+    each(waiting, function (call) {
+      setShinyInput(call[0], call[1], call[2]);
+    });
+  }
+
+  // Shiny.setInputValue(): a value from JavaScript rather than a form
+  // element, such as a widget's click or selection. "name:type" asks for
+  // the input handler registered for that type in R.
+  function setShinyInput(name, value, opts) {
+    name = String(name);
+    var type = null;
+    var colon = name.indexOf(":");
+    if (colon > 0) {
+      type = name.slice(colon + 1);
+      name = name.slice(0, colon);
+    }
+    var a = adapters[name];
+    if (!a) {
+      a = adapters[name] = {
+        id: name,
+        kind: "value",
+        value: null,
+        get: function () { return this.value; },
+        set: function (v) { this.value = v; },
+        listeners: []
+      };
+    }
+    if (a.kind === "value") {
+      a.value = value === undefined ? null : value;
+      if (type) a.inputType = type;
+    } else {
+      a.set(value);
+    }
+    if (opts && opts.priority === "event") {
+      state.events[name] = true;
+      a.event = true;
+    }
+    onInputChanged(a);
+    if (a.kind === "value") a.event = false;
+  }
+
+  // Inputs whose package registered a Shiny input binding. They are bound
+  // before shinymcp's own controls, as Shiny tries registered bindings
+  // before its built-in ones.
+  function bindCustomInputs(root) {
+    if (!shinyApi) return;
+    each(shinyApi.inputBindings.getBindings(), function (entry) {
+      var binding = entry.binding;
+      var found;
+      try {
+        found = toArray(binding.find(root));
+      } catch (e) {
+        logWarn("input binding " + (binding.name || "") + " failed to find inputs", e);
+        return;
+      }
+      each(found, function (el) {
+        if (el.__shinymcpAdapter) return;
+        var id;
+        try {
+          id = binding.getId(el);
+        } catch (e) {
+          id = el.id;
+        }
+        if (!id || adapters[id]) return;
+        var adapter = bindingAdapter(binding, el, id);
+        el.__shinymcpAdapter = adapter;
+        adapter.listeners.push(onInputChanged);
+        adapters[id] = adapter;
+      });
+    });
+  }
+
+  function readBinding(binding, el) {
+    try {
+      return binding.getValue(el);
+    } catch (e) {
+      return undefined;
+    }
+  }
+
+  function bindingAdapter(binding, el, id) {
+    var $ = window.jQuery;
+    try {
+      binding.initialize(el);
+    } catch (e) {
+      logWarn("input binding " + id + " failed to initialize", e);
+    }
+    var type = null;
+    try {
+      type = binding.getType(el);
+    } catch (e) {
+      type = null;
+    }
+    var adapter = {
+      id: id,
+      kind: "custom",
+      el: el,
+      binding: binding,
+      inputType: type,
+      listeners: [],
+      get: function () { return binding.getValue(el); },
+      // Set the way the server would update it, so the widget redraws:
+      // Shiny's update functions send `value`, some packages' `selected`.
+      // Fall back to setValue() when that didn't take.
+      set: function (v) {
+        if (sameValue(readBinding(binding, el), v)) return;
+        try {
+          binding.receiveMessage(el, { value: v, selected: v });
+        } catch (e) {
+          logWarn("input binding " + id + " couldn't take a value", e);
+        }
+        if (!sameValue(readBinding(binding, el), v) && typeof binding.setValue === "function") {
+          try {
+            binding.setValue(el, v);
+          } catch (e) {
+            logWarn("input binding " + id + " couldn't take a value", e);
+          }
+        }
+      },
+      receiveMessage: function (msg) { return binding.receiveMessage(el, msg); }
+    };
+    adapter.emit = function () {
+      for (var i = 0; i < adapter.listeners.length; i++) adapter.listeners[i](adapter);
+    };
+    if ($) $(el).data("shiny-input-binding", binding);
+    el.classList.add("shiny-bound-input");
+    try {
+      binding.subscribe(el, function () { adapter.emit(); });
+    } catch (e) {
+      logWarn("input binding " + id + " failed to subscribe", e);
+    }
+    shinyEvent(el, "shiny:bound", { binding: binding, bindingType: "input" });
+    return adapter;
+  }
+
+  // Shiny marks each output it binds, and packages (spinners, for one)
+  // listen for it.
+  function announceOutputs(root) {
+    var scope = root && root.querySelectorAll ? root : document;
+    var outputs = toArray(scope.querySelectorAll(
+      "[data-shinymcp-output], .shiny-text-output[id], .shiny-html-output[id], .shiny-plot-output[id], .shiny-image-output[id], .html-widget-output[id]"
+    ));
+    each(outputs, function (el) {
+      if (el.__shinymcpBound) return;
+      el.__shinymcpBound = true;
+      el.classList.add("shiny-bound-output");
+      shinyEvent(el, "shiny:bound", { binding: null, bindingType: "output" });
+    });
+  }
+
+  function announceSession() {
+    if (state.shinyAnnounced) return;
+    state.shinyAnnounced = true;
+    if (shinyApi && state.instance) shinyApi.shinyapp.config.sessionId = state.instance;
+    shinyEvent(document, "shiny:connected", {});
+    shinyEvent(document, "shiny:sessioninitialized", {});
+  }
+
   // Find input elements in a subtree. In "shiny" mode every Shiny-style
   // input counts; in "tools" mode only those tied to tool arguments.
   var INPUT_SELECTOR = [
@@ -950,6 +1175,7 @@
   ].join(",");
 
   function scanInputs(root) {
+    bindCustomInputs(root || document);
     var found = [];
     var candidates = (root || document).querySelectorAll(INPUT_SELECTOR);
     if (root && root.matches && root.matches(INPUT_SELECTOR)) found.push(root);
@@ -976,11 +1202,19 @@
     });
   }
 
-  function readInputs(ids) {
+  function readInputs(ids, changed) {
     var out = {};
     each(ids || keys(adapters), function (id) {
       var a = adapters[id];
-      if (a && !a.unsupported) out[id] = a.get();
+      if (!a || a.unsupported) return;
+      // Values set from JavaScript (widget events, Shiny.setInputValue())
+      // go with the update that changed them, not with every update.
+      if (changed && a.kind === "value" && !changed[id]) return;
+      try {
+        out[id] = a.get();
+      } catch (e) {
+        logWarn("couldn't read input " + id, e);
+      }
     });
     return out;
   }
@@ -1160,16 +1394,26 @@
     var kinds = {};
     each(ids, function (id) {
       var a = adapters[id];
-      if (a) kinds[id] = a.dataType ? { kind: a.kind, dataType: a.dataType } : { kind: a.kind };
+      if (!a) return;
+      var kind = { kind: a.kind };
+      if (a.dataType) kind.dataType = a.dataType;
+      if (a.inputType) kind.type = a.inputType;
+      kinds[id] = kind;
     });
     return kinds;
   }
 
   function viewUpdate(changed, extra) {
+    var changedSet = {};
+    each(changed, function (id) { changedSet[id] = true; });
+    var events = keys(state.events);
+    // The first update a session gets from this page carries every input,
+    // including ones the server knows nothing about until then.
+    var sync = !inFlight && state.instance !== state.syncedInstance;
     var payload = assign(
       {
         action: "update",
-        inputs: readInputs(),
+        inputs: readInputs(null, sync ? null : changedSet),
         changed: changed,
         kinds: inputKinds(keys(adapters)),
         sizes: outputSizes(),
@@ -1185,6 +1429,13 @@
       queued = queued || { changed: {} };
       each(changed, function (id) { queued.changed[id] = true; });
       return;
+    }
+    // Inputs set with priority "event" count even when their value repeats.
+    if (events.length) payload.events = events;
+    state.events = {};
+    if (sync) {
+      payload.sync = true;
+      state.syncedInstance = state.instance;
     }
     inFlight = true;
     return callTool(config.runtime.viewTool, payload).then(
@@ -1317,6 +1568,7 @@
       if (text) renderSingle({ kind: "text", value: text });
     }
 
+    announceSession();
     if (opts.initial && !state.firstResult) {
       state.firstResult = true;
       afterFirstResult(result, view);
@@ -1405,7 +1657,12 @@
   function markRecalculating(ids, on) {
     each(ids || [], function (id) {
       var el = findOutput(id);
-      if (el) el.classList.toggle("recalculating", !!on);
+      if (!el) return;
+      el.classList.toggle("recalculating", !!on);
+      if (on) {
+        shinyEvent(el, "shiny:outputinvalidated", { name: id });
+        shinyEvent(el, "shiny:recalculating", { name: id });
+      }
     });
   }
 
@@ -1421,11 +1678,19 @@
 
   function safeRender(el, payload, id) {
     try {
-      renderInto(el, payload, id);
+      if (renderInto(el, payload, id) === "pending") return;
     } catch (e) {
       logWarn("couldn't draw output " + id, e);
       el.textContent = "This output couldn't be drawn: " + (e && e.message ? e.message : e);
       el.classList.add("shiny-output-error");
+      shinyEvent(el, "shiny:error", { name: id, error: { message: String(e && e.message ? e.message : e) } });
+      return;
+    }
+    if (payload.kind === "keep") return;
+    if (payload.kind === "error") {
+      shinyEvent(el, "shiny:error", { name: id, error: { message: payload.value || "" } });
+    } else {
+      shinyEvent(el, "shiny:value", { name: id, value: payload.value });
     }
   }
 
@@ -1441,7 +1706,22 @@
   function renderInto(el, payload, id) {
     var kind = payload.kind || "text";
     if (kind === "keep") return;
-    loadDeps(payload.deps);
+    var waiting = loadDeps(payload.deps);
+    if (waiting) {
+      el.classList.add("recalculating");
+      waiting.then(
+        function () {
+          el.classList.remove("recalculating");
+          safeRender(el, assign({}, payload, { deps: null }), id);
+        },
+        function (err) {
+          el.classList.remove("recalculating");
+          el.textContent = "This output needs a library that couldn't be loaded: " + err.message;
+          el.classList.add("shiny-output-error");
+        }
+      );
+      return "pending";
+    }
     clearOutputError(el);
     var declared = el.getAttribute("data-shinymcp-output-type");
 
@@ -1554,6 +1834,7 @@
       }
     }
     if (MODE === "shiny") scanInputs(root);
+    announceOutputs(root);
   }
 
   // Widgets that keep their data in R (DT's server-side tables) fetch it
@@ -1720,26 +2001,60 @@
   // HTML dependencies arrive with outputs that need them. Load each library
   // once, whatever the version: a second copy of jQuery, say, would replace
   // the first and drop the plugins attached to it.
+  // Returns a promise when a library has to be fetched first: results the
+  // model gets name large libraries rather than carry them.
+  var depFetches = {};
   function loadDeps(deps) {
+    var waiting = [];
     each(deps || [], function (dep) {
       var key = dep.name + "@" + dep.version;
       if (state.loadedDeps[key] || state.loadedNames[dep.name]) return;
-      state.loadedDeps[key] = true;
-      state.loadedNames[dep.name] = true;
-      var holder = document.createElement("div");
-      holder.innerHTML = dep.head || "";
-      each(Array.prototype.slice.call(holder.childNodes), function (node) {
-        if (node.nodeType !== 1) return;
-        var tag = node.tagName.toLowerCase();
-        if (tag === "script") {
-          var script = document.createElement("script");
-          each(node.attributes, function (attr) { script.setAttribute(attr.name, attr.value); });
-          script.textContent = node.textContent;
-          document.head.appendChild(script);
-        } else {
-          document.head.appendChild(node);
-        }
-      });
+      if (dep.fetch && !dep.head) {
+        waiting.push(fetchDep(key));
+        return;
+      }
+      injectDep(dep);
+    });
+    return waiting.length ? Promise.all(waiting) : null;
+  }
+
+  function fetchDep(key) {
+    if (depFetches[key]) return depFetches[key];
+    if (!config.runtime || !config.runtime.viewTool) {
+      return Promise.reject(new Error("no way to fetch " + key));
+    }
+    depFetches[key] = callTool(config.runtime.viewTool, { action: "dependency", dependency: key }).then(
+      function (result) {
+        var view = viewMeta(result);
+        if (!view || !view.dependency) throw new Error("couldn't load " + key);
+        injectDep(view.dependency);
+      },
+      function (err) {
+        delete depFetches[key];
+        throw err;
+      }
+    );
+    return depFetches[key];
+  }
+
+  function injectDep(dep) {
+    var key = dep.name + "@" + dep.version;
+    if (state.loadedDeps[key] || state.loadedNames[dep.name]) return;
+    state.loadedDeps[key] = true;
+    state.loadedNames[dep.name] = true;
+    var holder = document.createElement("div");
+    holder.innerHTML = dep.head || "";
+    each(Array.prototype.slice.call(holder.childNodes), function (node) {
+      if (node.nodeType !== 1) return;
+      var tag = node.tagName.toLowerCase();
+      if (tag === "script") {
+        var script = document.createElement("script");
+        each(node.attributes, function (attr) { script.setAttribute(attr.name, attr.value); });
+        script.textContent = node.textContent;
+        document.head.appendChild(script);
+      } else {
+        document.head.appendChild(node);
+      }
     });
   }
 
@@ -2206,7 +2521,10 @@
   }
 
   function init() {
+    connectShiny();
     scanInputs(document);
+    state.scanned = true;
+    announceOutputs(document);
     setupSubmit();
     window.addEventListener("message", onMessage);
     each(document.querySelectorAll(".shiny-download-link[id]"), function (el) {
@@ -2317,20 +2635,8 @@
       return readInputs();
     },
     // Set an input from your own JavaScript, as Shiny.setInputValue() does.
-    setInputValue: function (id, value) {
-      if (adapters[id]) {
-        adapters[id].set(value);
-        onInputChanged(adapters[id]);
-        return;
-      }
-      adapters[id] = {
-        id: id,
-        kind: "unknown",
-        get: function () { return value; },
-        set: function (v) { value = v; },
-        listeners: []
-      };
-      onInputChanged(adapters[id]);
+    setInputValue: function (id, value, opts) {
+      setShinyInput(id, value, opts || {});
     },
     addCustomMessageHandler: function (type, fn) {
       state.customHandlers[type] = fn;

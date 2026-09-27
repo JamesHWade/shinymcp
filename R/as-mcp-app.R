@@ -120,16 +120,21 @@ as_mcp_app.shiny.appobj <- function(
   lifecycle <- app_lifecycle(on_start = x$onStart, on_stop = x$onStop)
   ui <- lifecycle$within(function() extract_shiny_ui(x))
 
+  # A shinyAppDir() app serves its www folder; so does its page.
+  dots <- list(...)
+  app_dir <- lifecycle$dir()
+  if (
+    is.null(dots$www) &&
+      !is.null(app_dir) &&
+      dir.exists(file.path(app_dir, "www"))
+  ) {
+    dots$www <- file.path(app_dir, "www")
+  }
+
   if (!isTRUE(live)) {
-    return(explicit_tools_app(
-      ui,
-      tools,
-      name,
-      title,
-      description,
-      selective,
-      version,
-      ...
+    return(do.call(
+      explicit_tools_app,
+      c(list(ui, tools, name, title, description, selective, version), dots)
     ))
   }
 
@@ -145,15 +150,20 @@ as_mcp_app.shiny.appobj <- function(
   )
   warn_unsupported_inputs(runtime)
 
-  mcp_app(
-    ui = ui,
-    tools = c(runtime$tools(), tools %||% list()),
-    name = name,
-    title = title,
-    description = description,
-    version = version,
-    runtime = runtime,
-    ...
+  do.call(
+    mcp_app,
+    c(
+      list(
+        ui = ui,
+        tools = c(runtime$tools(), tools %||% list()),
+        name = name,
+        title = title,
+        description = description,
+        version = version,
+        runtime = runtime
+      ),
+      dots
+    )
   )
 }
 
@@ -188,7 +198,11 @@ as_mcp_app.character <- function(x, name = NULL, ...) {
     if (inherits(found, "McpApp")) {
       return(found)
     }
-    return(as_mcp_app(found, name = name, ...))
+    dots <- list(...)
+    if (is.null(dots$www) && dir.exists(file.path(dir, "www"))) {
+      dots$www <- file.path(dir, "www")
+    }
+    return(do.call(as_mcp_app, c(list(found, name = name), dots)))
   }
   if (file.exists(file.path(dir, "server.R"))) {
     rlang::check_installed(

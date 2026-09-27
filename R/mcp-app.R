@@ -27,7 +27,7 @@ McpApp <- R6::R6Class(
     description = NULL,
 
     #' @description Create an app. See [mcp_app()] for the arguments.
-    #' @param ui,tools,name,version,title,description,theme,csp,permissions,prefers_border,domain,tool_visibility,tool_outputs,trigger,debounce_ms,resources,host_styles,model_context,images See [mcp_app()].
+    #' @param ui,tools,name,version,title,description,theme,csp,permissions,prefers_border,domain,tool_visibility,tool_outputs,trigger,debounce_ms,resources,host_styles,model_context,images,www See [mcp_app()].
     #' @param runtime Internal: the live Shiny runtime for apps created by
     #'   [as_mcp_app()] from a Shiny app.
     initialize = function(
@@ -50,6 +50,7 @@ McpApp <- R6::R6Class(
       host_styles = TRUE,
       model_context = TRUE,
       images = TRUE,
+      www = NULL,
       runtime = NULL
     ) {
       if (!inherits(ui, c("shiny.tag", "shiny.tag.list", "html"))) {
@@ -136,6 +137,13 @@ McpApp <- R6::R6Class(
       private$.host_styles <- isTRUE(host_styles)
       private$.model_context <- isTRUE(model_context)
       private$.images <- isTRUE(images)
+      if (!is.null(www) && !(is_string(www) && dir.exists(www))) {
+        shinymcp_abort(
+          "{.arg www} must be the path of a directory.",
+          class = "shinymcp_error_validation"
+        )
+      }
+      private$.www <- www
       private$.runtime <- runtime
       invisible(self)
     },
@@ -290,6 +298,11 @@ McpApp <- R6::R6Class(
       if (!private$.images) {
         context$images <- FALSE
       }
+      # Results never carry a library the page was built with.
+      context$skip_deps <- union(
+        as.character(unlist(context$skip_deps)),
+        private$page_dep_names()
+      )
       raw <- tryCatch(
         with_request_context(
           context,
@@ -402,9 +415,11 @@ McpApp <- R6::R6Class(
     .host_styles = TRUE,
     .model_context = TRUE,
     .images = TRUE,
+    .www = NULL,
     .runtime = NULL,
     .ui_outputs = NULL,
     .rendered = NULL,
+    .page_deps = NULL,
 
     find_tool = function(name) {
       tool <- private$.tools[[name %||% ""]]
@@ -423,6 +438,17 @@ McpApp <- R6::R6Class(
         private$.rendered <- htmltools::renderTags(private$.ui)
       }
       private$.rendered
+    },
+
+    page_dep_names = function() {
+      if (is.null(private$.page_deps)) {
+        private$.page_deps <- vapply(
+          app_page_dependencies(private$rendered()),
+          function(d) d$name,
+          character(1)
+        )
+      }
+      private$.page_deps
     },
 
     ui_outputs = function() {
@@ -507,6 +533,10 @@ McpApp <- R6::R6Class(
 #' @param images If `TRUE` (the default) plots and images in a result
 #'   returned to the model are also sent as image content the model can
 #'   see. Set `FALSE` to save tokens.
+#' @param www A directory of files the UI refers to by relative path, like
+#'   a Shiny app's `www/` folder: scripts, stylesheets, and images. They are
+#'   written into the page, since a host's frame can't fetch them. Paths
+#'   added with [shiny::addResourcePath()] are found without it.
 #' @param ... Passed to `McpApp$new()`.
 #' @return An [McpApp] object.
 #' @family apps
@@ -554,6 +584,7 @@ mcp_app <- function(
   host_styles = TRUE,
   model_context = TRUE,
   images = TRUE,
+  www = NULL,
   ...
 ) {
   McpApp$new(
@@ -576,6 +607,7 @@ mcp_app <- function(
     host_styles = host_styles,
     model_context = model_context,
     images = images,
+    www = www,
     ...
   )
 }

@@ -20,16 +20,31 @@ SHINYMCP_REPLACED_DEPS <- c(
   "font-awesome"
 )
 
+#' The dependencies written into an app's page
+#' @noRd
+app_page_dependencies <- function(rendered) {
+  deps <- htmltools::resolveDependencies(rendered$dependencies)
+  replaced <- SHINYMCP_REPLACED_DEPS
+  # shinyWidgets' sliderTextInput() runs on ionRangeSlider itself.
+  if (grepl("sw-slider-text", rendered$html, fixed = TRUE)) {
+    replaced <- setdiff(
+      replaced,
+      c("ionrangeslider-javascript", "ionrangeslider-css", "strftime")
+    )
+  }
+  Filter(function(d) !d$name %in% replaced, deps)
+}
+
 #' @noRd
 build_app_html <- function(app, private, config = NULL) {
   rendered <- private$rendered()
-  deps <- htmltools::resolveDependencies(rendered$dependencies)
-  deps <- Filter(function(d) !d$name %in% SHINYMCP_REPLACED_DEPS, deps)
+  deps <- app_page_dependencies(rendered)
   bootstrap <- Filter(function(d) identical(d$name, "bootstrap"), deps)
   bootstrap_major <- if (length(bootstrap)) {
     sub("\\..*$", "", as.character(bootstrap[[1]]$version))
   }
 
+  roots <- asset_roots(private$.www)
   bridge_config <- app_bridge_config(app, private, deps)
   if (!is.null(config)) {
     bridge_config <- utils::modifyList(bridge_config, config, keep.null = FALSE)
@@ -39,6 +54,8 @@ build_app_html <- function(app, private, config = NULL) {
     '<meta charset="utf-8">',
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     '<meta name="color-scheme" content="light dark">',
+    # Before any dependency: packages look for window.Shiny as they load.
+    shiny_api_script(),
     paste0(
       "<title>",
       htmltools::htmlEscape(app$title %||% app$name),
@@ -46,7 +63,9 @@ build_app_html <- function(app, private, config = NULL) {
     ),
     paste0('<style id="shinymcp-style">\n', bridge_css(), "\n</style>"),
     vapply(deps, inline_dependency, character(1)),
-    if (nzchar(rendered$head %||% "")) as.character(rendered$head)
+    if (nzchar(rendered$head %||% "")) {
+      inline_local_assets(as.character(rendered$head), roots)
+    }
   )
 
   scripts <- paste0(
@@ -57,7 +76,7 @@ build_app_html <- function(app, private, config = NULL) {
     "\n</script>"
   )
 
-  html <- as.character(rendered$html)
+  html <- inline_local_assets(as.character(rendered$html), roots)
   # Bootstrap 3 and 4 have no dark mode; the bridge keeps those pages light.
   classes <- paste(
     c(
@@ -144,6 +163,25 @@ bridge_js <- function() {
     the$bridge_js <- read_package_file("js", "shinymcp-bridge.js")
   }
   the$bridge_js
+}
+
+#' The stand-in for Shiny's browser API, as an inline script
+#' @noRd
+shiny_api_script <- function() {
+  if (is.null(the$shiny_js) || isTRUE(getOption("shinymcp.dev_reload"))) {
+    the$shiny_js <- read_package_file("js", "shinymcp-shiny.js")
+  }
+  version <- tryCatch(
+    as.character(utils::packageVersion("shiny")),
+    error = function(e) "1.10.0"
+  )
+  paste0(
+    '<script id="shinymcp-shiny" data-shiny-version="',
+    version,
+    '">\n',
+    the$shiny_js,
+    "\n</script>"
+  )
 }
 
 #' @noRd
