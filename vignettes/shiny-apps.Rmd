@@ -202,7 +202,8 @@ Some things don't carry over:
 
 Sessions live in the R process that serves the app: up to 50 at a time,
 each closing after an hour without use. The `shinymcp.max_views` and
-`shinymcp.view_timeout` options change those limits.
+`shinymcp.view_timeout` options change those limits;
+`help("shinymcp-options")` lists the others.
 
 If a request reaches a process that doesn't have its view's session (after
 a restart, or behind a load balancer that spreads requests over several R

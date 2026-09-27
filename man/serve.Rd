@@ -79,6 +79,7 @@ serve(app, type = "http", port = 8080)
 \seealso{
 Other serving:
 \code{\link[=mcp_endpoint]{mcp_endpoint()}},
-\code{\link[=preview_app]{preview_app()}}
+\code{\link[=preview_app]{preview_app()}},
+\code{\link{shinymcp-options}}
 }
 \concept{serving}

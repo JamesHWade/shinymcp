@@ -71,6 +71,7 @@ shinyApp(ui, server) |> mcp_endpoint(name = "explorer")
 \seealso{
 Other serving:
 \code{\link[=preview_app]{preview_app()}},
-\code{\link[=serve]{serve()}}
+\code{\link[=serve]{serve()}},
+\code{\link{shinymcp-options}}
 }
 \concept{serving}

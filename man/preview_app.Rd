@@ -50,6 +50,7 @@ preview$stop()
 \seealso{
 Other serving:
 \code{\link[=mcp_endpoint]{mcp_endpoint()}},
-\code{\link[=serve]{serve()}}
+\code{\link[=serve]{serve()}},
+\code{\link{shinymcp-options}}
 }
 \concept{serving}

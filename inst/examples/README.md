@@ -17,6 +17,7 @@ model receives from each call.
 | [`faithful`](faithful) | An unchanged Shiny app, served live with `as_mcp_app()`. |
 | [`fuel-economy`](fuel-economy) | A bslib dashboard. `bindMcp()` chooses what the model sees, `mcp_model_context()` tells it what the user did, `mcp_host_context()` follows the chat's theme, and the download button works. |
 | [`sample-size`](sample-size) | A tool first, with a UI on top. One result carries text for the model, structured data, and outputs for the app. |
+| [`shiny-packages`](shiny-packages) | A Shiny app built on shinyWidgets and DT, with a file upload. The model reads the table's rows and hears which ones the person selected. |
 | [`shiny-module`](shiny-module) | A Shiny module served with `mcp_tool_module()`. |
 
 ## Connecting to clients

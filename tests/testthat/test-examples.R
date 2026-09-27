@@ -29,6 +29,10 @@ app_examples <- list(
     args = list(delta = 0.5, sd = 1)
   ),
   "shiny-module" = list(pkgs = "shiny", args = list(bins = 10)),
+  "shiny-packages" = list(
+    pkgs = c("shiny", "shinyWidgets", "DT"),
+    args = list(cyl = list("4", "6"))
+  ),
   "converted-dashboard" = list(
     pkgs = "ellmer",
     args = list(dataset = "iris", obs = 3)

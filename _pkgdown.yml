@@ -46,6 +46,7 @@ reference:
       - serve
       - mcp_endpoint
       - preview_app
+      - shinymcp-options
 
   - title: Show it in Shiny and shinychat
     contents:
