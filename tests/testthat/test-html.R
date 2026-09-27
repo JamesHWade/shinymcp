@@ -462,3 +462,21 @@ test_that("bridge tags can be added to hand-built pages", {
     list(app = "hand-built", tools = list(list(name = "go", args = list("x"))))
   )
 })
+
+test_that("inlined stylesheets drop @imports of relative URLs", {
+  css <- c(
+    "@import url(\"font.css\");:root{a:1}",
+    "@import 'x.css' screen;b{}",
+    "@import url(https://fonts.example.com/a.css);c{}",
+    "@import url(data:text/css,x);d{}"
+  )
+  expect_identical(
+    drop_relative_imports(css),
+    c(
+      ":root{a:1}",
+      "b{}",
+      "@import url(https://fonts.example.com/a.css);c{}",
+      "@import url(data:text/css,x);d{}"
+    )
+  )
+})

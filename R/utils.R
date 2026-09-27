@@ -126,6 +126,22 @@ mime_type_for <- function(path, default = "application/octet-stream") {
 #' their domains, so dependencies are embedded in the page. A dependency that
 #' only has an `href` is linked instead (and needs a `csp` declaration).
 #' @noRd
+#' Remove `@import`s of relative URLs from a stylesheet
+#'
+#' An inlined stylesheet has no base URL to resolve them against, and what
+#' they bring is usually web fonts (bslib's font.css), which the MCP Apps
+#' Content Security Policy blocks anyway.
+#' @noRd
+drop_relative_imports <- function(css) {
+  gsub(
+    "@import\\s+(?:url\\(\\s*[\"']?|[\"'])(?![a-z][a-z0-9+.-]*:|//)[^\"')\\s;]+[\"']?\\s*\\)?[^;]*;",
+    "",
+    css,
+    perl = TRUE,
+    ignore.case = TRUE
+  )
+}
+
 inline_dependency <- function(dep) {
   parts <- character()
   base <- dep$src$file
@@ -141,7 +157,10 @@ inline_dependency <- function(dep) {
             "<style data-shinymcp-dep=\"",
             htmltools::htmlEscape(label, TRUE),
             "\">\n",
-            escape_inline_close(read_text_file(path), "style"),
+            escape_inline_close(
+              drop_relative_imports(read_text_file(path)),
+              "style"
+            ),
             "\n</style>"
           )
         )

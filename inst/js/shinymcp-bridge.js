@@ -434,14 +434,16 @@
     return null;
   }
 
+  // Through jQuery when it has a tab plugin: Bootstrap 3's, or on
+  // Bootstrap 4 and 5 pages bslib's shim for Shiny's Bootstrap 3 markup.
   function activateTab(a) {
     if (!a) return;
-    var bs = window.bootstrap;
     var $ = window.jQuery;
-    if (bs && bs.Tab && bs.Tab.getOrCreateInstance) {
-      bs.Tab.getOrCreateInstance(a).show();
-    } else if ($ && $.fn && $.fn.tab) {
+    var bs = window.bootstrap;
+    if ($ && $.fn && $.fn.tab) {
       $(a).tab("show");
+    } else if (bs && bs.Tab && bs.Tab.getOrCreateInstance) {
+      bs.Tab.getOrCreateInstance(a).show();
     } else {
       a.click();
     }
@@ -478,21 +480,24 @@
           activateTab(tabAnchor(el, v));
           last = String(v);
         },
-        bind: function () {
+        // Tell the session if the shown tab changed. Bootstrap switches
+        // panes after a click, and again after a fade.
+        check: function () {
           var self = this;
-          last = shownTab(el);
-          function check() {
+          function compare() {
             var now = shownTab(el);
             if (now !== last) {
               last = now;
               self.emit();
             }
           }
-          // Bootstrap switches panes after the click, and after a fade.
-          listen(el, ["click"], function () {
-            setTimeout(check, 0);
-            setTimeout(check, 400);
-          });
+          setTimeout(compare, 0);
+          setTimeout(compare, 400);
+        },
+        bind: function () {
+          var self = this;
+          last = shownTab(el);
+          listen(el, ["click"], function () { self.check(); });
         },
         receiveMessage: function (msg) {
           if (msg.value !== undefined) this.set(msg.value);
@@ -1906,7 +1911,7 @@
         }
       });
       ensureShownTab(ul);
-      if (ul.__shinymcpAdapter) ul.__shinymcpAdapter.emit();
+      if (ul.__shinymcpAdapter) ul.__shinymcpAdapter.check();
       return;
     }
     // insert-tab
@@ -1958,7 +1963,10 @@
       });
     }
     afterDomChange(item);
-    if (change.select && link) activateTab(link);
+    if (change.select && link) {
+      activateTab(link);
+      if (ul.__shinymcpAdapter) ul.__shinymcpAdapter.check();
+    }
   }
 
   function handleUiChange(change) {
