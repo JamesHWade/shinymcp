@@ -12,7 +12,7 @@ mcp_action_button(id, label)
 \item{label}{Button label}
 }
 \value{
-An \link[htmltools:builder]{htmltools::tag} object
+An \link[htmltools:tag]{htmltools::tag} object
 }
 \description{
 Generates a button element with MCP data attributes.

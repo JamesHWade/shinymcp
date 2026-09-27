@@ -7,14 +7,14 @@
 mcp_input(tag, id = NULL)
 }
 \arguments{
-\item{tag}{An \link[htmltools:builder]{htmltools::tag} object (e.g., from \code{shiny::selectInput()}
+\item{tag}{An \link[htmltools:tag]{htmltools::tag} object (e.g., from \code{shiny::selectInput()}
 or \code{bslib::input_select()}).}
 
 \item{id}{The input ID to register. If \code{NULL} (the default), reads the
 element's existing \code{id} attribute.}
 }
 \value{
-The modified \link[htmltools:builder]{htmltools::tag} with \code{data-shinymcp-input} stamped.
+The modified \link[htmltools:tag]{htmltools::tag} with \code{data-shinymcp-input} stamped.
 }
 \description{
 Stamps \code{data-shinymcp-input} on a tag or its first form-element descendant.

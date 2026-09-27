@@ -2,14 +2,88 @@
 % Please edit documentation in R/host-shiny.R
 \name{mcp_host_ui}
 \alias{mcp_host_ui}
-\title{Host shell UI for an embedded MCP app}
+\alias{mcp_host_server}
+\alias{mcp_embed}
+\title{Host shell for an MCP App in a Shiny app}
 \usage{
-mcp_host_ui(id)
+mcp_host_ui(id, height = "auto")
+
+mcp_host_server(
+  id,
+  app,
+  tool = NULL,
+  arguments = NULL,
+  trigger = NULL,
+  debounce_ms = NULL,
+  height = "auto"
+)
+
+mcp_embed(
+  app,
+  id = NULL,
+  tool = NULL,
+  arguments = NULL,
+  trigger = NULL,
+  debounce_ms = NULL,
+  height = "auto"
+)
 }
 \arguments{
-\item{id}{Shiny module id.}
+\item{id}{Module id.}
+
+\item{height}{\code{"auto"} to follow the app's size, or a CSS height.}
+
+\item{app}{An \link{McpApp}, or anything \code{\link[=as_mcp_app]{as_mcp_app()}} accepts.}
+
+\item{tool}{The tool to call when the app opens. Defaults to the app's
+first tool the model can call.}
+
+\item{arguments}{Named list of arguments for that call.}
+
+\item{trigger, debounce_ms}{Override the app's own \code{trigger} and
+\code{debounce_ms}. \code{trigger = "manual"} shows a Run button and calls tools
+only when it's pressed or when \code{execute()} is called.}
+}
+\value{
+\code{mcp_host_ui()} and \code{mcp_embed()} return UI. \code{mcp_host_server()}
+returns a list of reactives and functions:
+\itemize{
+\item \code{model_context()}: the latest context the app published for the
+model.
+\item \code{last_tool_call()}: the latest tool call, a list with \code{name},
+\code{arguments}, and \code{result} (the MCP result).
+\item \code{last_result()}: the MCP result of the latest tool call.
+\item \code{messages()}: messages the app asked to post to the chat.
+\item \code{execute(arguments = NULL)}: call the app's tools now, optionally
+with new input values.
+\item \code{dispose()}: shut the app down.
+}
 }
 \description{
-Use \code{mcp_host_server()} on the server side to attach a live \link{McpApp}
-instance to this UI shell.
+\code{mcp_host_ui()} and \code{mcp_host_server()} show an \link{McpApp} inside a Shiny
+app, exactly as a chat client would: the app runs in a sandboxed iframe
+and its tool calls are answered in R. Use it to review an app, to build a
+dashboard around one, or to react in Shiny to what the user does in it.
+
+\code{mcp_embed()} does both halves at once for UI created on the server, such
+as inside \code{\link[shiny:renderUI]{shiny::renderUI()}}.
+
+When the app opens, the host calls its first tool (or \code{tool}) with
+\code{arguments}, as if the model had, and passes the result to the app.
 }
+\examples{
+\dontrun{
+library(shiny)
+ui <- bslib::page_fillable(mcp_host_ui("explorer"))
+server <- function(input, output, session) {
+  host <- mcp_host_server("explorer", app, arguments = list(species = "Gentoo"))
+  observe(print(host$model_context()))
+}
+shinyApp(ui, server)
+}
+}
+\seealso{
+Other hosting:
+\code{\link[=as_shinychat_tool]{as_shinychat_tool()}}
+}
+\concept{hosting}

@@ -22,5 +22,10 @@ Useful links:
 \author{
 \strong{Maintainer}: James Wade \email{github@jameshwade.com}
 
+Authors:
+\itemize{
+  \item James Wade \email{github@jameshwade.com}
+}
+
 }
 \keyword{internal}

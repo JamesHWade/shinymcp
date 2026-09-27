@@ -25,8 +25,28 @@
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
 
+/* Bootstrap 3 and 4 have no dark mode: those pages stay light. */
+:root.shinymcp-bs3,
+:root.shinymcp-bs4 { color-scheme: light; }
+
 html, body {
   margin: 0;
+}
+
+/* When the host sizes the view to its content (the usual case in a chat),
+   pages built to fill a window, such as bslib's page_sidebar() and
+   page_fillable(), flow at their natural height instead: filling the
+   frame would squeeze cards to fit whatever height the frame has. With a
+   fixed height (full screen, or a host that sets one) they fill as usual. */
+html.shinymcp:not(.shinymcp-fixed-height) {
+  --bslib-page-main-min-height: 0px;
+  --bslib-page-main-min-width: 0px;
+}
+
+html.shinymcp:not(.shinymcp-fixed-height),
+html.shinymcp:not(.shinymcp-fixed-height) > body {
+  height: auto !important;
+  min-height: 0 !important;
 }
 
 body[data-shinymcp-body] {
@@ -113,7 +133,8 @@ pre.shinymcp-output,
 pre.shiny-text-output {
   font-family: var(--shinymcp-mono);
   font-size: 0.9em;
-  white-space: pre-wrap;
+  /* R aligns printed output in columns; scroll rather than wrap. */
+  white-space: pre;
   margin: 0;
   padding: 10px 12px;
   background: var(--shinymcp-bg-muted);
@@ -180,25 +201,97 @@ html:not(.shinymcp-bootstrap) .shiny-table td {
   color: var(--shinymcp-text-muted);
 }
 
-/* Native stand-ins for Shiny's slider and date widgets */
+/* Stand-ins for Shiny's slider widget: one or two range inputs on a
+   shared track */
 .shinymcp-slider {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+}
+
+.shinymcp-slider-track {
+  position: relative;
+  flex: 1;
+  height: 24px;
+}
+
+.shinymcp-slider-track::before,
+.shinymcp-slider-fill {
+  content: "";
+  position: absolute;
+  top: 10px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.shinymcp-slider-track::before {
+  left: 0;
+  right: 0;
+  background: var(--shinymcp-border);
+}
+
+.shinymcp-slider-fill {
+  background: var(--shinymcp-accent);
+}
+
+.shinymcp-slider-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.shinymcp-slider-track input[type="range"]::-webkit-slider-runnable-track {
+  height: 24px;
+  background: transparent;
+}
+
+.shinymcp-slider-track input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
+.shinymcp-slider-track input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--shinymcp-bg);
+  border: 2px solid var(--shinymcp-accent);
+  cursor: pointer;
+}
+
+.shinymcp-slider-track input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--shinymcp-bg);
+  border: 2px solid var(--shinymcp-accent);
+  cursor: pointer;
+}
+
+.shinymcp-slider-track input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.shinymcp-slider-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--shinymcp-accent) 35%, transparent);
 }
 
 .shinymcp-slider-value {
   font-variant-numeric: tabular-nums;
   min-width: 3ch;
   text-align: right;
+  white-space: nowrap;
   color: var(--shinymcp-text-muted);
-}
-
-.shinymcp-slider-range {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 10px;
-  align-items: center;
 }
 
 /* Busy indicator: a thin bar at the top while a call is running */

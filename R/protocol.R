@@ -363,13 +363,13 @@ McpServer <- R6::R6Class(
     },
 
     handle_discover = function() {
-      list(
+      compact_list(list(
         supportedVersions = I(SHINYMCP_PROTOCOL_VERSIONS),
         capabilities = private$capabilities(),
         instructions = self$instructions,
         ttlMs = 60000,
         cacheScope = "public"
-      )
+      ))
     },
 
     handle_tools_list = function(request) {

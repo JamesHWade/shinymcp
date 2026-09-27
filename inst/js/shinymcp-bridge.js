@@ -244,6 +244,7 @@
     busy: 0,
     entryTool: null,
     instance: null,
+    viewRevision: null,
     changed: {},
     dirty: false,
     revision: 0,
@@ -279,17 +280,22 @@
     if (!ctx || typeof ctx !== "object") return;
     assign(state.hostContext, ctx);
     var root = document.documentElement;
+    // Bootstrap 3 and 4 pages (fluidPage() and friends) were drawn for a
+    // light background and have no dark mode: keep them light and leave
+    // their colors alone.
+    var lightOnly = hasClass(root, "shinymcp-bs3") || hasClass(root, "shinymcp-bs4");
 
     if (ctx.theme === "light" || ctx.theme === "dark") {
-      root.setAttribute("data-theme", ctx.theme);
-      root.setAttribute("data-bs-theme", ctx.theme);
-      root.style.colorScheme = ctx.theme;
+      var theme = lightOnly ? "light" : ctx.theme;
+      root.setAttribute("data-theme", theme);
+      root.setAttribute("data-bs-theme", theme);
+      root.style.colorScheme = theme;
     }
     if (typeof ctx.locale === "string" && ctx.locale) {
       root.lang = ctx.locale;
     }
     var styles = ctx.styles || {};
-    if (styles.variables && typeof styles.variables === "object" && config.hostStyles !== false) {
+    if (styles.variables && typeof styles.variables === "object" && config.hostStyles !== false && !lightOnly) {
       each(keys(styles.variables), function (name) {
         var value = styles.variables[name];
         if (name.indexOf("--") !== 0 || typeof value !== "string") return;
@@ -317,6 +323,10 @@
     }
     if (ctx.displayMode) {
       root.setAttribute("data-display-mode", ctx.displayMode);
+    }
+    // A live Shiny view redraws what depends on the theme or display mode.
+    if (MODE === "shiny" && state.firstResult && (ctx.theme !== undefined || ctx.displayMode !== undefined)) {
+      scheduleHostRefresh();
     }
     // The tool call that opened this view, when the host says.
     if (ctx.toolInfo && ctx.toolInfo.tool && typeof ctx.toolInfo.tool.name === "string") {
@@ -472,6 +482,15 @@
     },
 
     select: function (el) {
+      // A select Shiny meant for selectize: style it as Bootstrap styles a
+      // plain one.
+      var selectized = el.id && el.parentNode &&
+        el.parentNode.querySelector('script[data-for="' + cssEscape(el.id) + '"]');
+      if (selectized && !hasClass(el, "form-control") && !hasClass(el, "form-select")) {
+        var bs5 = window.getComputedStyle &&
+          window.getComputedStyle(document.documentElement).getPropertyValue("--bs-body-bg");
+        el.classList.add(bs5 ? "form-select" : "form-control");
+      }
       return {
         get: function () {
           if (el.multiple) {
@@ -690,8 +709,9 @@
   };
 
   // Shiny's sliderInput renders an <input class="js-range-slider"> with its
-  // settings in data attributes, meant for ionRangeSlider. Draw native range
-  // inputs instead. Date sliders count milliseconds, as ionRangeSlider does.
+  // settings in data attributes, meant for ionRangeSlider. Draw range inputs
+  // instead: one, or two sharing a track for a range. Date sliders count
+  // milliseconds, as ionRangeSlider does.
   function sliderAdapter(el, range) {
     var isNative = (el.getAttribute("type") || "").toLowerCase() === "range";
     var dataType = el.getAttribute("data-data-type") || "number";
@@ -701,10 +721,12 @@
     var from = parseNumber(isNative ? el.value : el.getAttribute("data-from"));
     var to = parseNumber(el.getAttribute("data-to"));
     var ranges = [];
-    var labels = [];
+    var fill = null;
+    var label = document.createElement("output");
+    label.className = "shinymcp-slider-value";
 
     function format(v) {
-      if (v === null) return "";
+      if (v === null || isNaN(v)) return "";
       if (dataType === "date") return new Date(v).toISOString().slice(0, 10);
       if (dataType === "datetime") return new Date(v).toISOString().slice(0, 16).replace("T", " ");
       var prefix = el.getAttribute("data-prefix") || "";
@@ -728,35 +750,56 @@
       return parseNumber(v);
     }
 
-    function makeRange(value) {
+    function makeRange(value, name) {
       var input = document.createElement("input");
       input.type = "range";
       if (min !== null) input.min = min;
       if (max !== null) input.max = max;
       input.step = step !== null ? step : "any";
       if (value !== null) input.value = value;
+      if (name) input.setAttribute("aria-label", name);
       return input;
+    }
+
+    function numbers() {
+      var vals = [];
+      each(ranges, function (r) { vals.push(parseNumber(r.value)); });
+      vals.sort(function (a, b) { return a - b; });
+      return vals;
+    }
+
+    function refresh() {
+      var vals = numbers();
+      label.textContent = range ? format(vals[0]) + " \u2013 " + format(vals[1]) : format(vals[0]);
+      if (fill) {
+        var lo = min === null ? 0 : min;
+        var span = max === null || max === lo ? 1 : max - lo;
+        var a = range ? (vals[0] - lo) / span : 0;
+        var b = ((range ? vals[1] : vals[0]) - lo) / span;
+        fill.style.left = Math.max(0, Math.min(1, a)) * 100 + "%";
+        fill.style.right = (1 - Math.max(0, Math.min(1, b))) * 100 + "%";
+      }
     }
 
     if (isNative) {
       ranges.push(el);
-      var label = document.createElement("output");
-      label.className = "shinymcp-slider-value";
       el.parentNode.insertBefore(label, el.nextSibling);
-      labels.push(label);
     } else {
       var wrap = document.createElement("div");
       wrap.className = range ? "shinymcp-slider shinymcp-slider-range" : "shinymcp-slider";
+      var track = document.createElement("div");
+      track.className = "shinymcp-slider-track";
+      fill = document.createElement("div");
+      fill.className = "shinymcp-slider-fill";
+      track.appendChild(fill);
       var values = range ? [from, to] : [from];
-      each(values, function (v) {
-        var input = makeRange(v);
-        var out = document.createElement("output");
-        out.className = "shinymcp-slider-value";
-        wrap.appendChild(input);
-        wrap.appendChild(out);
+      each(values, function (v, i) {
+        var input = makeRange(v, range ? (i === 0 ? "Minimum" : "Maximum") : null);
+        track.appendChild(input);
         ranges.push(input);
-        labels.push(out);
       });
+      wrap.appendChild(track);
+      wrap.appendChild(label);
       el.style.display = "none";
       el.parentNode.insertBefore(wrap, el.nextSibling);
       var labelEl = document.querySelector('label[for="' + cssEscape(el.id) + '"]');
@@ -765,19 +808,13 @@
         labelEl.setAttribute("for", ranges[0].id);
       }
     }
-
-    function refreshLabels() {
-      each(ranges, function (r, i) { labels[i].textContent = format(parseNumber(r.value)); });
-    }
-    refreshLabels();
+    refresh();
 
     return {
       get: function () {
-        var vals = [];
-        each(ranges, function (r) { vals.push(toValue(parseNumber(r.value))); });
-        if (!range) return vals[0];
-        vals.sort(function (a, b) { return fromValue(a) - fromValue(b); });
-        return vals;
+        var vals = numbers();
+        if (!range) return toValue(vals[0]);
+        return [toValue(vals[0]), toValue(vals[1])];
       },
       set: function (v) {
         var vals = Array.isArray(v) ? v : [v];
@@ -785,12 +822,12 @@
           var n = fromValue(vals[i]);
           if (n !== null) r.value = n;
         });
-        refreshLabels();
+        refresh();
       },
       bind: function () {
         var self = this;
         each(ranges, function (r) {
-          listen(r, ["input"], refreshLabels);
+          listen(r, ["input"], refresh);
           listen(r, ["change"], function () { self.emit(); });
         });
       },
@@ -800,7 +837,7 @@
         if (msg.step !== undefined) { step = parseNumber(msg.step); each(ranges, function (r) { r.step = step; }); }
         if (msg.value !== undefined) this.set(msg.value);
         if (msg.label !== undefined) setLabel(this, msg.label);
-        refreshLabels();
+        refresh();
       },
       dataType: dataType
     };
@@ -1017,6 +1054,16 @@
     return sizes;
   }
 
+  // What the R session may want to know about the chat client.
+  function hostSummary() {
+    var ctx = state.hostContext;
+    var out = {};
+    each(["theme", "displayMode", "locale", "timeZone", "platform"], function (k) {
+      if (typeof ctx[k] === "string") out[k] = ctx[k];
+    });
+    return out;
+  }
+
   function inputKinds(ids) {
     var kinds = {};
     each(ids, function (id) {
@@ -1032,13 +1079,15 @@
         action: "update",
         inputs: readInputs(),
         changed: changed,
-        kinds: inputKinds(state.instance ? changed : keys(adapters)),
+        kinds: inputKinds(keys(adapters)),
         sizes: outputSizes(),
-        pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+        host: hostSummary()
       },
       extra
     );
     if (state.instance) payload.instance = state.instance;
+    if (state.viewRevision) payload.revision = state.viewRevision;
     if (inFlight) {
       // One call at a time: fold later changes into the next call.
       queued = queued || { changed: {} };
@@ -1157,6 +1206,7 @@
     if (view) {
       if (opts.initial && view.tool && !state.entryTool) state.entryTool = view.tool;
       if (view.instance) state.instance = view.instance;
+      if (typeof view.revision === "number") state.viewRevision = view.revision;
       if (view.inputs) setInputsSilently(view.inputs);
       each(view.inputMessages || [], function (m) { receiveInputMessage(m.id, m.message); });
       if (view.outputs) renderOutputs(view.outputs);
@@ -1181,6 +1231,15 @@
     }
   }
 
+  var hostTimer = null;
+  function scheduleHostRefresh() {
+    if (hostTimer) clearTimeout(hostTimer);
+    hostTimer = setTimeout(function () {
+      hostTimer = null;
+      if (state.instance) viewUpdate([], {});
+    }, 100);
+  }
+
   function afterFirstResult(result, view) {
     initialSnapshot = readInputs();
     if (MODE === "shiny") {
@@ -1189,9 +1248,10 @@
         viewUpdate([], { all: true });
         return;
       }
-      // Redraw plots at the size and density this page actually has.
+      // Tell the session about this page (plot sizes, pixel density, theme):
+      // the model's call that opened it knew none of that.
       setTimeout(function () {
-        if (needsResize()) viewUpdate([], {});
+        viewUpdate([], {});
       }, 50);
       observePlotSizes();
     } else {

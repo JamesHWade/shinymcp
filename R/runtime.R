@@ -105,9 +105,19 @@ ShinyRuntime <- R6::R6Class(
     tools = function() {
       properties <- lapply(self$model_inputs, function(id) input_json_schema(self$inputs[[id]]))
       names(properties) <- self$model_inputs
+      if (!"view" %in% names(properties)) {
+        properties$view <- list(
+          type = "string",
+          description = paste(
+            "To change a view of the app that is already open, its id (the `view` field of that call's result).",
+            "The user then sees the same session with your changes, and inputs you leave out keep their current values.",
+            "Leave it out to open a new view."
+          )
+        )
+      }
       open_schema <- list(
         type = "object",
-        properties = if (length(properties)) properties else json_object()
+        properties = properties
       )
       runtime <- self
       list(
@@ -146,6 +156,10 @@ ShinyRuntime <- R6::R6Class(
     # The model opened the app (or a host asked for a first render).
     open = function(arguments, context = list()) {
       arguments <- arguments %||% list()
+      view_id <- if (!"view" %in% self$model_inputs) arguments$view
+      if (!"view" %in% self$model_inputs) {
+        arguments$view <- NULL
+      }
       unknown <- setdiff(names(arguments), self$model_inputs)
       values <- list()
       pressed <- character()
@@ -159,14 +173,34 @@ ShinyRuntime <- R6::R6Class(
         }
         values[[id]] <- coerce_input_value(arguments[[id]], spec, strict = TRUE)
       }
-      instance <- private$create_instance(values, context)
+
+      # The model can change a view that's open instead of opening another.
+      instance <- if (is_string(view_id)) private$get_instance(view_id, context)
+      continued <- !is.null(instance)
+      if (continued) {
+        private$set_inputs(instance, values, dedupe = TRUE)
+      } else {
+        instance <- private$create_instance(values, context)
+      }
       if (length(pressed)) {
-        presses <- lapply(pressed, function(id) action_value(1L))
+        presses <- lapply(pressed, function(id) {
+          dom_id <- self$inputs[[id]]$dom_id %||% private$namespaced(id)
+          current <- if (continued) shiny::isolate(instance$session$input[[dom_id]])
+          action_value(as.integer(current %||% 0L) + 1L)
+        })
         names(presses) <- pressed
         private$set_inputs(instance, presses)
       }
       with_request_context(context, private$settle(instance))
-      private$result(instance, context, model = TRUE, all_outputs = TRUE, unknown = unknown)
+      private$result(
+        instance,
+        context,
+        model = TRUE,
+        all_outputs = TRUE,
+        unknown = unknown,
+        continued = continued,
+        lost_view = if (is_string(view_id) && !continued) view_id
+      )
     },
 
     # The page sent input changes, asked for a download, or closed.
@@ -194,16 +228,22 @@ ShinyRuntime <- R6::R6Class(
         restarted <- is_string(id)
         all_outputs <- TRUE
       } else {
+        # A page that missed updates (reloaded, or re-rendered from chat
+        # history) shows an older state than the session: take all of its
+        # inputs and send back every output.
+        stale <- is.numeric(arguments$revision) &&
+          !identical(as.integer(arguments$revision), instance$revision)
         changed <- as.character(unlist(arguments$changed))
-        if (length(changed) == 0) {
+        if (length(changed) == 0 || stale) {
           changed <- names(page_inputs)
         }
         values <- private$page_values(page_inputs[intersect(changed, names(page_inputs))], kinds, instance)
         instance$page_sent <- private$dom_keys(values)
         private$set_inputs(instance, values, dedupe = TRUE)
-        all_outputs <- isTRUE(arguments$all)
+        all_outputs <- isTRUE(arguments$all) || stale
       }
       private$apply_sizes(instance, arguments$sizes, arguments$pixelRatio)
+      private$apply_host_context(instance, arguments$host)
 
       if (identical(action, "download")) {
         return(private$download(instance, arguments$output, context))
@@ -277,6 +317,7 @@ ShinyRuntime <- R6::R6Class(
       inst$model_context <- NULL
       inst$model_context_sent <- NULL
       inst$pixel_ratio <- 1
+      inst$host <- shiny::reactiveVal(list())
 
       session <- runtime_session_class()$new()
       inst$session <- session
@@ -448,6 +489,28 @@ ShinyRuntime <- R6::R6Class(
       }
     },
 
+    # The host's theme, display mode, and locale, as the page reports them.
+    apply_host_context = function(inst, host) {
+      if (!is.list(host) || length(host) == 0) {
+        return(invisible())
+      }
+      allowed <- c("theme", "displayMode", "locale", "timeZone", "platform")
+      value <- host[intersect(names(host), allowed)]
+      value <- Filter(is_string, value)
+      names(value) <- c(
+        theme = "theme",
+        displayMode = "display_mode",
+        locale = "locale",
+        timeZone = "time_zone",
+        platform = "platform"
+      )[names(value)]
+      value <- value[order(names(value))]
+      if (!identical(shiny::isolate(inst$host()), value)) {
+        inst$host(value)
+      }
+      invisible()
+    },
+
     # Flush reactives, run due timers, and apply input updates the server
     # sent (updateSelectInput() and friends) the way the browser would.
     settle = function(inst) {
@@ -484,7 +547,16 @@ ShinyRuntime <- R6::R6Class(
       values
     },
 
-    result = function(inst, context, model, all_outputs, restarted = FALSE, unknown = character()) {
+    result = function(
+      inst,
+      context,
+      model,
+      all_outputs,
+      restarted = FALSE,
+      unknown = character(),
+      continued = FALSE,
+      lost_view = NULL
+    ) {
       collected <- with_request_context(context, collect_runtime_outputs(inst, self$outputs))
       changed <- if (all_outputs) {
         names(collected)
@@ -499,8 +571,10 @@ ShinyRuntime <- R6::R6Class(
         inst$digests[[id]] <- collected[[id]]$digest
       }
 
+      inst$revision <- (inst$revision %||% 0L) + 1L
       view <- compact_list(list(
         instance = inst$id,
+        revision = inst$revision,
         outputs = lapply(collected[changed], function(o) o$payload),
         inputs = page_input_updates(inst, model),
         inputMessages = drain(inst, "input_messages", reset_echo = TRUE),
@@ -516,7 +590,15 @@ ShinyRuntime <- R6::R6Class(
         view$outputs <- json_object()
       }
 
-      content <- list(text_block(runtime_result_text(self, inst, collected, model, unknown)))
+      content <- list(text_block(runtime_result_text(
+        self,
+        inst,
+        collected,
+        model,
+        unknown = unknown,
+        continued = continued,
+        lost_view = lost_view
+      )))
       if (model && private$images_enabled(context)) {
         for (id in self$model_outputs) {
           img <- collected[[id]]$image
@@ -531,6 +613,7 @@ ShinyRuntime <- R6::R6Class(
         names(outputs) <- self$model_outputs
         outputs <- compact_list(outputs)
         result$structuredContent <- list(
+          view = inst$id,
           inputs = runtime_input_snapshot(self, inst),
           outputs = if (length(outputs)) outputs else json_object()
         )
@@ -605,6 +688,8 @@ view_tool_schema <- function() {
       kinds = list(type = "object"),
       sizes = list(type = "object"),
       pixelRatio = list(type = "number"),
+      revision = list(type = "integer"),
+      host = list(type = "object"),
       output = list(type = "string"),
       all = list(type = "boolean")
     )
@@ -1157,13 +1242,31 @@ option_values <- function(html) {
 
 #' Text the model reads after opening or updating the app
 #' @noRd
-runtime_result_text <- function(runtime, inst, collected, model, unknown = character()) {
+runtime_result_text <- function(
+  runtime,
+  inst,
+  collected,
+  model,
+  unknown = character(),
+  continued = FALSE,
+  lost_view = NULL
+) {
   title <- runtime$title %||% runtime$app_name
   limit <- getOption("shinymcp.max_text_chars", 4000)
-  lines <- if (model) {
-    paste0("The ", title, " app is open in the conversation.")
-  } else {
+  lines <- if (!model) {
     paste0(title, " updated.")
+  } else if (continued) {
+    paste0("Updated the ", title, " app (view ", inst$id, ").")
+  } else {
+    c(
+      paste0("The ", title, " app is open in the conversation (view ", inst$id, ")."),
+      if (!is.null(lost_view)) {
+        paste0(
+          "View ", lost_view, " is no longer running, so this is a new view; ",
+          "inputs you didn't set are back to their defaults."
+        )
+      }
+    )
   }
   if (model) {
     snapshot <- runtime_input_snapshot(runtime, inst)
@@ -1334,6 +1437,43 @@ mcp_send_message <- function(text, session = shiny::getDefaultReactiveDomain()) 
 #' @export
 is_mcp_session <- function(session = shiny::getDefaultReactiveDomain()) {
   !is.null(runtime_instance(session))
+}
+
+#' The chat client around a Shiny app served with shinymcp
+#'
+#' @description
+#' `mcp_host_context()` reports what the chat client showing the app has
+#' told it: the color theme, whether the app is inline or full screen, and
+#' the user's locale and time zone. Reading it inside a reactive expression,
+#' observer, or render function makes that code run again when it changes,
+#' so a plot can switch to dark colors when the user switches the chat to
+#' dark mode.
+#'
+#' The values arrive with the app's first request from the page, so the
+#' first render, for the model's call that opened the app, sees an empty
+#' list.
+#'
+#' @inheritParams mcp_model_context
+#' @return A named list with any of `theme` (`"light"` or `"dark"`),
+#'   `display_mode` (`"inline"`, `"fullscreen"`, or `"pip"`), `locale`,
+#'   `time_zone`, and `platform`. An empty list before the page has reported
+#'   them, and `NULL` outside shinymcp's runtime.
+#' @family runtime helpers
+#' @export
+#' @examples
+#' server <- function(input, output, session) {
+#'   output$plot <- shiny::renderPlot({
+#'     dark <- identical(mcp_host_context()$theme, "dark")
+#'     par(bg = if (dark) "#1f1f1e" else "white", fg = if (dark) "grey90" else "black")
+#'     plot(mtcars$wt, mtcars$mpg, col.axis = par("fg"), col.lab = par("fg"))
+#'   })
+#' }
+mcp_host_context <- function(session = shiny::getDefaultReactiveDomain()) {
+  inst <- runtime_instance(session)
+  if (is.null(inst)) {
+    return(NULL)
+  }
+  inst$host()
 }
 
 #' @noRd

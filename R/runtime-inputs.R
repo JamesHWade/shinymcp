@@ -387,29 +387,16 @@ html_options <- function(html) {
     return(empty)
   }
   attrs <- sub("^<option\\b([^>]*)>.*$", "\\1", matches, perl = TRUE, ignore.case = TRUE)
-  labels <- html_unescape(trimws(gsub("<[^>]*>", "", sub("^<option\\b[^>]*>(.*?)</option>$", "\\1", matches, perl = TRUE, ignore.case = TRUE))))
+  labels <- unescape_html(trimws(gsub("<[^>]*>", "", sub("^<option\\b[^>]*>(.*?)</option>$", "\\1", matches, perl = TRUE, ignore.case = TRUE))))
   values <- vapply(seq_along(attrs), function(i) {
     m <- regmatches(attrs[[i]], regexec("\\bvalue\\s*=\\s*(\"([^\"]*)\"|'([^']*)')", attrs[[i]], perl = TRUE))[[1]]
     if (length(m) == 0) {
       return(labels[[i]])
     }
-    html_unescape(if (nzchar(m[[3]])) m[[3]] else m[[4]])
+    unescape_html(if (nzchar(m[[3]])) m[[3]] else m[[4]])
   }, character(1))
   is_selected <- grepl("(^|\\s)selected(\\s|=|$)", attrs, perl = TRUE)
   list(values = values, labels = labels, selected = values[is_selected])
-}
-
-#' Decode the HTML entities htmltools and Shiny write
-#' @noRd
-html_unescape <- function(x) {
-  x <- gsub("&lt;", "<", x, fixed = TRUE)
-  x <- gsub("&gt;", ">", x, fixed = TRUE)
-  x <- gsub("&quot;", "\"", x, fixed = TRUE)
-  x <- gsub("&#39;", "'", x, fixed = TRUE)
-  x <- gsub("&#x27;", "'", x, fixed = TRUE)
-  x <- gsub("&#10;", "\n", x, fixed = TRUE)
-  x <- gsub("&#13;", "\r", x, fixed = TRUE)
-  gsub("&amp;", "&", x, fixed = TRUE)
 }
 
 #' All descendant tags with a given name

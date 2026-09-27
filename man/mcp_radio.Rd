@@ -17,7 +17,7 @@ display labels and values as the radio values.}
 \item{selected}{The initially selected value. Defaults to the first choice.}
 }
 \value{
-An \link[htmltools:builder]{htmltools::tag} object
+An \link[htmltools:tag]{htmltools::tag} object
 }
 \description{
 Generates a set of radio buttons with MCP data attributes.

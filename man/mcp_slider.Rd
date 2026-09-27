@@ -20,7 +20,7 @@ mcp_slider(id, label, min, max, value = min, step = 1)
 \item{step}{Step increment}
 }
 \value{
-An \link[htmltools:builder]{htmltools::tag} object
+An \link[htmltools:tag]{htmltools::tag} object
 }
 \description{
 Generates a range slider element with MCP data attributes.

@@ -16,7 +16,7 @@ mcp_text_input(id, label, value = "", placeholder = NULL)
 \item{placeholder}{Placeholder text}
 }
 \value{
-An \link[htmltools:builder]{htmltools::tag} object
+An \link[htmltools:tag]{htmltools::tag} object
 }
 \description{
 Generates a text input element with MCP data attributes.

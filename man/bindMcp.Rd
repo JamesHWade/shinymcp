@@ -16,7 +16,7 @@ bindMcp(tag, ...)
 \method{bindMcp}{default}(tag, ...)
 }
 \arguments{
-\item{tag}{A \link[htmltools:builder]{shiny.tag} or \link[htmltools:tagList]{shiny.tag.list}
+\item{tag}{A \link[htmltools:tag]{shiny.tag} or \link[htmltools:tagList]{shiny.tag.list}
 produced by a Shiny input or output function.}
 
 \item{...}{Reserved for future use.}
@@ -28,7 +28,7 @@ auto-detected from the tag structure.}
 \code{"table"}). Only used for outputs. If \code{NULL}, auto-detected.}
 }
 \value{
-The modified \link[htmltools:builder]{htmltools::tag} with MCP attributes stamped.
+The modified \link[htmltools:tag]{htmltools::tag} with MCP attributes stamped.
 }
 \description{
 Annotates a Shiny input or output tag with \verb{data-shinymcp-*} attributes

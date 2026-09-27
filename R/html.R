@@ -25,7 +25,10 @@ build_app_html <- function(app, private, config = NULL) {
   rendered <- private$rendered()
   deps <- htmltools::resolveDependencies(rendered$dependencies)
   deps <- Filter(function(d) !d$name %in% SHINYMCP_REPLACED_DEPS, deps)
-  has_bootstrap <- any(vapply(deps, function(d) identical(d$name, "bootstrap"), logical(1)))
+  bootstrap <- Filter(function(d) identical(d$name, "bootstrap"), deps)
+  bootstrap_major <- if (length(bootstrap)) {
+    sub("\\..*$", "", as.character(bootstrap[[1]]$version))
+  }
 
   bridge_config <- app_bridge_config(app, private, deps)
   if (!is.null(config)) {
@@ -51,8 +54,12 @@ build_app_html <- function(app, private, config = NULL) {
   )
 
   html <- as.character(rendered$html)
+  # Bootstrap 3 and 4 have no dark mode; the bridge keeps those pages light.
   classes <- paste(
-    c("shinymcp", if (has_bootstrap) "shinymcp-bootstrap"),
+    c(
+      "shinymcp",
+      if (!is.null(bootstrap_major)) c("shinymcp-bootstrap", paste0("shinymcp-bs", bootstrap_major))
+    ),
     collapse = " "
   )
   if (grepl("^\\s*<body", html)) {

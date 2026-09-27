@@ -74,10 +74,13 @@ handle_http_request <- function(
     cors <- cors_headers(origin)
   }
 
+  # Empty replies use 200, not 204: httpuv gzips even an empty body, and a
+  # 204 with a body leaves bytes on a keep-alive connection that browsers
+  # then read as a malformed next response.
   if (method == "OPTIONS") {
     requested <- headers[["access-control-request-headers"]]
     return(list(
-      status = 204L,
+      status = 200L,
       headers = c(cors, list(
         `Access-Control-Allow-Methods` = "POST, DELETE, OPTIONS",
         `Access-Control-Allow-Headers` = requested %||%
@@ -93,7 +96,7 @@ handle_http_request <- function(
   if (method == "DELETE") {
     if (!is.null(session_id) && !is.null(sessions[[session_id]])) {
       rm(list = session_id, envir = sessions)
-      return(list(status = 204L, headers = cors, body = ""))
+      return(list(status = 200L, headers = cors, body = ""))
     }
     return(http_json(404L, jsonrpc_error(NULL, RPC_INVALID_REQUEST, "Session not found"), cors))
   }

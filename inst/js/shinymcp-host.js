@@ -593,6 +593,14 @@
       var params = msg.params || {};
       switch (msg.method) {
         case "ui/initialize":
+          if (state.initialized) {
+            // The page reloaded (its frame was moved or re-rendered). Start
+            // over and send it the tool call again.
+            state.initialized = false;
+            state.outbox = [];
+            if (state.sentInput !== undefined) deliverToolInput(state.sentInput);
+            if (state.sentResult !== undefined) deliverToolResult(state.sentResult);
+          }
           state.context = buildContext();
           respond(msg.id, {
             protocolVersion: APPS_PROTOCOL_VERSION,
@@ -764,11 +772,13 @@
     // -- The tool call that opened the app ------------------------------------
 
     function deliverToolInput(args) {
-      notify("ui/notifications/tool-input", { arguments: args || {} });
+      state.sentInput = args || {};
+      notify("ui/notifications/tool-input", { arguments: state.sentInput });
     }
 
     function deliverToolResult(result) {
-      notify("ui/notifications/tool-result", result || { content: [] });
+      state.sentResult = result || { content: [] };
+      notify("ui/notifications/tool-result", state.sentResult);
     }
 
     function startToolCall() {

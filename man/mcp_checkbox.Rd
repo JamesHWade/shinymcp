@@ -14,7 +14,7 @@ mcp_checkbox(id, label, value = FALSE)
 \item{value}{Initial checked state}
 }
 \value{
-An \link[htmltools:builder]{htmltools::tag} object
+An \link[htmltools:tag]{htmltools::tag} object
 }
 \description{
 Generates a checkbox input element with MCP data attributes.

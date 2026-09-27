@@ -726,18 +726,52 @@ render_plot_png <- function(x, width = 800, height = 500, res = 96, scale = 1.5)
 }
 
 #' Strip tags from HTML to get readable text
+#'
+#' Tables become Markdown tables, which models read well.
 #' @noRd
 html_to_text <- function(html) {
   html <- paste(as.character(html), collapse = "\n")
   html <- gsub("(?is)<(script|style)[^>]*>.*?</\\1>", " ", html, perl = TRUE)
+  html <- tables_to_markdown(html)
   html <- gsub("(?i)<br\\s*/?>", "\n", html, perl = TRUE)
   html <- gsub("(?i)</(p|div|li|tr|h[1-6])>", "\n", html, perl = TRUE)
-  html <- gsub("(?i)</t[dh]>", " | ", html, perl = TRUE)
   html <- gsub("<[^>]+>", "", html)
   html <- unescape_html(html)
   lines <- trimws(strsplit(html, "\n", fixed = TRUE)[[1]])
-  lines <- sub("\\s*\\|$", "", gsub("[ \t]+", " ", lines))
+  lines <- gsub("[ \t]+", " ", lines)
   paste(lines[nzchar(lines)], collapse = "\n")
+}
+
+#' Replace each HTML table with a Markdown table
+#' @noRd
+tables_to_markdown <- function(html) {
+  matches <- gregexpr("(?is)<table\\b.*?</table>", html, perl = TRUE)
+  tables <- regmatches(html, matches)[[1]]
+  if (length(tables) == 0) {
+    return(html)
+  }
+  regmatches(html, matches) <- list(vapply(tables, html_table_markdown, character(1), USE.NAMES = FALSE))
+  html
+}
+
+#' @noRd
+html_table_markdown <- function(table) {
+  rows <- regmatches(table, gregexpr("(?is)<tr\\b.*?</tr>", table, perl = TRUE))[[1]]
+  cells <- lapply(rows, function(row) {
+    found <- regmatches(row, gregexpr("(?is)<t[hd]\\b[^>]*>.*?</t[hd]>", row, perl = TRUE))[[1]]
+    text <- gsub("(?is)^<t[hd]\\b[^>]*>|</t[hd]>$", "", found, perl = TRUE)
+    text <- unescape_html(gsub("<[^>]+>", "", text))
+    text <- trimws(gsub("\\s+", " ", text))
+    gsub("|", "\\|", text, fixed = TRUE)
+  })
+  cells <- Filter(length, cells)
+  if (length(cells) == 0) {
+    return("\n")
+  }
+  width <- max(lengths(cells))
+  line <- function(x) paste0("| ", paste(c(x, rep("", width - length(x))), collapse = " | "), " |")
+  body <- vapply(cells, line, character(1))
+  paste0("\n", paste(c(body[1], line(rep("---", width)), body[-1]), collapse = "\n"), "\n")
 }
 
 #' @noRd
@@ -748,6 +782,8 @@ unescape_html <- function(x) {
     "&quot;" = "\"",
     "&#39;" = "'",
     "&#x27;" = "'",
+    "&#10;" = "\n",
+    "&#13;" = "\r",
     "&nbsp;" = " ",
     "&amp;" = "&"
   )

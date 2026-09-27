@@ -2,300 +2,374 @@
 % Please edit documentation in R/mcp-app.R
 \name{McpApp}
 \alias{McpApp}
-\title{MCP App}
+\title{MCP App object}
 \description{
-MCP App
+An \code{McpApp} bundles a user interface with the tools it calls. It knows how
+to render itself as the self-contained HTML page an MCP host shows (the
+app's \verb{ui://} resource), how to describe its tools to a client, and how to
+run them. Create one with \code{\link[=mcp_app]{mcp_app()}} or \code{\link[=as_mcp_app]{as_mcp_app()}} rather than
+calling \code{McpApp$new()} directly; the arguments are the same.
 
-MCP App
-}
-\details{
-An R6 class that bundles UI components and tools into a servable MCP App.
-The app generates HTML with an embedded JS bridge and provides tools
-annotated with resource URIs for MCP consumption.
+Most code only needs \verb{$call_tool()} (run a tool and get its R value back,
+handy in tests) and \verb{$html_resource()} (the page a host renders).
 }
 \section{Public fields}{
-\if{html}{\out{<div class="r6-fields">}}
-\describe{
-\item{\code{name}}{App name}
+  \if{html}{\out{<div class="r6-fields">}}
+  \describe{
+    \item{\code{name}}{App name; the UI resource is \verb{ui://<name>}.}
 
-\item{\code{version}}{App version}
-}
-\if{html}{\out{</div>}}
+    \item{\code{version}}{App version string.}
+
+    \item{\code{title}}{Human-readable title, or \code{NULL}.}
+
+    \item{\code{description}}{What the app is for, or \code{NULL}.}
+  }
+  \if{html}{\out{</div>}}
 }
 \section{Methods}{
 \subsection{Public methods}{
-\itemize{
-\item \href{#method-McpApp-new}{\code{McpApp$new()}}
-\item \href{#method-McpApp-html_resource}{\code{McpApp$html_resource()}}
-\item \href{#method-McpApp-mcp_tools}{\code{McpApp$mcp_tools()}}
-\item \href{#method-McpApp-tool_definitions}{\code{McpApp$tool_definitions()}}
-\item \href{#method-McpApp-extra_resources}{\code{McpApp$extra_resources()}}
-\item \href{#method-McpApp-read_extra_resource}{\code{McpApp$read_extra_resource()}}
-\item \href{#method-McpApp-resource_meta}{\code{McpApp$resource_meta()}}
-\item \href{#method-McpApp-call_tool}{\code{McpApp$call_tool()}}
-\item \href{#method-McpApp-resource_uri}{\code{McpApp$resource_uri()}}
-\item \href{#method-McpApp-interaction_defaults}{\code{McpApp$interaction_defaults()}}
-\item \href{#method-McpApp-print}{\code{McpApp$print()}}
-\item \href{#method-McpApp-clone}{\code{McpApp$clone()}}
-}
+  \itemize{
+    \item \href{#method-McpApp-initialize}{\code{McpApp$new()}}
+    \item \href{#method-McpApp-html_resource}{\code{McpApp$html_resource()}}
+    \item \href{#method-McpApp-resource_uri}{\code{McpApp$resource_uri()}}
+    \item \href{#method-McpApp-resource_meta}{\code{McpApp$resource_meta()}}
+    \item \href{#method-McpApp-resources}{\code{McpApp$resources()}}
+    \item \href{#method-McpApp-read_resource}{\code{McpApp$read_resource()}}
+    \item \href{#method-McpApp-has_resource}{\code{McpApp$has_resource()}}
+    \item \href{#method-McpApp-tools}{\code{McpApp$tools()}}
+    \item \href{#method-McpApp-tool_definitions}{\code{McpApp$tool_definitions()}}
+    \item \href{#method-McpApp-call_tool}{\code{McpApp$call_tool()}}
+    \item \href{#method-McpApp-run_tool}{\code{McpApp$run_tool()}}
+    \item \href{#method-McpApp-has_tool}{\code{McpApp$has_tool()}}
+    \item \href{#method-McpApp-interaction_defaults}{\code{McpApp$interaction_defaults()}}
+    \item \href{#method-McpApp-runtime}{\code{McpApp$runtime()}}
+    \item \href{#method-McpApp-output_types}{\code{McpApp$output_types()}}
+    \item \href{#method-McpApp-print}{\code{McpApp$print()}}
+    \item \href{#method-McpApp-clone}{\code{McpApp$clone()}}
+  }
 }
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-McpApp-new"></a>}}
-\if{latex}{\out{\hypertarget{method-McpApp-new}{}}}
-\subsection{Method \code{new()}}{
-Create a new McpApp
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$new(
+\if{html}{\out{<a id="method-McpApp-initialize"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-initialize}{}}}
+\subsection{\code{McpApp$new()}}{
+  Create an app. See \code{\link[=mcp_app]{mcp_app()}} for the arguments.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$new(
   ui,
   tools = list(),
   name = "shinymcp-app",
   version = "0.1.0",
+  title = NULL,
+  description = NULL,
   theme = NULL,
   csp = NULL,
   permissions = NULL,
   prefers_border = NULL,
+  domain = NULL,
   tool_visibility = NULL,
+  tool_outputs = NULL,
   trigger = NULL,
   debounce_ms = NULL,
   resources = NULL,
-  tool_outputs = NULL
-)}\if{html}{\out{</div>}}
+  host_styles = TRUE,
+  model_context = TRUE,
+  images = TRUE,
+  runtime = NULL
+)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{ui, tools, name, version, title, description, theme, csp, permissions, prefers_border, domain, tool_visibility, tool_outputs, trigger, debounce_ms, resources, host_styles, model_context, images}}{See \code{\link[=mcp_app]{mcp_app()}}.}
+      \item{\code{runtime}}{Internal: the live Shiny runtime for apps created by
+\code{\link[=as_mcp_app]{as_mcp_app()}} from a Shiny app.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{ui}}{An htmltools tag or tagList defining the UI. Can be a simple
-tagList of shinymcp components, or a full \code{\link[bslib:page]{bslib::page()}} with theme.}
-
-\item{\code{tools}}{A list of tool definitions (ellmer tool objects or named list)}
-
-\item{\code{name}}{App name (used in resource URIs)}
-
-\item{\code{version}}{App version string}
-
-\item{\code{theme}}{Optional bslib theme (a \code{\link[bslib:bs_theme]{bslib::bs_theme()}} object). If
-provided, the UI will be wrapped in a themed page. Not needed if \code{ui}
-is already a \code{\link[bslib:page]{bslib::page()}}.}
-
-\item{\code{csp}}{Optional named list of Content Security Policy domain
-declarations for the app's \verb{ui://} resource, per the MCP Apps spec.
-Hosts block undeclared external domains. Fields: \code{connect_domains}
-(fetch/XHR/WebSocket origins), \code{resource_domains} (scripts, styles,
-images, fonts), \code{frame_domains} (nested iframes), \code{base_uri_domains}.
-Apps with fully inlined assets (the shinymcp default) don't need this.}
-
-\item{\code{permissions}}{Optional named list of sandbox permissions the app
-needs (e.g. \code{list(camera = list())}). Most apps don't need this.}
-
-\item{\code{prefers_border}}{Optional logical; hint that the host should draw
-a border around the embedded app.}
-
-\item{\code{tool_visibility}}{Optional named list mapping tool names to
-visibility scopes per the MCP Apps spec. Each entry is a character
-vector drawn from \code{c("model", "app")}. Use \code{"app"} for tools only the
-UI should call (hidden from the model), \code{"model"} for tools the UI
-should not call. Default (unset) is both.}
-
-\item{\code{trigger}}{When the UI calls tools as inputs change: \code{"debounce"}
-(default, batches rapid changes) or \code{"change"} (immediate). The
-\code{"submit"} and \code{"manual"} modes only apply inside shinymcp's own
-Shiny host, which provides Apply/Run buttons.}
-
-\item{\code{debounce_ms}}{Debounce interval in milliseconds (default 250).}
-
-\item{\code{resources}}{Optional named list of extra resources served
-alongside the app. Names are URIs; values are a string (static
-content), a function returning a string (evaluated on each read,
-useful for lazy-loading data into the UI via
-\code{window.shinymcp.readResource()}), or a list with fields \code{content}
-(string or function), \code{mime_type}, \code{name}, \code{description}, \code{meta}.}
-
-\item{\code{tool_outputs}}{Optional named list mapping tool names to the
-output ids they return (e.g. \code{list(explore = c("scatter", "stats"))}).
-Used to generate an \code{outputSchema} for each tool. Only declare this
-for tools that return a named list keyed by those output ids.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-McpApp-html_resource"></a>}}
 \if{latex}{\out{\hypertarget{method-McpApp-html_resource}{}}}
-\subsection{Method \code{html_resource()}}{
-Generate the full HTML resource
-Returns a character string of the complete HTML page including
-UI components, bridge script, and config. HTML dependencies from
-bslib or other htmltools-based packages are inlined automatically.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$html_resource(bridge_config = NULL)}\if{html}{\out{</div>}}
+\subsection{\code{McpApp$html_resource()}}{
+  The HTML page an MCP host renders for this app.
+Dependencies (Bootstrap, bslib components, htmlwidgets) are inlined
+so the page works under a host's default Content Security Policy.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$html_resource(config = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{config}}{Named list merged into the bridge configuration. Hosts
+use it to pass their own settings; apps rarely need it.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{bridge_config}}{Optional named list of bridge config overrides used by
-\verb{$html_resource()}.}
-}
-\if{html}{\out{</div>}}
-}
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-McpApp-mcp_tools"></a>}}
-\if{latex}{\out{\hypertarget{method-McpApp-mcp_tools}{}}}
-\subsection{Method \code{mcp_tools()}}{
-Get tools annotated with MCP metadata
-Returns the tools list with \verb{_meta.ui} added to each plain-list tool,
-excluding tools whose \code{visibility} does not include \code{"model"} (those
-are app-only: callable from the rendered UI, hidden from the model).
-Used by the shinychat/mcptools registration paths.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$mcp_tools()}\if{html}{\out{</div>}}
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-McpApp-tool_definitions"></a>}}
-\if{latex}{\out{\hypertarget{method-McpApp-tool_definitions}{}}}
-\subsection{Method \code{tool_definitions()}}{
-Get tool definitions for MCP tools/list responses
-Returns a list of tool definition objects suitable for JSON-RPC.
-Each tool includes \verb{_meta.ui.resourceUri} linking it to the app's
-UI resource, which tells MCP Apps-capable hosts to render the UI.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$tool_definitions(include_ui_meta = TRUE)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{include_ui_meta}}{Whether to attach \verb{_meta.ui} to each tool.
-Set to \code{FALSE} for clients that did not advertise the MCP Apps
-extension capability, so tools degrade gracefully to text-only.}
-}
-\if{html}{\out{</div>}}
-}
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-McpApp-extra_resources"></a>}}
-\if{latex}{\out{\hypertarget{method-McpApp-extra_resources}{}}}
-\subsection{Method \code{extra_resources()}}{
-Get the extra resources declared for this app
-Returns a named list (URI -> normalized spec with \code{uri}, \code{name},
-\code{description}, \code{mime_type}, \code{content_fn}, \code{meta}) for registration
-alongside the app's main ui:// resource.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$extra_resources()}\if{html}{\out{</div>}}
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-McpApp-read_extra_resource"></a>}}
-\if{latex}{\out{\hypertarget{method-McpApp-read_extra_resource}{}}}
-\subsection{Method \code{read_extra_resource()}}{
-Read one extra resource by URI
-Returns a \code{resources/read} contents entry (\code{uri}, \code{mimeType}, \code{text},
-optional \verb{_meta}). Errors with class \code{shinymcp_error_resource} when
-the URI is not a declared extra resource.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$read_extra_resource(uri)}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{uri}}{The resource URI to read}
-}
-\if{html}{\out{</div>}}
-}
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-McpApp-resource_meta"></a>}}
-\if{latex}{\out{\hypertarget{method-McpApp-resource_meta}{}}}
-\subsection{Method \code{resource_meta()}}{
-Get the \verb{_meta} for this app's ui:// resource
-Returns the \verb{_meta} list (CSP domains, permissions, prefersBorder)
-to attach to the resource in \code{resources/list} and \code{resources/read}
-responses, or \code{NULL} when nothing was declared.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$resource_meta()}\if{html}{\out{</div>}}
-}
-
-}
-\if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-McpApp-call_tool"></a>}}
-\if{latex}{\out{\hypertarget{method-McpApp-call_tool}{}}}
-\subsection{Method \code{call_tool()}}{
-Call a tool by name
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$call_tool(name, arguments = list())}\if{html}{\out{</div>}}
-}
-
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{name}}{Name of the tool to call}
-
-\item{\code{arguments}}{Named list of arguments to pass to the tool}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-McpApp-resource_uri"></a>}}
 \if{latex}{\out{\hypertarget{method-McpApp-resource_uri}{}}}
-\subsection{Method \code{resource_uri()}}{
-Get the ui:// resource URI for this app
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$resource_uri()}\if{html}{\out{</div>}}
+\subsection{\code{McpApp$resource_uri()}}{
+  The app's \verb{ui://} resource URI.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$resource_uri()}
+    \if{html}{\out{</div>}}
+  }
 }
 
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-resource_meta"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-resource_meta}{}}}
+\subsection{\code{McpApp$resource_meta()}}{
+  The \verb{_meta} published with the app's \verb{ui://} resource
+(CSP, permissions, border preference), or \code{NULL}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$resource_meta()}
+    \if{html}{\out{</div>}}
+  }
 }
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-resources"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-resources}{}}}
+\subsection{\code{McpApp$resources()}}{
+  Resource records for \code{resources/list}: the app's UI and
+any extra resources.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$resources()}
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-read_resource"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-read_resource}{}}}
+\subsection{\code{McpApp$read_resource()}}{
+  Read one of the app's resources.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$read_resource(uri)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{uri}}{Resource URI.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    A \code{resources/read} contents entry (\code{uri}, \code{mimeType}, \code{text},
+optional \verb{_meta}).
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-has_resource"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-has_resource}{}}}
+\subsection{\code{McpApp$has_resource()}}{
+  Does the app serve this resource URI?
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$has_resource(uri)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{uri}}{Resource URI.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-tools"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-tools}{}}}
+\subsection{\code{McpApp$tools()}}{
+  The app's tools, normalized.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$tools(audience = NULL)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{audience}}{\code{NULL} for all tools, or \code{"model"} / \code{"app"} for the
+tools that audience may call.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-tool_definitions"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-tool_definitions}{}}}
+\subsection{\code{McpApp$tool_definitions()}}{
+  Tool definitions for an MCP \code{tools/list} response.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$tool_definitions(include_ui_meta = TRUE, include_app_only = TRUE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{include_ui_meta}}{Include the nested \verb{_meta.ui} block. \code{FALSE}
+for clients that did not declare MCP Apps support.}
+      \item{\code{include_app_only}}{Include tools only the app's UI can call.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-call_tool"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-call_tool}{}}}
+\subsection{\code{McpApp$call_tool()}}{
+  Run a tool and return its R value, as the tool function
+returned it. Useful in tests.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$call_tool(name, arguments = list(), context = list())}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{name}}{Tool name.}
+      \item{\code{arguments}}{Named list of arguments, as a client would send them.}
+      \item{\code{context}}{Request context; see \code{\link[=mcp_request]{mcp_request()}}.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-run_tool"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-run_tool}{}}}
+\subsection{\code{McpApp$run_tool()}}{
+  Run a tool and return an MCP \code{tools/call} result.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$run_tool(name, arguments = list(), context = list())}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{name}}{Tool name.}
+      \item{\code{arguments}}{Named list of arguments.}
+      \item{\code{context}}{Request context. \code{caller = "app"} marks calls from the
+app's own UI, which get no image blocks for the model.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-has_tool"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-has_tool}{}}}
+\subsection{\code{McpApp$has_tool()}}{
+  Does the app have a tool with this name?
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$has_tool(name)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{name}}{Tool name.}
+    }
+    \if{html}{\out{</div>}}
+  }
+}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-McpApp-interaction_defaults"></a>}}
 \if{latex}{\out{\hypertarget{method-McpApp-interaction_defaults}{}}}
-\subsection{Method \code{interaction_defaults()}}{
-Get the app's declared interaction defaults
-Returns a list with \code{trigger} and \code{debounce_ms} as declared at
-construction (either may be \code{NULL} when unset). Hosts use this to
-defer to the app's declaration when the embedder didn't specify.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$interaction_defaults()}\if{html}{\out{</div>}}
+\subsection{\code{McpApp$interaction_defaults()}}{
+  The app's declared interaction defaults (\code{trigger},
+\code{debounce_ms}), each possibly \code{NULL}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$interaction_defaults()}
+    \if{html}{\out{</div>}}
+  }
 }
 
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-runtime"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-runtime}{}}}
+\subsection{\code{McpApp$runtime()}}{
+  The live Shiny runtime behind an app made from a Shiny
+app, or \code{NULL}.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$runtime()}
+    \if{html}{\out{</div>}}
+  }
 }
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-McpApp-output_types"></a>}}
+\if{latex}{\out{\hypertarget{method-McpApp-output_types}{}}}
+\subsection{\code{McpApp$output_types()}}{
+  Output ids and types found in the UI.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$output_types()}
+    \if{html}{\out{</div>}}
+  }
+}
+
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-McpApp-print"></a>}}
 \if{latex}{\out{\hypertarget{method-McpApp-print}{}}}
-\subsection{Method \code{print()}}{
-Print method
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$print(...)}\if{html}{\out{</div>}}
+\subsection{\code{McpApp$print()}}{
+  Print a summary.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$print(...)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{...}}{Ignored.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{...}}{Ignored.}
-}
-\if{html}{\out{</div>}}
-}
-}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-McpApp-clone"></a>}}
 \if{latex}{\out{\hypertarget{method-McpApp-clone}{}}}
-\subsection{Method \code{clone()}}{
-The objects of this class are cloneable with this method.
-\subsection{Usage}{
-\if{html}{\out{<div class="r">}}\preformatted{McpApp$clone(deep = FALSE)}\if{html}{\out{</div>}}
+\subsection{\code{McpApp$clone()}}{
+  The objects of this class are cloneable with this method.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{McpApp$clone(deep = FALSE)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{deep}}{Whether to make a deep clone.}
+    }
+    \if{html}{\out{</div>}}
+  }
 }
 
-\subsection{Arguments}{
-\if{html}{\out{<div class="arguments">}}
-\describe{
-\item{\code{deep}}{Whether to make a deep clone.}
-}
-\if{html}{\out{</div>}}
-}
-}
 }

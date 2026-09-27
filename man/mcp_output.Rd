@@ -7,7 +7,7 @@
 mcp_output(tag, id = NULL, type = c("text", "html", "plot", "table"))
 }
 \arguments{
-\item{tag}{An \link[htmltools:builder]{htmltools::tag} object.}
+\item{tag}{An \link[htmltools:tag]{htmltools::tag} object.}
 
 \item{id}{The output ID. If \code{NULL} (the default), reads the element's
 existing \code{id} attribute.}
@@ -15,7 +15,7 @@ existing \code{id} attribute.}
 \item{type}{Output type: \code{"text"}, \code{"html"}, \code{"plot"}, or \code{"table"}.}
 }
 \value{
-The modified \link[htmltools:builder]{htmltools::tag} with output attributes stamped.
+The modified \link[htmltools:tag]{htmltools::tag} with output attributes stamped.
 }
 \description{
 Stamps \code{data-shinymcp-output} and \code{data-shinymcp-output-type} on a tag.

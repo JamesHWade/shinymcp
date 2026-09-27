@@ -2,50 +2,54 @@
 % Please edit documentation in R/preview.R
 \name{preview_app}
 \alias{preview_app}
-\title{Preview an MCP App in a web browser}
+\title{Preview an MCP App in a browser}
 \usage{
-preview_app(app, port = NULL, launch = TRUE)
+preview_app(
+  app,
+  arguments = NULL,
+  tool = NULL,
+  port = NULL,
+  launch = interactive()
+)
 }
 \arguments{
-\item{app}{An \link{McpApp} object, or a path to a directory containing an MCP
-App \code{app.R} (which will be \code{\link[=source]{source()}}d to obtain the app object).}
+\item{app}{An \link{McpApp}, a list of apps, a Shiny app, or a path to one.}
 
-\item{port}{Port for the local server. \code{NULL} (the default) picks a random
-available port.}
+\item{arguments}{Named list of arguments for the first call.}
 
-\item{launch}{Whether to open the browser automatically (default \code{TRUE}).}
+\item{tool}{Name of the tool to call first. Defaults to the first tool
+the model can call.}
+
+\item{port}{Port to listen on. \code{NULL} picks a free one.}
+
+\item{launch}{Whether to open the page in a browser.}
 }
 \value{
-Invisibly, a list with \code{url} (the preview URL) and \code{stop()} (a
-function to shut down the server).
+Invisibly, a list with the preview's \code{url} and a \code{stop()}
+function.
 }
 \description{
-Starts a local HTTP server and opens the MCP App in a browser. A lightweight
-host page emulates the MCP Apps postMessage protocol so that tools are fully
-functional — inputs trigger tool calls, and outputs update in real time, just
-like they would inside Claude Desktop.
+\code{preview_app()} serves the app over MCP on a local port and opens a page
+that hosts it the way a chat client does: the app runs in a sandboxed
+iframe under the same Content Security Policy a client would apply, and
+every message goes through the app's real MCP endpoint. Alongside the app
+the page shows what the model would see (the text and structured content
+of each tool result), the context the app publishes for the model, and a
+log of the protocol messages.
+
+When the page opens it calls the app's first tool (or \code{tool}) with
+\code{arguments}, as a model would, and shows the app with the result. Use
+the arguments box on the page to call it again with other values.
 }
 \examples{
 \dontrun{
-app <- mcp_app(
-  ui = htmltools::tags$div(
-    mcp_text_input("name", "Your name"),
-    mcp_text("greeting")
-  ),
-  tools = list(
-    list(
-      name = "greet",
-      fun = function(name = "world") {
-        list(greeting = paste0("Hello, ", name, "!"))
-      }
-    )
-  )
-)
-
-# Opens in browser with working inputs/outputs
-srv <- preview_app(app)
-
-# Stop when done
-srv$stop()
+preview <- preview_app(app, arguments = list(species = "Gentoo"))
+preview$stop()
 }
 }
+\seealso{
+Other serving:
+\code{\link[=mcp_endpoint]{mcp_endpoint()}},
+\code{\link[=serve]{serve()}}
+}
+\concept{serving}
