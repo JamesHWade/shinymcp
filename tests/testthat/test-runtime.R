@@ -295,6 +295,7 @@ test_that("the runtime adds a model tool and an app-only view tool", {
       "output",
       "body",
       "sync",
+      "tick",
       "dependency",
       "all"
     )
@@ -1947,7 +1948,7 @@ test_that("widget_dependencies() maps Shiny's web paths back to local files", {
 
 # ---- Timers ----
 
-test_that("invalidateLater() timers fire as time passes between requests", {
+test_that("a request runs the invalidateLater() timer that's due", {
   skip_if_not_installed("shiny")
   ticks <- 0
   ui <- shiny::fluidPage(
@@ -1965,11 +1966,12 @@ test_that("invalidateLater() timers fire as time passes between requests", {
   view <- rt_meta(rt_open(app))
   expect_identical(view$outputs$clock$value, "tick 1")
 
-  # Pretend the last request was a second ago: two 500 ms timers are due.
+  # Pretend the last request was a second ago: the timer is due (twice
+  # over, but a missed run isn't made up).
   inst <- rt_instance(app, view$instance)
   inst$clock <- inst$clock - 1
   meta <- rt_meta(rt_update(app, view, inputs = list(n = 1), changed = "n"))
-  expect_identical(meta$outputs$clock$value, "tick 3")
+  expect_identical(meta$outputs$clock$value, "tick 2")
 })
 
 # ---- Eviction and ownership ----
@@ -2886,4 +2888,110 @@ test_that("results leave out libraries the page was built with", {
   )
   expect_false("jquery" %in% names)
   expect_false("bootstrap" %in% names)
+})
+
+test_that("views say when their next timer is due, and a tick runs it", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::textOutput("n"))
+  server <- function(input, output, session) {
+    count <- 0
+    output$n <- shiny::renderText({
+      shiny::invalidateLater(200)
+      count <<- count + 1
+      count
+    })
+  }
+  app <- rt_app(ui, server, name = "ticker")
+  view <- rt_meta(rt_open(app))
+  expect_identical(view$outputs$n$value, "1")
+  expect_true(is.numeric(view$nextTick))
+  expect_lte(view$nextTick, 200)
+
+  Sys.sleep(0.3)
+  ticked <- rt_meta(rt_update(app, view, tick = TRUE))
+  expect_identical(ticked$outputs$n$value, "2")
+
+  # A long pause runs the timer once, not once for every interval missed.
+  Sys.sleep(1)
+  later <- rt_meta(rt_update(app, ticked, tick = TRUE))
+  expect_identical(later$outputs$n$value, "3")
+})
+
+test_that("views without timers don't ask the page to check back", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::textOutput("n"))
+  app <- rt_app(
+    ui,
+    function(input, output, session) {
+      output$n <- shiny::renderText("still")
+    },
+    name = "still"
+  )
+  expect_null(rt_meta(rt_open(app))$nextTick)
+})
+
+test_that("files the page uploads reach the server as Shiny's data frame", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::fileInput("upload", "Upload"),
+    shiny::textOutput("o")
+  )
+  server <- function(input, output, session) {
+    output$o <- shiny::renderText({
+      shiny::req(input$upload)
+      paste(input$upload$name, nrow(utils::read.csv(input$upload$datapath)))
+    })
+  }
+  app <- rt_app(ui, server, name = "uploads")
+  expect_false("upload" %in% app$runtime()$model_inputs)
+  view <- rt_meta(rt_open(app))
+  csv <- "a,b\n1,2\n3,4\n"
+  file <- list(
+    name = "data.csv",
+    size = nchar(csv),
+    type = "text/csv",
+    data = jsonlite::base64_enc(charToRaw(csv))
+  )
+  meta <- rt_meta(rt_update(
+    app,
+    view,
+    inputs = list(upload = list(file)),
+    changed = "upload",
+    kinds = list(upload = list(kind = "file"))
+  ))
+  expect_identical(meta$outputs$o$value, "data.csv 2")
+
+  inst <- rt_instance(app, view$instance)
+  datapath <- shiny::isolate(inst$session$input$upload$datapath)
+  expect_true(file.exists(datapath))
+  expect_identical(basename(datapath), "0.csv")
+  # Closing the view removes its uploads.
+  app$run_tool(
+    "uploads_view",
+    list(action = "close", instance = view$instance),
+    context = list(caller = "app")
+  )
+  expect_false(file.exists(datapath))
+})
+
+test_that("uploads over shiny.maxRequestSize are refused", {
+  skip_if_not_installed("shiny")
+  withr::local_options(shiny.maxRequestSize = 10)
+  ui <- shiny::fluidPage(shiny::fileInput("upload", "Upload"))
+  app <- rt_app(ui, function(input, output, session) NULL, name = "limit")
+  view <- rt_meta(rt_open(app))
+  res <- rt_update(
+    app,
+    view,
+    inputs = list(
+      upload = list(list(
+        name = "big.txt",
+        data = jsonlite::base64_enc(charToRaw(strrep("x", 100)))
+      ))
+    ),
+    changed = "upload",
+    kinds = list(upload = list(kind = "file"))
+  )
+  expect_true(res$isError)
+  expect_match(res$content[[1]]$text, "limited", fixed = TRUE)
 })

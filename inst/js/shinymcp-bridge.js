@@ -785,20 +785,93 @@
       };
     },
 
+    // fileInput(): in a live app the page reads the files and sends them
+    // to the session with the next update, as Shiny's client uploads them.
+    // Tools have no argument for a file, so elsewhere the input is off.
     file: function (el) {
-      el.disabled = true;
       var group = el.closest(".shiny-input-container") || el.parentNode;
-      if (group && !group.querySelector(".shinymcp-file-note")) {
-        var note = document.createElement("div");
-        note.className = "shinymcp-file-note";
-        note.textContent = "File uploads aren't available in chat.";
-        group.appendChild(note);
+      function note(text) {
+        if (!group) return;
+        var box = group.querySelector(".shinymcp-file-note");
+        if (!box) {
+          box = document.createElement("div");
+          box.className = "shinymcp-file-note";
+          group.appendChild(box);
+        }
+        box.textContent = text;
+      }
+      if (MODE !== "shiny") {
+        el.disabled = true;
+        note("File uploads need a live Shiny app.");
+        return {
+          get: function () { return null; },
+          set: function () {},
+          receiveMessage: function () {},
+          unsupported: true
+        };
+      }
+      var files = null;
+      var maxBytes = typeof config.maxUploadBytes === "number" ? config.maxUploadBytes : 5 * 1024 * 1024;
+      var nameBox = group ? group.querySelector('input[type="text"]') : null;
+      var progress = byId(el.id + "_progress");
+      function showProgress(fraction, text) {
+        if (!progress) return;
+        progress.style.visibility = "visible";
+        var bar = progress.querySelector(".progress-bar");
+        if (bar) {
+          bar.style.width = Math.round(fraction * 100) + "%";
+          bar.textContent = text || "";
+        }
+      }
+      function readFile(file) {
+        return new Promise(function (resolve, reject) {
+          var reader = new FileReader();
+          reader.onload = function () {
+            var url = String(reader.result || "");
+            resolve({ name: file.name, size: file.size, type: file.type || "", data: url.slice(url.indexOf(",") + 1) });
+          };
+          reader.onerror = function () { reject(reader.error || new Error("read failed")); };
+          reader.readAsDataURL(file);
+        });
       }
       return {
-        get: function () { return null; },
+        // The contents go with the update that changed them, never into
+        // the model's context.
+        changedOnly: true,
+        secret: true,
+        get: function () { return files; },
         set: function () {},
-        receiveMessage: function () {},
-        unsupported: true
+        bind: function () {
+          var self = this;
+          listen(el, ["change"], function () {
+            var list = Array.prototype.slice.call(el.files || []);
+            if (!list.length) return;
+            var total = 0;
+            each(list, function (f) { total += f.size; });
+            if (total > maxBytes) {
+              note("Files up to " + Math.round(maxBytes / 1048576 * 10) / 10 + " MB can be uploaded here.");
+              el.value = "";
+              return;
+            }
+            note("");
+            if (nameBox) nameBox.value = list.map(function (f) { return f.name; }).join(", ");
+            showProgress(0.2, "");
+            Promise.all(list.map(readFile)).then(
+              function (read) {
+                files = read;
+                showProgress(1, "Upload complete");
+                self.emit();
+              },
+              function (err) {
+                showProgress(0, "");
+                note("Couldn't read the file: " + (err && err.message ? err.message : err));
+              }
+            );
+          });
+        },
+        receiveMessage: function (msg) {
+          if (msg.label !== undefined) setLabel(this, msg.label);
+        }
       };
     }
   };
@@ -1208,8 +1281,9 @@
       var a = adapters[id];
       if (!a || a.unsupported) return;
       // Values set from JavaScript (widget events, Shiny.setInputValue())
-      // go with the update that changed them, not with every update.
-      if (changed && a.kind === "value" && !changed[id]) return;
+      // and uploads go with the update that changed them, not with every
+      // update.
+      if (changed && (a.kind === "value" || a.changedOnly) && !changed[id]) return;
       try {
         out[id] = a.get();
       } catch (e) {
@@ -1561,6 +1635,7 @@
       each(view.messages || [], function (text) { sendMessage(text); });
       if (view.modelContext && config.modelContext !== false) publishModelContext(view.modelContext);
       if (view.restarted) logWarn("the app's R session was restarted; state kept outside inputs was reset");
+      scheduleTick(view.nextTick);
     } else if (result.structuredContent && typeof result.structuredContent === "object") {
       renderFromStructured(result.structuredContent);
     } else if (!result.isError) {
@@ -1574,6 +1649,38 @@
       afterFirstResult(result, view);
     }
   }
+
+  // Timers in the R session (invalidateLater(), reactivePoll()) only run
+  // when the page calls, so call when the next one is due: at most once a
+  // second, and not while the page is hidden.
+  var tickTimer = null;
+  var MIN_TICK_MS = typeof config.minTickMs === "number" ? config.minTickMs : 1000;
+  function scheduleTick(ms) {
+    if (tickTimer) {
+      clearTimeout(tickTimer);
+      tickTimer = null;
+    }
+    if (typeof ms !== "number" || MODE !== "shiny") return;
+    tickTimer = setTimeout(function () {
+      tickTimer = null;
+      if (tornDown || !state.instance) return;
+      if (document.visibilityState === "hidden") {
+        state.tickWhenVisible = true;
+        return;
+      }
+      if (inFlight) {
+        scheduleTick(MIN_TICK_MS);
+        return;
+      }
+      viewUpdate([], { tick: true });
+    }, Math.max(ms, MIN_TICK_MS));
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (document.visibilityState === "visible" && state.tickWhenVisible) {
+      state.tickWhenVisible = false;
+      scheduleTick(0);
+    }
+  });
 
   var hostTimer = null;
   function scheduleHostRefresh() {

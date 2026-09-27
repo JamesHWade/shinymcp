@@ -148,7 +148,6 @@ as_mcp_app.shiny.appobj <- function(
     lifecycle = lifecycle,
     selective = selective
   )
-  warn_unsupported_inputs(runtime)
 
   do.call(
     mcp_app,
@@ -306,17 +305,6 @@ explicit_tools_app <- function(
     version = version,
     ...
   )
-}
-
-#' @noRd
-warn_unsupported_inputs <- function(runtime) {
-  files <- names(Filter(function(i) identical(i$kind, "file"), runtime$inputs))
-  if (length(files)) {
-    cli::cli_warn(c(
-      "File inputs ({.val {files}}) can't be used in an MCP App.",
-      "i" = "Chat clients don't pass uploads to apps. Read files from a known location, or take a path as a text input."
-    ))
-  }
 }
 
 # ---- Shiny app object helpers ----

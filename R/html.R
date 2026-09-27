@@ -145,7 +145,11 @@ app_bridge_config <- function(app, private, deps = list()) {
     hostStyles = private$.host_styles,
     modelContext = private$.model_context,
     deps = I(vapply(deps, dependency_key, character(1))),
-    runtime = if (!is.null(runtime)) runtime$bridge_config()
+    runtime = if (!is.null(runtime)) runtime$bridge_config(),
+    # Shiny's own limit for uploads.
+    maxUploadBytes = if (!is.null(runtime)) {
+      getOption("shiny.maxRequestSize", 5 * 1024^2)
+    }
   ))
 }
 

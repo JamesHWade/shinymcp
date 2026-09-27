@@ -204,6 +204,7 @@ ShinyRuntime <- R6::R6Class(
     selective = FALSE,
     instances = NULL,
     dep_cache = NULL,
+    uploads = character(),
 
     open_view = function(arguments, context) {
       arguments <- arguments %||% list()
@@ -313,7 +314,9 @@ ShinyRuntime <- R6::R6Class(
         stale <- is.numeric(arguments$revision) &&
           !identical(as.integer(arguments$revision), instance$revision)
         changed <- as.character(unlist(arguments$changed))
-        if (length(changed) == 0 || stale || isTRUE(arguments$sync)) {
+        # A tick only runs the timers that are due.
+        everything <- length(changed) == 0 && !isTRUE(arguments$tick)
+        if (everything || stale || isTRUE(arguments$sync)) {
           changed <- names(page_inputs)
         }
         values <- private$page_values(
@@ -332,6 +335,10 @@ ShinyRuntime <- R6::R6Class(
       }
       private$apply_sizes(instance, arguments$sizes, arguments$pixelRatio)
       private$apply_host_context(instance, arguments$host)
+
+      # Uploads that came with the request belong to this view.
+      instance$uploads <- c(instance$uploads, private$uploads)
+      private$uploads <- character()
 
       # Settle first, even for a download: a new session registers its
       # download handlers when its server runs, and the file should reflect
@@ -464,6 +471,9 @@ ShinyRuntime <- R6::R6Class(
       if (exists(inst$id, envir = private$instances, inherits = FALSE)) {
         rm(list = inst$id, envir = private$instances)
       }
+      if (length(inst$uploads)) {
+        unlink(inst$uploads, recursive = TRUE)
+      }
       if (!inst$session$isClosed()) {
         try(
           with_mock_context(inst$session, inst$session$close()),
@@ -542,6 +552,15 @@ ShinyRuntime <- R6::R6Class(
           shiny::isolate(instance$session$input[[dom_id]])
         }
         value <- page_inputs[[dom_id]]
+        if (identical(spec$kind, "file") || identical(described$kind, "file")) {
+          upload <- read_upload(value)
+          if (!is.null(upload)) {
+            private$uploads <- c(private$uploads, attr(upload, "dir"))
+            attr(upload, "dir") <- NULL
+          }
+          out[[public_id]] <- upload
+          next
+        }
         # Inputs from packages' own bindings, and values set from
         # JavaScript, may name an input handler, as they would in Shiny.
         if (is_string(described$type)) {
@@ -685,10 +704,17 @@ ShinyRuntime <- R6::R6Class(
     # sent (updateSelectInput() and friends) the way the browser would.
     settle = function(inst) {
       now <- as.numeric(Sys.time())
-      elapsed <- min(max(0, (now - inst$clock) * 1000), 5000)
+      elapsed <- max(0, (now - inst$clock) * 1000)
       inst$clock <- now
+      # Run the next timer that's due, not every one missed since the last
+      # call: a clock that ticks each second shouldn't redraw sixty times
+      # after a minute's pause.
+      due <- inst$session$nextTimer()
+      if (is.finite(due)) {
+        elapsed <- min(elapsed, max(due, 0))
+      }
       with_mock_context(inst$session, {
-        if (elapsed > 0) {
+        if (elapsed > 0 || (is.finite(due) && due <= 0)) {
           inst$session$elapse(elapsed)
         } else {
           inst$session$flushReact()
@@ -780,6 +806,9 @@ ShinyRuntime <- R6::R6Class(
           collected,
           publish = !model
         ),
+        # When the page should check back: a timer (invalidateLater(),
+        # reactivePoll()) is due then.
+        nextTick = next_tick(inst),
         restarted = if (restarted) TRUE
       ))
       if (length(view$outputs) == 0) {
@@ -991,6 +1020,7 @@ view_tool_schema <- function() {
       body = list(type = "string"),
       all = list(type = "boolean"),
       sync = list(type = "boolean"),
+      tick = list(type = "boolean"),
       dependency = list(type = "string")
     )
   )
@@ -1025,6 +1055,56 @@ default_runtime_description <- function(runtime) {
     },
     "The user can keep adjusting the app after it opens."
   )
+}
+
+#' Files the page uploaded, as Shiny gives them to the server
+#'
+#' The page sends each file's name, size, type and base64 contents; the
+#' server function gets `input$<id>` as Shiny's data frame of `name`,
+#' `size`, `type` and `datapath`.
+#' @noRd
+read_upload <- function(value) {
+  files <- if (is.list(value) && !is.null(value$name)) list(value) else value
+  if (!is.list(files) || length(files) == 0) {
+    return(NULL)
+  }
+  limit <- getOption("shiny.maxRequestSize", 5 * 1024^2)
+  dir <- tempfile("shinymcp-upload-")
+  dir.create(dir, recursive = TRUE)
+  rows <- lapply(seq_along(files), function(i) {
+    f <- files[[i]]
+    bytes <- jsonlite::base64_dec(f$data %||% "")
+    ext <- tools::file_ext(f$name %||% "")
+    path <- file.path(dir, paste0(i - 1, if (nzchar(ext)) paste0(".", ext)))
+    writeBin(bytes, path)
+    data.frame(
+      name = as.character(f$name %||% basename(path)),
+      size = length(bytes),
+      type = as.character(f$type %||% ""),
+      datapath = path,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  if (sum(out$size) > limit) {
+    unlink(dir, recursive = TRUE)
+    shinymcp_abort(
+      "Uploads are limited to {round(limit / 1024^2, 1)} MB (the {.code shiny.maxRequestSize} option).",
+      class = "shinymcp_error_arguments"
+    )
+  }
+  attr(out, "dir") <- dir
+  out
+}
+
+#' Milliseconds until a view's next timer, for the page to check back
+#' @noRd
+next_tick <- function(inst) {
+  due <- tryCatch(inst$session$nextTimer(), error = function(e) Inf)
+  if (!is.finite(due) || due > 3600 * 1000) {
+    return(NULL)
+  }
+  max(0, round(due))
 }
 
 #' Apply the input handler Shiny has registered for a type
@@ -1249,6 +1329,11 @@ runtime_session_class <- function() {
         # "mock-session-", which hideTab() and friends would send the page.
         ns = function(id) {
           shiny::NS(NULL, id)
+        },
+        # Milliseconds until the next invalidateLater() or reactivePoll()
+        # check is due, or Inf.
+        nextTimer = function() {
+          private$timer$timeToNextEvent()
         },
         makeScope = function(namespace) {
           scope <- super$makeScope(namespace)

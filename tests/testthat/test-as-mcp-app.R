@@ -431,26 +431,6 @@ test_that("custom elements can be marked with an explicit id and type", {
   expect_identical(app$runtime()$model_outputs, "custom")
 })
 
-test_that("file inputs trigger a warning", {
-  skip_if_not_installed("shiny")
-  ui <- shiny::fluidPage(
-    shiny::fileInput("upload", "Upload"),
-    shiny::fileInput("more", "More"),
-    shiny::textOutput("out")
-  )
-  expect_warning(
-    as_mcp_app(
-      shiny::shinyApp(ui, function(input, output) NULL),
-      name = "files"
-    ),
-    "File inputs"
-  )
-  expect_no_warning(as_mcp_app(
-    shiny::shinyApp(cars_ui(), cars_server),
-    name = "cars"
-  ))
-})
-
 # ---- Finding the UI of a Shiny app ----
 
 test_that("UI functions are called with a request", {
