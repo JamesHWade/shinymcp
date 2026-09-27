@@ -70,10 +70,22 @@ bindMcp.shiny.tag <- function(
     return(mcp_output(tag, id = resolved_id, type = resolved_type))
   }
 
+  # An element shinymcp can't classify is an output when given a type.
+  if (!is.null(type)) {
+    resolved_id <- id %||% detected$id
+    if (is.null(resolved_id)) {
+      cli::cli_abort(
+        "Cannot detect an ID for this element. Provide {.arg id} explicitly.",
+        class = "shinymcp_error_validation"
+      )
+    }
+    return(mcp_output(tag, id = resolved_id, type = type))
+  }
+
   cli::cli_abort(
     c(
       "Cannot determine MCP role for this element.",
-      i = "Ensure this is a Shiny input or output, or provide {.arg id} and {.arg type}."
+      i = "For an output shinymcp doesn't recognize, give its {.arg type} (and {.arg id} if the element has none)."
     ),
     class = "shinymcp_error_validation"
   )

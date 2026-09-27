@@ -167,7 +167,7 @@ test_that("server functions without a session argument run", {
   expect_identical(rt_meta(res)$outputs$hello$value, "Hello, Grace")
 })
 
-test_that("onStart runs once, when the first view opens", {
+test_that("onStart runs once, before the app's UI is built", {
   skip_if_not_installed("shiny")
   started <- 0
   ui <- shiny::fluidPage(shiny::textOutput("out"))
@@ -180,10 +180,56 @@ test_that("onStart runs once, when the first view opens", {
     onStart = function() started <<- started + 1
   )
   app <- as_mcp_app(shiny_app, name = "start")
-  expect_identical(started, 0)
+  expect_identical(started, 1)
   rt_open(app)
   rt_open(app)
   expect_identical(started, 1)
+})
+
+test_that("a UI built from what onStart defines can be converted", {
+  skip_if_not_installed("shiny")
+  local_app_dir_side_effects()
+  dir <- withr::local_tempdir()
+  writeLines("species <- c('Adelie', 'Gentoo')", file.path(dir, "global.R"))
+  writeLines(
+    "shiny::fluidPage(shiny::selectInput('sp', 'Species', species), shiny::textOutput('o'))",
+    file.path(dir, "ui.R")
+  )
+  writeLines(
+    "function(input, output, session) output$o <- shiny::renderText(input$sp)",
+    file.path(dir, "server.R")
+  )
+  before <- getwd()
+  app <- suppressPackageStartupMessages(as_mcp_app(
+    shiny::shinyAppDir(dir),
+    name = "globals"
+  ))
+  # The process keeps its working directory between calls.
+  expect_identical(getwd(), before)
+  expect_identical(app$runtime()$inputs$sp$choices, c("Adelie", "Gentoo"))
+  res <- rt_open(app, list(sp = "Gentoo"))
+  expect_identical(res$structuredContent$outputs$o, "Gentoo")
+  expect_identical(getwd(), before)
+  app$close()
+})
+
+test_that("the server function runs in a shinyAppDir() app's directory", {
+  skip_if_not_installed("shiny")
+  local_app_dir_side_effects()
+  dir <- withr::local_tempdir()
+  writeLines("from the app directory", file.path(dir, "note.txt"))
+  writeLines("shiny::fluidPage(shiny::textOutput('o'))", file.path(dir, "ui.R"))
+  writeLines(
+    "function(input, output, session) output$o <- shiny::renderText(readLines('note.txt'))",
+    file.path(dir, "server.R")
+  )
+  app <- suppressPackageStartupMessages(as_mcp_app(
+    shiny::shinyAppDir(dir),
+    name = "dir"
+  ))
+  res <- rt_open(app)
+  expect_identical(res$structuredContent$outputs$o, "from the app directory")
+  app$close()
 })
 
 test_that("mcp_request() inside the server function sees the request", {
@@ -711,9 +757,6 @@ test_that("inputs created by renderUI take their kind from the page", {
 })
 
 test_that("page input kinds may be plain strings", {
-  skip(
-    "Known bug: runtime.R page_values() errors on string `kinds` ('$ operator is invalid for atomic vectors')"
-  )
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(shiny::uiOutput("dyn"), shiny::textOutput("out"))
   server <- function(input, output, session) {
@@ -915,9 +958,6 @@ test_that("input update loops are cut off instead of hanging", {
 })
 
 test_that("updateDateRangeInput() with only an end date keeps the start", {
-  skip(
-    "Known bug: implied_input_value() turns list(end =) into c(end, end), dropping the current start"
-  )
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(
     shiny::numericInput("step", "Step", 0),
@@ -938,9 +978,6 @@ test_that("updateDateRangeInput() with only an end date keeps the start", {
 })
 
 test_that("updateSliderInput() bounds apply to the session's value", {
-  skip(
-    "Known bug: slider values are clamped to the UI's original min/max, ignoring updateSliderInput(min =, max =)"
-  )
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(
     shiny::checkboxInput("wide", "Wide", FALSE),
@@ -1096,9 +1133,6 @@ test_that("removing notifications and modals is relayed", {
 })
 
 test_that("hideTab() and showTab() reach the page", {
-  skip(
-    "Known bug: runtime.R install_session_hooks() defines sendChangeTabVisibility(message) but Shiny calls it with inputId, target, type"
-  )
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(
     shiny::checkboxInput("hide", "Hide", FALSE),
@@ -1125,12 +1159,54 @@ test_that("hideTab() and showTab() reach the page", {
   expect_null(res$isError)
   change <- rt_meta(res)$uiChanges[[1]]
   expect_identical(change$op, "tab-visibility")
+  expect_identical(change$id, "tabs")
+  expect_identical(change$target, "B")
+  expect_identical(change$type, "hide")
+})
+
+test_that("insertTab() and removeTab() reach the page", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::actionButton("add", "Add"),
+    shiny::actionButton("drop", "Drop"),
+    shiny::tabsetPanel(id = "tabs", shiny::tabPanel("A", "a"))
+  )
+  server <- function(input, output, session) {
+    shiny::observeEvent(input$add, {
+      shiny::insertTab("tabs", shiny::tabPanel("B", "b"), target = "A")
+    })
+    shiny::observeEvent(input$drop, shiny::removeTab("tabs", "A"))
+  }
+  app <- rt_app(ui, server, name = "tab-edits")
+  view <- rt_meta(rt_open(app))
+
+  added <- rt_meta(rt_update(
+    app,
+    view,
+    inputs = list(add = 1),
+    changed = "add"
+  ))
+  insert <- added$uiChanges[[1]]
+  expect_identical(insert$op, "insert-tab")
+  expect_identical(insert$id, "tabs")
+  expect_identical(insert$target, "A")
+  expect_identical(insert$position, "after")
+  expect_match(insert$li$html, "data-value=\"B\"", fixed = TRUE)
+  expect_match(insert$div$html, "tab-tsid-id", fixed = TRUE)
+
+  dropped <- rt_meta(rt_update(
+    app,
+    added,
+    inputs = list(add = 1, drop = 1),
+    changed = "drop"
+  ))
+  expect_identical(
+    dropped$uiChanges[[1]],
+    list(op = "remove-tab", id = "tabs", target = "A")
+  )
 })
 
 test_that("dependencies of dynamic UI are inlined for the page", {
-  skip(
-    "Known bug: renderUI()/insertUI()/showModal() deps arrive as Shiny web deps (href only), so the page gets <script src='name-version/...'> links it can't load"
-  )
   skip_if_not_installed("shiny")
   dir <- withr::local_tempdir()
   writeLines("window.dynamicDepLoaded = true;", file.path(dir, "dynamic.js"))
@@ -1566,9 +1642,6 @@ test_that("the download action returns the file with the current inputs", {
 })
 
 test_that("a download from a view whose session is gone starts a new one", {
-  skip(
-    "Known bug: view() answers action = 'download' before settling a newly created session, so its downloadHandler() isn't registered yet ('No download named ...')"
-  )
   skip_if_not_installed("shiny")
   app <- download_app()
   res <- app$run_tool(
@@ -2004,9 +2077,6 @@ test_that("a view belongs to the user who opened it", {
 })
 
 test_that("another user's view call can't replace the owner's session", {
-  skip(
-    "Known bug: view() re-creates a view under the same id for a different user, overwriting (and leaking) the owner's session"
-  )
   skip_if_not_installed("shiny")
   ended <- new.env()
   app <- counting_app(ended)
@@ -2556,4 +2626,142 @@ test_that("drain() empties a queue once", {
   expect_identical(drain(inst, "queue", reset_echo = TRUE), list("a", "b"))
   expect_identical(inst$echoed, 0)
   expect_null(drain(inst, "queue"))
+})
+
+test_that("updateSliderInput() moves a date slider", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::checkboxInput("later", "Later", FALSE),
+    shiny::sliderInput(
+      "day",
+      "Day",
+      min = as.Date("2024-01-01"),
+      max = as.Date("2024-12-31"),
+      value = as.Date("2024-03-01")
+    ),
+    shiny::textOutput("o")
+  )
+  server <- function(input, output, session) {
+    shiny::observeEvent(input$later, {
+      if (isTRUE(input$later)) {
+        shiny::updateSliderInput(session, "day", value = as.Date("2024-06-01"))
+      }
+    })
+    output$o <- shiny::renderText(format(input$day))
+  }
+  app <- rt_app(ui, server, name = "days")
+  res <- rt_open(app, list(later = TRUE))
+  expect_identical(rt_meta(res)$outputs$o$value, "2024-06-01")
+})
+
+test_that("the model and updateTabsetPanel() choose the shown tab", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::actionButton("jump", "Jump"),
+    shiny::tabsetPanel(
+      id = "tabs",
+      shiny::tabPanel("Plot", "p"),
+      shiny::tabPanel("Table", "t")
+    ),
+    shiny::textOutput("shown")
+  )
+  server <- function(input, output, session) {
+    shiny::observeEvent(input$jump, {
+      shiny::updateTabsetPanel(session, "tabs", selected = "Plot")
+    })
+    output$shown <- shiny::renderText(paste("showing", input$tabs))
+  }
+  app <- rt_app(ui, server, name = "tabbed")
+  expect_true("tabs" %in% app$runtime()$model_inputs)
+
+  res <- rt_open(app, list(tabs = "Table"))
+  view <- rt_meta(res)
+  expect_identical(view$outputs$shown$value, "showing Table")
+  expect_identical(view$inputs$tabs, "Table")
+
+  # The user clicks back to Plot on the page.
+  clicked <- rt_meta(rt_update(
+    app,
+    view,
+    inputs = list(tabs = "Plot"),
+    changed = "tabs"
+  ))
+  expect_identical(clicked$outputs$shown$value, "showing Plot")
+
+  # The server moves the tabset.
+  back <- rt_meta(rt_update(
+    app,
+    clicked,
+    inputs = list(tabs = "Table"),
+    changed = "tabs"
+  ))
+  expect_identical(back$outputs$shown$value, "showing Table")
+  jumped <- rt_meta(rt_update(
+    app,
+    back,
+    inputs = list(tabs = "Table", jump = 1),
+    changed = "jump"
+  ))
+  expect_identical(jumped$outputs$shown$value, "showing Plot")
+  expect_identical(jumped$inputMessages[[1]]$id, "tabs")
+  expect_identical(jumped$inputMessages[[1]]$message$value, "Plot")
+})
+
+test_that("a restarted view doesn't redo earlier button presses", {
+  skip_if_not_installed("shiny")
+  saves <- 0
+  ui <- shiny::fluidPage(
+    shiny::textInput("note", "Note", "a"),
+    shiny::actionButton("save", "Save"),
+    shiny::textOutput("o")
+  )
+  server <- function(input, output, session) {
+    shiny::observeEvent(input$save, saves <<- saves + 1)
+    output$o <- shiny::renderText(input$note)
+  }
+  app <- rt_app(ui, server, name = "saver")
+  gone <- list(instance = "view-gone", revision = 3L)
+
+  # The page had pressed Save three times; the user now edits the note.
+  rt_update(app, gone, inputs = list(note = "b", save = 3), changed = "note")
+  expect_identical(saves, 0)
+
+  # A press that arrives with the restart still counts, once.
+  rt_update(
+    app,
+    list(instance = "view-gone-2", revision = 3L),
+    inputs = list(note = "b", save = 4),
+    changed = "save"
+  )
+  expect_identical(saves, 1)
+})
+
+test_that("choices the server sets are valid when the model changes a view", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::selectInput("make", "Make", c("Ford", "Honda")),
+    shiny::selectInput("model", "Model", "none"),
+    shiny::textOutput("o")
+  )
+  server <- function(input, output, session) {
+    shiny::observeEvent(input$make, {
+      models <- switch(
+        input$make,
+        Ford = c("F150", "Focus"),
+        Honda = c("Civic", "Fit")
+      )
+      shiny::updateSelectInput(session, "model", choices = models)
+    })
+    output$o <- shiny::renderText(paste(input$make, input$model))
+  }
+  app <- rt_app(ui, server, name = "cars2")
+  opened <- rt_meta(rt_open(app, list(make = "Honda")))
+  expect_identical(opened$outputs$o$value, "Honda Civic")
+
+  steered <- rt_open(app, list(view = opened$instance, model = "Fit"))
+  expect_null(steered$isError)
+  expect_identical(rt_meta(steered)$outputs$o$value, "Honda Fit")
+
+  wrong <- rt_open(app, list(view = opened$instance, model = "F150"))
+  expect_true(wrong$isError)
 })

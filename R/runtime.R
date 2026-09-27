@@ -44,7 +44,7 @@ ShinyRuntime <- R6::R6Class(
       tool_name = NULL,
       title = NULL,
       description = NULL,
-      on_start = NULL,
+      lifecycle = NULL,
       selective = NULL,
       ns = NULL,
       max_instances = getOption("shinymcp.max_views", 50L),
@@ -57,7 +57,7 @@ ShinyRuntime <- R6::R6Class(
         )
       }
       private$server_source <- server
-      private$on_start <- on_start
+      private$lifecycle <- lifecycle %||% app_lifecycle()
       private$ns_prefix <- ns
       self$app_name <- app_name
       self$tool_name <- tool_name %||% sanitize_name(app_name)
@@ -166,16 +166,57 @@ ShinyRuntime <- R6::R6Class(
 
     # The model opened the app (or a host asked for a first render).
     open = function(arguments, context = list()) {
+      private$lifecycle$within(function() private$open_view(arguments, context))
+    },
+
+    # The page sent input changes, asked for a download, or closed.
+    view = function(arguments, context = list()) {
+      private$lifecycle$within(function() {
+        private$update_view(arguments, context)
+      })
+    },
+
+    close_all = function() {
+      close <- function() {
+        for (id in ls(private$instances)) {
+          private$close_instance(private$instances[[id]])
+        }
+      }
+      if (private$lifecycle$started()) {
+        private$lifecycle$within(close)
+      } else {
+        close()
+      }
+      private$lifecycle$stop()
+      invisible(self)
+    },
+
+    instance_count = function() {
+      length(ls(private$instances))
+    }
+  ),
+
+  private = list(
+    server_source = NULL,
+    lifecycle = NULL,
+    ns_prefix = NULL,
+    selective = FALSE,
+    instances = NULL,
+
+    open_view = function(arguments, context) {
       arguments <- arguments %||% list()
       view_id <- if (!"view" %in% self$model_inputs) arguments$view
       if (!"view" %in% self$model_inputs) {
         arguments$view <- NULL
       }
       unknown <- setdiff(names(arguments), self$model_inputs)
+      # The model can change a view that's open instead of opening another.
+      instance <- if (is_string(view_id)) private$get_instance(view_id, context)
+      continued <- !is.null(instance)
       values <- list()
       pressed <- character()
       for (id in intersect(names(arguments), self$model_inputs)) {
-        spec <- self$inputs[[id]]
+        spec <- private$instance_spec(instance, id)
         if (identical(spec$kind, "action")) {
           if (isTRUE(as.logical(arguments[[id]]))) {
             pressed <- c(pressed, id)
@@ -185,9 +226,6 @@ ShinyRuntime <- R6::R6Class(
         values[[id]] <- coerce_input_value(arguments[[id]], spec, strict = TRUE)
       }
 
-      # The model can change a view that's open instead of opening another.
-      instance <- if (is_string(view_id)) private$get_instance(view_id, context)
-      continued <- !is.null(instance)
       if (continued) {
         private$set_inputs(instance, values, dedupe = TRUE)
       } else {
@@ -216,8 +254,7 @@ ShinyRuntime <- R6::R6Class(
       )
     },
 
-    # The page sent input changes, asked for a download, or closed.
-    view = function(arguments, context = list()) {
+    update_view = function(arguments, context) {
       action <- arguments$action %||% "update"
       id <- arguments$instance
       instance <- if (is_string(id)) private$get_instance(id, context)
@@ -242,12 +279,24 @@ ShinyRuntime <- R6::R6Class(
       kinds <- arguments$kinds %||% list()
       if (is.null(instance)) {
         # A new view, or one whose session is gone: rebuild it from the
-        # page's full input state.
+        # page's full input state. An id that's still in use belongs to
+        # someone else's view, so the new one gets its own.
         values <- private$page_values(page_inputs, kinds, NULL)
+        # A new session starts its buttons at zero, so observers don't redo
+        # earlier presses (a "Save" saving again); a press that came with
+        # this request still counts.
+        pressed <- as.character(unlist(arguments$changed))
+        for (key in names(values)) {
+          if (inherits(values[[key]], "shinyActionButtonValue")) {
+            values[[key]] <- action_value(if (key %in% pressed) 1L else 0L)
+          }
+        }
+        free <- is_string(id) &&
+          !exists(id, envir = private$instances, inherits = FALSE)
         instance <- private$create_instance(
           values,
           context,
-          id = if (is_string(id)) id
+          id = if (free) id
         )
         instance$page_sent <- private$dom_keys(values)
         restarted <- is_string(id)
@@ -274,10 +323,13 @@ ShinyRuntime <- R6::R6Class(
       private$apply_sizes(instance, arguments$sizes, arguments$pixelRatio)
       private$apply_host_context(instance, arguments$host)
 
+      # Settle first, even for a download: a new session registers its
+      # download handlers when its server runs, and the file should reflect
+      # the inputs sent with the request.
+      with_request_context(context, private$settle(instance))
       if (identical(action, "download")) {
         return(private$download(instance, arguments$output, context))
       }
-      with_request_context(context, private$settle(instance))
       private$result(
         instance,
         context,
@@ -285,35 +337,6 @@ ShinyRuntime <- R6::R6Class(
         all_outputs = all_outputs,
         restarted = restarted
       )
-    },
-
-    close_all = function() {
-      for (id in ls(private$instances)) {
-        private$close_instance(private$instances[[id]])
-      }
-      invisible(self)
-    },
-
-    instance_count = function() {
-      length(ls(private$instances))
-    }
-  ),
-
-  private = list(
-    server_source = NULL,
-    on_start = NULL,
-    started = FALSE,
-    ns_prefix = NULL,
-    selective = FALSE,
-    instances = NULL,
-
-    ensure_started = function() {
-      if (!private$started) {
-        private$started <- TRUE
-        if (is.function(private$on_start)) {
-          private$on_start()
-        }
-      }
     },
 
     server_function = function() {
@@ -324,7 +347,6 @@ ShinyRuntime <- R6::R6Class(
     },
 
     create_instance = function(values, context, id = NULL) {
-      private$ensure_started()
       private$evict()
       rlang::check_installed(
         "shiny",
@@ -341,6 +363,7 @@ ShinyRuntime <- R6::R6Class(
       inst$outputs <- character()
       inst$downloads <- list()
       inst$data_objects <- list()
+      inst$bounds <- list()
       inst$input_messages <- list()
       inst$notifications <- list()
       inst$modals <- list()
@@ -491,13 +514,19 @@ ShinyRuntime <- R6::R6Class(
           next
         }
         public_id <- private$public_id(dom_id)
-        spec <- self$inputs[[public_id]] %||%
-          list(
-            id = dom_id,
-            kind = kinds[[dom_id]]$kind %||% kinds[[dom_id]] %||% "unknown"
-          )
-        if (is.list(kinds[[dom_id]]) && !is.null(kinds[[dom_id]]$dataType)) {
-          spec$data_type <- kinds[[dom_id]]$dataType
+        # The page describes each input as an object; a bare kind string
+        # is accepted too.
+        described <- kinds[[dom_id]]
+        if (is_string(described)) {
+          described <- list(kind = described)
+        }
+        if (!is.list(described)) {
+          described <- list()
+        }
+        spec <- private$instance_spec(instance, public_id) %||%
+          list(id = dom_id, kind = described$kind %||% "unknown")
+        if (!is.null(described$dataType)) {
+          spec$data_type <- described$dataType
         }
         previous <- if (!is.null(instance)) {
           shiny::isolate(instance$session$input[[dom_id]])
@@ -509,6 +538,49 @@ ShinyRuntime <- R6::R6Class(
         )
       }
       out
+    },
+
+    # An input's spec as a view's session has it: the server can move a
+    # slider's bounds and replace a select's choices.
+    instance_spec = function(inst, public_id) {
+      spec <- self$inputs[[public_id]]
+      changed <- if (!is.null(inst)) inst$bounds[[public_id]]
+      if (is.null(spec) || length(changed) == 0) {
+        return(spec)
+      }
+      utils::modifyList(spec, changed)
+    },
+
+    note_bounds = function(inst, public_id, message) {
+      spec <- self$inputs[[public_id]]
+      if (is.null(spec) || !is.list(message)) {
+        return(invisible())
+      }
+      changed <- inst$bounds[[public_id]] %||% list()
+      # updateSelectInput() and friends replace the choices.
+      if (
+        !is.null(message$options) &&
+          spec$kind %in%
+            c("select", "select-multiple", "radio", "checkbox-group")
+      ) {
+        changed$choices <- as.character(option_values(message$options))
+        inst$bounds[[public_id]] <- changed
+        return(invisible())
+      }
+      if (!spec$kind %in% c("slider", "slider-range")) {
+        return(invisible())
+      }
+      for (key in intersect(c("min", "max"), names(message))) {
+        n <- suppressWarnings(as.numeric(message[[key]]))
+        if (length(n) == 1 && !is.na(n)) {
+          changed[[key]] <- slider_value_from_number(
+            n,
+            spec$data_type %||% "number"
+          )
+        }
+      }
+      inst$bounds[[public_id]] <- changed
+      invisible()
     },
 
     public_id = function(dom_id) {
@@ -617,9 +689,11 @@ ShinyRuntime <- R6::R6Class(
       inst$echoed <- length(inst$input_messages)
       values <- list()
       for (msg in pending) {
+        public_id <- private$public_id(msg$id)
+        private$note_bounds(inst, public_id, msg$message)
         value <- implied_input_value(
           msg,
-          self$inputs[[private$public_id(msg$id)]],
+          private$instance_spec(inst, public_id),
           inst$session
         )
         if (!is.null(value)) {
@@ -888,6 +962,67 @@ default_runtime_description <- function(runtime) {
   )
 }
 
+# ---- App lifecycle ----
+
+#' A Shiny app's start and stop hooks, and the directory it runs in
+#'
+#' shinyAppDir() apps change into their directory and source global.R when
+#' they start. The runtime starts them the same way, once, but changes back
+#' after each call, because other code shares the process.
+#' @noRd
+app_lifecycle <- function(on_start = NULL, on_stop = NULL) {
+  state <- new.env(parent = emptyenv())
+  state$started <- FALSE
+  state$dir <- NULL
+
+  start <- function() {
+    if (state$started) {
+      return(invisible())
+    }
+    state$started <- TRUE
+    if (is.function(on_start)) {
+      old <- getwd()
+      on.exit(setwd(old), add = TRUE)
+      on_start()
+      if (!identical(normalizePath(getwd()), normalizePath(old))) {
+        state$dir <- getwd()
+      }
+    }
+    invisible()
+  }
+
+  within <- function(fn) {
+    start()
+    if (is.null(state$dir)) {
+      return(fn())
+    }
+    old <- setwd(state$dir)
+    on.exit(setwd(old), add = TRUE)
+    fn()
+  }
+
+  stop <- function() {
+    if (!state$started) {
+      return(invisible())
+    }
+    state$started <- FALSE
+    state$dir <- NULL
+    if (is.function(on_stop)) {
+      old <- getwd()
+      on.exit(setwd(old), add = TRUE)
+      on_stop()
+    }
+    invisible()
+  }
+
+  list(
+    start = start,
+    within = within,
+    stop = stop,
+    started = function() state$started
+  )
+}
+
 # ---- Session plumbing ----
 
 #' Evaluate in a mock session's reactive domain
@@ -946,8 +1081,37 @@ install_session_hooks <- function(session, inst) {
   session$sendCustomMessage <- function(type, message) {
     push("custom_messages", list(type = type, message = message))
   }
-  session$sendChangeTabVisibility <- function(message) {
-    push("ui_changes", list(op = "tab-visibility", message = message))
+  session$sendChangeTabVisibility <- function(inputId, target, type) {
+    push(
+      "ui_changes",
+      list(op = "tab-visibility", id = inputId, target = target, type = type)
+    )
+  }
+  session$sendInsertTab <- function(
+    inputId,
+    liTag,
+    divTag,
+    menuName,
+    target,
+    position,
+    select
+  ) {
+    push(
+      "ui_changes",
+      compact_list(list(
+        op = "insert-tab",
+        id = inputId,
+        li = runtime_html_message(liTag),
+        div = runtime_html_message(divTag),
+        menu = menuName,
+        target = target,
+        position = position,
+        select = isTRUE(select)
+      ))
+    )
+  }
+  session$sendRemoveTab <- function(inputId, target) {
+    push("ui_changes", list(op = "remove-tab", id = inputId, target = target))
   }
   # Widgets that keep data in R (DT's server-side tables) register it here
   # and fetch it from the returned URL; the page routes that URL to the view
@@ -990,6 +1154,11 @@ runtime_session_class <- function() {
       lock_objects = FALSE,
       parent_env = asNamespace("shiny"),
       public = list(
+        # A real session's root namespace is empty; the mock's prefixes
+        # "mock-session-", which hideTab() and friends would send the page.
+        ns = function(id) {
+          shiny::NS(NULL, id)
+        },
         makeScope = function(namespace) {
           scope <- super$makeScope(namespace)
           ns <- shiny::NS(namespace)
@@ -1038,10 +1207,7 @@ runtime_html_message <- function(message) {
     message$html <- as.character(message$html)
   }
   if (length(message$deps)) {
-    message$deps <- lapply(
-      htmltools::resolveDependencies(message$deps),
-      dependency_payload
-    )
+    message$deps <- page_dependencies(message$deps)
   }
   message
 }
@@ -1239,22 +1405,40 @@ collect_runtime_outputs <- function(inst, specs, skip_deps = character()) {
 
 #' The HTML dependencies of a rendered htmlwidget
 #'
-#' A widget's render function lists its dependencies in the JSON it returns,
-#' as paths Shiny serves them from (shiny::createWebDependency()). The page
-#' can't fetch those, so find each one's directory among Shiny's resource
-#' paths and rebuild a local dependency that can be inlined.
+#' A widget's render function lists its dependencies in the JSON it returns.
 #' @noRd
 widget_dependencies <- function(json) {
   parsed <- tryCatch(
     jsonlite::fromJSON(as.character(json), simplifyVector = FALSE),
     error = function(e) NULL
   )
-  web <- parsed$deps
-  if (length(web) == 0) {
+  local_dependencies(parsed$deps)
+}
+
+#' Dependencies Shiny would serve by URL, as ones the page can inline
+#'
+#' Render functions hand the browser dependencies at paths Shiny serves
+#' (shiny::createWebDependency()). The page can't fetch those, so each is
+#' rebuilt from its directory among Shiny's resource paths. Libraries the
+#' bridge replaces with its own controls are left out.
+#' @noRd
+local_dependencies <- function(deps) {
+  if (length(deps) == 0) {
     return(list())
   }
+  if (inherits(deps, "html_dependency")) {
+    deps <- list(deps)
+  }
   paths <- shiny::resourcePaths()
-  deps <- lapply(web, function(d) {
+  deps <- lapply(deps, function(d) {
+    if (
+      !is.list(d) || !is_string(d$name) || d$name %in% SHINYMCP_REPLACED_DEPS
+    ) {
+      return(NULL)
+    }
+    if (is_string(d$src$file)) {
+      return(d)
+    }
     href <- d$src$href
     if (!is_string(href)) {
       return(NULL)
@@ -1280,6 +1464,17 @@ widget_dependencies <- function(json) {
     )
   })
   Filter(Negate(is.null), deps)
+}
+
+#' Dependencies as payloads for the page, minus those it has
+#' @noRd
+page_dependencies <- function(deps, skip_deps = character()) {
+  deps <- local_dependencies(deps)
+  deps <- Filter(function(d) !dependency_loaded(d, skip_deps), deps)
+  if (length(deps) == 0) {
+    return(NULL)
+  }
+  lapply(deps, dependency_payload)
 }
 
 #' Turn a render function's value into a page payload and a model value
@@ -1338,15 +1533,12 @@ runtime_output_entry <- function(value, spec, dom_id, skip_deps = character()) {
     )
   } else if (is.list(value) && !is.null(value$html)) {
     html <- as.character(value$html)
-    deps <- value$deps
     text <- html_to_text(html)
     list(
       payload = compact_list(list(
         kind = "html",
         value = html,
-        deps = if (length(deps)) {
-          lapply(htmltools::resolveDependencies(deps), dependency_payload)
-        }
+        deps = page_dependencies(value$deps, skip_deps)
       )),
       model = text,
       text = text
@@ -1468,8 +1660,10 @@ implied_input_value <- function(msg, spec, session) {
 
   if (!is.null(message$value)) {
     value <- message$value
-    if (is.list(value) && !is.null(value$start)) {
-      value <- c(value$start, value$end)
+    # updateDateRangeInput() sends only the ends it changes.
+    if (is.list(value) && any(c("start", "end") %in% names(value))) {
+      now <- if (length(current) == 2) as.character(current) else c(NA, NA)
+      value <- c(value$start %||% now[[1]], value$end %||% now[[2]])
     }
     new <- coerce_input_value(
       value,
@@ -1530,19 +1724,17 @@ option_values <- function(html) {
   values <- character()
   selected <- character()
   for (tag in tags) {
-    if (
-      grepl("^<input", tag, ignore.case = TRUE) &&
-        !grepl("type=[\"']?(radio|checkbox)", tag, ignore.case = TRUE)
-    ) {
+    attrs <- parse_html_attributes(sub("^<[a-zA-Z]+|/?>$", "", tag))
+    is_input <- grepl("^<input", tag, ignore.case = TRUE)
+    if (is_input && !tolower(attrs["type"]) %in% c("radio", "checkbox")) {
       next
     }
-    value <- sub(".*\\bvalue=\"([^\"]*)\".*", "\\1", tag)
-    if (identical(value, tag)) {
+    if (!"value" %in% names(attrs)) {
       next
     }
-    value <- unescape_html(value)
+    value <- attrs[["value"]]
     values <- c(values, value)
-    if (grepl("\\b(selected|checked)\\b", tag)) {
+    if (any(c("selected", "checked") %in% names(attrs))) {
       selected <- c(selected, value)
     }
   }

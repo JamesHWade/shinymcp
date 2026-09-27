@@ -736,3 +736,58 @@ test_that("the request context is cleared when a tool fails", {
   app$run_tool("boom")
   expect_null(mcp_request())
 })
+
+test_that("the model's arguments are checked against the schema", {
+  app <- mcp_app(
+    htmltools::div(),
+    tools = list(
+      list(
+        name = "greet",
+        description = "Greet",
+        fun = function(name, times = 1) paste(rep(name, times), collapse = " ")
+      ),
+      list(
+        name = "pick",
+        description = "Pick",
+        fun = function(size, times = 1) paste(rep(size, times), collapse = ""),
+        inputSchema = list(
+          type = "object",
+          properties = list(
+            size = list(type = "string", enum = c("s", "m")),
+            times = list(type = "integer")
+          ),
+          required = "size"
+        )
+      )
+    )
+  )
+  text <- function(res) res$content[[1]]$text
+
+  missing <- app$run_tool("greet", list())
+  expect_true(missing$isError)
+  expect_identical(text(missing), "Error: Missing required argument: `name`.")
+
+  wrong_type <- app$run_tool("pick", list(size = "s", times = "x"))
+  expect_identical(text(wrong_type), "Error: `times` must be a whole number.")
+  fraction <- app$run_tool("pick", list(size = "s", times = 1.5))
+  expect_identical(text(fraction), "Error: `times` must be a whole number.")
+
+  not_listed <- app$run_tool("pick", list(size = "xl"))
+  expect_identical(
+    text(not_listed),
+    "Error: `size` must be one of \"s\", \"m\"."
+  )
+
+  expect_identical(
+    text(app$run_tool("pick", list(size = "m", times = "2"))),
+    "mm"
+  )
+
+  # Schemas guessed from a function's defaults aren't used to check types.
+  expect_identical(text(app$run_tool("greet", list(name = 5))), "5")
+
+  # The app's own calls reach the function as they are.
+  from_app <- app$run_tool("greet", list(), context = list(caller = "app"))
+  expect_true(from_app$isError)
+  expect_match(text(from_app), "is missing", fixed = TRUE)
+})

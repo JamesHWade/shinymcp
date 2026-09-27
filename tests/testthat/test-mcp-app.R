@@ -618,3 +618,25 @@ test_that("print() returns the app invisibly", {
   expect_invisible(suppressMessages(print(app)))
   expect_identical(suppressMessages(print(app)), app)
 })
+
+test_that("app names that aren't URI-safe are encoded in the resource URI", {
+  app <- mcp_app(htmltools::div("hi"), name = "My Cars! (v2)")
+  expect_identical(app$resource_uri(), "ui://My%20Cars%21%20%28v2%29")
+  expect_true(app$has_resource(app$resource_uri()))
+})
+
+test_that("theme wraps a fragment but refuses a whole page", {
+  skip_if_not_installed("bslib")
+  skip_if_not_installed("shiny")
+  themed <- mcp_app(htmltools::div("hi"), theme = bslib::bs_theme(version = 5))
+  expect_match(themed$html_resource(), "bootstrap", fixed = TRUE)
+  expect_error(
+    mcp_app(shiny::fluidPage("hi"), theme = bslib::bs_theme()),
+    "isn't already a page",
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    mcp_app(bslib::page_fluid("hi"), theme = bslib::bs_theme()),
+    class = "shinymcp_error_validation"
+  )
+})

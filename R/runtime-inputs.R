@@ -17,8 +17,12 @@
 #' @noRd
 describe_ui_inputs <- function(ui) {
   specs <- list()
+  labels <- ui_labels(ui)
   add <- function(spec) {
     if (!is.null(spec) && is_string(spec$id) && is.null(specs[[spec$id]])) {
+      if (is.null(spec$label) && is_string(labels[spec$id][[1]])) {
+        spec$label <- labels[[spec$id]]
+      }
       specs[[spec$id]] <<- spec
     }
   }
@@ -49,6 +53,39 @@ describe_ui_inputs <- function(ui) {
   }
   visit(ui)
   specs
+}
+
+#' The text of each input's label, by input id
+#'
+#' Shiny puts most labels next to the input (`<label for="id">`) rather
+#' than inside it, and wraps checkboxes in theirs.
+#' @noRd
+ui_labels <- function(ui) {
+  by_for <- list()
+  by_wrap <- list()
+  walk_tag_tree(ui, function(tag) {
+    if (!identical(tolower(tag$name %||% ""), "label")) {
+      return()
+    }
+    text <- trimws(gsub("\\s+", " ", tag_text(tag)))
+    if (!nzchar(text)) {
+      return()
+    }
+    target <- htmltools::tagGetAttribute(tag, "for")
+    if (is_string(target)) {
+      if (is.null(by_for[[target]])) {
+        by_for[[target]] <<- text
+      }
+      return()
+    }
+    for (inner in find_tags(tag, "input")) {
+      id <- htmltools::tagGetAttribute(inner, "id")
+      if (is_string(id) && is.null(by_wrap[[id]])) {
+        by_wrap[[id]] <<- text
+      }
+    }
+  })
+  utils::modifyList(by_wrap, by_for)
 }
 
 #' Was an input annotated with bindMcp() or built with an mcp_*() function?
@@ -183,6 +220,12 @@ describe_input_tag <- function(tag) {
     ))
   }
 
+  # tabsetPanel(id =), navbarPage(id =) and bslib's navsets: the value is
+  # the shown tab's.
+  if (name == "ul" && has_class("shiny-tab-input")) {
+    return(describe_tabset(tag, id))
+  }
+
   if (name == "select") {
     opts <- select_options(tag)
     multiple <- !is.null(htmltools::tagGetAttribute(tag, "multiple"))
@@ -253,7 +296,15 @@ describe_input_tag <- function(tag) {
     ))
   }
 
-  if (name %in% c("button", "a") && has_class("action-button")) {
+  shinymcp_button <- identical(
+    htmltools::tagGetAttribute(tag, "data-shinymcp-type"),
+    "button"
+  )
+  if (
+    name %in%
+      c("button", "a") &&
+      (has_class("action-button") || shinymcp_button)
+  ) {
     return(new_input_spec(
       id,
       "action",
@@ -264,6 +315,62 @@ describe_input_tag <- function(tag) {
   }
 
   NULL
+}
+
+#' Describe a tabset from its rendered markup
+#'
+#' Which tab starts active is decided by render hooks, so read the HTML.
+#' @noRd
+describe_tabset <- function(tag, id) {
+  html <- as.character(htmltools::renderTags(tag)$html)
+  starts <- regmatches(html, gregexpr("<(li|a)\\b[^>]*>", html, perl = TRUE))[[
+    1
+  ]]
+  values <- character()
+  labels <- character()
+  active <- NULL
+  li_active <- FALSE
+  anchors <- regmatches(
+    html,
+    gregexpr("(?s)<a\\b[^>]*>.*?</a>", html, perl = TRUE)
+  )[[1]]
+  anchor_text <- trimws(gsub("\\s+", " ", gsub("<[^>]*>", "", anchors)))
+  anchor_i <- 0
+  for (start in starts) {
+    is_li <- startsWith(start, "<li")
+    attrs <- parse_html_attributes(sub(
+      "^<(li|a)\\b|>$",
+      "",
+      start,
+      perl = TRUE
+    ))
+    get <- function(name) if (name %in% names(attrs)) attrs[[name]]
+    classes <- strsplit(get("class") %||% "", "\\s+")[[1]]
+    if (is_li) {
+      li_active <- "active" %in% classes
+      next
+    }
+    anchor_i <- anchor_i + 1
+    toggle <- get("data-bs-toggle") %||% get("data-toggle") %||% ""
+    value <- get("data-value")
+    if (!identical(toggle, "tab") || !is_string(value)) {
+      next
+    }
+    values <- c(values, value)
+    labels <- c(labels, unescape_html(anchor_text[anchor_i] %||% value))
+    if (is.null(active) && (li_active || "active" %in% classes)) {
+      active <- value
+    }
+  }
+  new_input_spec(
+    id,
+    "tabs",
+    tag,
+    choices = values,
+    choice_labels = labels,
+    value = active %||% if (length(values)) values[[1]],
+    container = TRUE
+  )
 }
 
 #' @noRd
@@ -288,7 +395,7 @@ describe_slider <- function(tag, id) {
     if (is.null(x)) {
       return(NULL)
     }
-    slider_value_from_number(x, data_type, attr("data-time-zone"))
+    slider_value_from_number(x, data_type)
   }
   from <- convert(attr("data-from"))
   to <- convert(attr("data-to"))
@@ -305,14 +412,52 @@ describe_slider <- function(tag, id) {
 }
 
 #' Slider values for dates travel as milliseconds since the epoch
+#'
+#' Shiny delivers date-time slider values in UTC, whatever time zone the
+#' slider displays.
 #' @noRd
-slider_value_from_number <- function(x, data_type, tz = NULL) {
+slider_value_from_number <- function(x, data_type) {
   switch(
     data_type,
     date = as.Date(as.POSIXct(x / 1000, origin = "1970-01-01", tz = "UTC")),
-    datetime = as.POSIXct(x / 1000, origin = "1970-01-01", tz = tz %||% ""),
+    datetime = as.POSIXct(x / 1000, origin = "1970-01-01", tz = "UTC"),
     x
   )
+}
+
+#' Read date-times as the page and the model write them
+#'
+#' ISO 8601 with a "T" or a space, optional seconds and fractions, and "Z"
+#' or an offset. Without an offset a time is UTC, the zone Shiny delivers
+#' slider date-times in.
+#' @return POSIXct in UTC, NA where a value can't be read.
+#' @noRd
+parse_datetime_utc <- function(x) {
+  x <- trimws(as.character(x))
+  x <- sub("[Zz]$", "", x)
+  shift <- numeric(length(x))
+  offset <- regexpr("(?<=[0-9])[+-][0-9]{2}:?[0-9]{2}$", x, perl = TRUE)
+  has_offset <- !is.na(x) & offset > 0 & grepl("[T ][0-9]", x)
+  if (any(has_offset)) {
+    found <- regmatches(x, offset)
+    digits <- gsub("[^0-9]", "", found)
+    sign <- ifelse(startsWith(found, "-"), -1, 1)
+    shift[has_offset] <- sign *
+      (as.numeric(substr(digits, 1, 2)) *
+        3600 +
+        as.numeric(substr(digits, 3, 4)) * 60)
+    x[has_offset] <- substr(x[has_offset], 1, offset[has_offset] - 1)
+  }
+  x <- sub("T", " ", x, fixed = TRUE)
+  out <- as.POSIXct(rep(NA_real_, length(x)), tz = "UTC")
+  for (format in c("%Y-%m-%d %H:%M:%OS", "%Y-%m-%d %H:%M", "%Y-%m-%d")) {
+    todo <- is.na(out) & !is.na(x)
+    if (!any(todo)) {
+      break
+    }
+    out[todo] <- as.POSIXct(x[todo], format = format, tz = "UTC")
+  }
+  out - shift
 }
 
 #' @noRd
@@ -455,26 +600,49 @@ html_options <- function(html) {
       ignore.case = TRUE
     )
   )))
+  parsed <- lapply(attrs, parse_html_attributes)
   values <- vapply(
-    seq_along(attrs),
+    seq_along(parsed),
     function(i) {
-      m <- regmatches(
-        attrs[[i]],
-        regexec(
-          "\\bvalue\\s*=\\s*(\"([^\"]*)\"|'([^']*)')",
-          attrs[[i]],
-          perl = TRUE
-        )
-      )[[1]]
-      if (length(m) == 0) {
-        return(labels[[i]])
+      if ("value" %in% names(parsed[[i]])) {
+        parsed[[i]][["value"]]
+      } else {
+        labels[[i]]
       }
-      unescape_html(if (nzchar(m[[3]])) m[[3]] else m[[4]])
     },
     character(1)
   )
-  is_selected <- grepl("(^|\\s)selected(\\s|=|$)", attrs, perl = TRUE)
+  is_selected <- vapply(
+    parsed,
+    function(a) "selected" %in% names(a),
+    logical(1)
+  )
   list(values = values, labels = labels, selected = values[is_selected])
+}
+
+#' The attributes in a start tag's attribute text
+#'
+#' @return A named character vector (names lowercased); attributes written
+#'   without a value are `""`.
+#' @noRd
+parse_html_attributes <- function(text) {
+  pattern <- "([^\\s=/>\"']+)(?:\\s*=\\s*(?:\"([^\"]*)\"|'([^']*)'|([^\\s\"'>]+)))?"
+  found <- regmatches(text, gregexpr(pattern, text, perl = TRUE))[[1]]
+  if (length(found) == 0) {
+    return(character())
+  }
+  parts <- regmatches(found, regexec(pattern, found, perl = TRUE))
+  values <- vapply(
+    parts,
+    function(p) {
+      given <- p[3:5]
+      given <- given[!is.na(given) & nzchar(given)]
+      if (length(given)) unescape_html(given[[1]]) else ""
+    },
+    character(1)
+  )
+  names(values) <- tolower(vapply(parts, function(p) p[[2]], character(1)))
+  values
 }
 
 #' All descendant tags with a given name
@@ -547,7 +715,7 @@ as_number_or_na <- function(x) {
 #' @noRd
 parse_initial_dates <- function(x, n) {
   x <- rep_len(as.character(x), n)
-  out <- suppressWarnings(as.Date(x))
+  out <- as.Date(x, format = "%Y-%m-%d")
   out[is.na(out)] <- Sys.Date()
   out
 }
@@ -574,7 +742,8 @@ MODEL_INPUT_KINDS <- c(
   "date",
   "date-range",
   "text",
-  "textarea"
+  "textarea",
+  "tabs"
 )
 
 #' JSON Schema for one input, as a tool argument
@@ -626,6 +795,16 @@ input_json_schema <- function(spec) {
       type = "string",
       enum = if (enum_ok) I(choices),
       description = describe(choice_hint())
+    )),
+    tabs = compact_list(list(
+      type = "string",
+      enum = if (enum_ok) I(choices),
+      description = paste0(
+        "Which tab the ",
+        label,
+        " tabset shows",
+        if (!is.null(default)) paste0(". Default: ", default, ".") else "."
+      )
     )),
     "select-multiple" = ,
     "checkbox-group" = list(
@@ -718,7 +897,7 @@ format_input_scalar <- function(x) {
     return(format(x, "%Y-%m-%d"))
   }
   if (inherits(x, "POSIXt")) {
-    return(format(x, "%Y-%m-%dT%H:%M:%S"))
+    return(format(x, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
   }
   format(x, scientific = FALSE, trim = TRUE)
 }
@@ -758,6 +937,7 @@ coerce_input_value <- function(value, spec, previous = NULL, strict = FALSE) {
   switch(
     kind,
     select = ,
+    tabs = ,
     radio = if (length(value) == 0) {
       NULL
     } else {
@@ -820,6 +1000,10 @@ coerce_slider_value <- function(value, spec, label, strict, n) {
   }
   data_type <- spec$data_type %||% "number"
   v <- unlist(value)
+  # updateSliderInput() sends dates as milliseconds, written as strings.
+  if (is.character(v) && all(grepl("^-?[0-9]+(\\.[0-9]*)?$", v))) {
+    v <- as.numeric(v)
+  }
   out <- if (data_type == "date") {
     if (is.numeric(v)) {
       slider_value_from_number(v, "date")
@@ -830,7 +1014,7 @@ coerce_slider_value <- function(value, spec, label, strict, n) {
     if (is.numeric(v)) {
       slider_value_from_number(v, "datetime")
     } else {
-      as.POSIXct(v, tz = "UTC")
+      as_datetime_strict(v, label, strict)
     }
   } else {
     as_number_strict(v, label, strict)
@@ -863,10 +1047,22 @@ as_number_strict <- function(x, label, strict) {
 
 #' @noRd
 as_date_strict <- function(x, label, strict) {
-  out <- suppressWarnings(as.Date(as.character(unlist(x))))
+  out <- as.Date(as.character(unlist(x)), format = "%Y-%m-%d")
   if (strict && any(is.na(out))) {
     shinymcp_abort(
       "{.field {label}} must be a date as YYYY-MM-DD, not {.val {x}}.",
+      class = "shinymcp_error_arguments"
+    )
+  }
+  out
+}
+
+#' @noRd
+as_datetime_strict <- function(x, label, strict) {
+  out <- parse_datetime_utc(unlist(x))
+  if (strict && any(is.na(out))) {
+    shinymcp_abort(
+      "{.field {label}} must be a date-time such as 2024-01-31T15:30:00Z, not {.val {x}}.",
       class = "shinymcp_error_arguments"
     )
   }
@@ -887,7 +1083,7 @@ input_value_for_page <- function(value) {
     return(if (length(out) == 1) out else I(out))
   }
   if (inherits(value, "POSIXt")) {
-    out <- format(value, "%Y-%m-%dT%H:%M:%S")
+    out <- format(value, "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
     return(if (length(out) == 1) out else I(out))
   }
   if (is.atomic(value) && length(value) > 1) {

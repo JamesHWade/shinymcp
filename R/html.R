@@ -178,3 +178,13 @@ bridge_config_tag <- function(config) {
     htmltools::HTML(json_for_script(config))
   )
 }
+
+#' Is a UI a whole page (one that brings Bootstrap)?
+#' @noRd
+is_page <- function(ui) {
+  if (inherits(ui, "bslib_page")) {
+    return(TRUE)
+  }
+  deps <- htmltools::findDependencies(ui)
+  any(vapply(deps, function(d) identical(d$name, "bootstrap"), logical(1)))
+}

@@ -44,6 +44,12 @@ mcp_input <- function(tag, id = NULL) {
     }
   }
 
+  if (!inherits(tag, "shiny.tag")) {
+    shinymcp_abort(
+      "Couldn't find an input in {.arg tag}.",
+      class = "shinymcp_error_validation"
+    )
+  }
   stamp_input(tag, id %||% htmltools::tagGetAttribute(tag, "id"))
 }
 
@@ -53,7 +59,8 @@ INPUT_GROUP_SELECTORS <- c(
   ".shiny-input-radiogroup",
   ".shiny-input-checkboxgroup",
   ".shiny-date-input",
-  ".shiny-date-range-input"
+  ".shiny-date-range-input",
+  ".shiny-tab-input"
 )
 
 #' @noRd

@@ -103,9 +103,6 @@ test_that("multiple selects are select-multiple with every selected value", {
 })
 
 test_that("a selected option whose value contains 'selected' doesn't fool the parser", {
-  skip(
-    "Known bug: html_options() looks for 'selected' across the whole attribute string, values included"
-  )
   skip_if_not_installed("shiny")
   spec <- describe_one(shiny::selectInput(
     "filter",
@@ -283,9 +280,6 @@ test_that("date sliders hold Dates, datetime sliders POSIXct", {
 })
 
 test_that("datetime slider values are in UTC, as Shiny delivers them", {
-  skip(
-    "Known bug: describe_slider() reads a nonexistent data-time-zone attribute and builds POSIXct in the local time zone instead of UTC"
-  )
   skip_if_not_installed("shiny")
   withr::local_timezone("America/New_York")
   spec <- describe_one(shiny::sliderInput(
@@ -298,7 +292,7 @@ test_that("datetime slider values are in UTC, as Shiny delivers them", {
   expect_identical(attr(spec$value, "tzone"), "UTC")
   expect_match(
     input_json_schema(spec)$description,
-    "Default: 2024-01-01T12:00:00.",
+    "Default: 2024-01-01T12:00:00Z.",
     fixed = TRUE
   )
 })
@@ -371,9 +365,6 @@ test_that("fileInput() is a file input with no value", {
 })
 
 test_that("labels come from each input's <label>", {
-  skip(
-    "Known bug: describe_input_tag() only looks for labels inside the element with the id, so select/text/number/checkbox/slider/file inputs get label = NULL"
-  )
   skip_if_not_installed("shiny")
   ui <- htmltools::tagList(
     shiny::selectInput("sel", "Select one", c("a", "b")),
@@ -440,9 +431,6 @@ test_that("shinymcp's own inputs are described and bound", {
 })
 
 test_that("mcp_action_button() is an action input, as the bridge treats it", {
-  skip(
-    "Known bug: describe_input_tag() needs class 'action-button', so mcp_action_button() (data-shinymcp-type='button', an action in the bridge) isn't an input in the runtime and the model can't press it"
-  )
   spec <- describe_one(mcp_action_button("run", "Run"))
   expect_identical(spec$kind, "action")
   expect_identical(spec$value, action_value(0L))
@@ -882,7 +870,7 @@ test_that("format_input_default() and format_input_scalar() write defaults", {
   expect_identical(format_input_scalar(as.Date("2024-01-02")), "2024-01-02")
   expect_identical(
     format_input_scalar(as.POSIXct("2024-01-02 03:04:05", tz = "UTC")),
-    "2024-01-02T03:04:05"
+    "2024-01-02T03:04:05Z"
   )
   expect_identical(format_input_scalar(12.5), "12.5")
 })
@@ -1028,9 +1016,6 @@ test_that("date slider values may be dates or milliseconds since the epoch", {
 })
 
 test_that("datetime slider values keep their time of day", {
-  skip(
-    "Known bug: coerce_slider_value() parses ISO 8601 'T' timestamps (what the schema asks for and the page sends) with as.POSIXct(), which drops the time"
-  )
   spec <- list(
     id = "t",
     kind = "slider",
@@ -1073,9 +1058,6 @@ test_that("dates and date ranges become Date vectors", {
 })
 
 test_that("unreadable dates from the model are argument errors", {
-  skip(
-    "Known bug: as_date_strict() lets as.Date()'s own error through for a single unreadable string, so the model gets 'character string is not in a standard unambiguous format' without the input's name"
-  )
   date <- list(id = "when", kind = "date")
   expect_error(
     coerce_input_value("tomorrow", date, strict = TRUE),
@@ -1140,7 +1122,7 @@ test_that("input_value_for_page() turns Shiny values into JSON values", {
   )
   expect_identical(
     input_value_for_page(as.POSIXct("2024-01-02 03:04:05", tz = "UTC")),
-    "2024-01-02T03:04:05"
+    "2024-01-02T03:04:05Z"
   )
   expect_identical(input_value_for_page(c("a", "b")), I(c("a", "b")))
   expect_identical(input_value_for_page(c(1, 2)), I(c(1, 2)))
@@ -1213,4 +1195,97 @@ test_that("small helpers behave", {
     )),
     "a b"
   )
+})
+
+test_that("date-times are read in UTC, with or without an offset", {
+  out <- parse_datetime_utc(c(
+    "2024-01-01T15:30:00Z",
+    "2024-01-01T15:30:00+02:00",
+    "2024-01-01 15:30",
+    "2024-01-01",
+    "2024-01-01T15:30:00.250-0130",
+    "soon",
+    NA
+  ))
+  expect_identical(attr(out, "tzone"), "UTC")
+  expect_identical(
+    format(out, "%Y-%m-%d %H:%M:%S", tz = "UTC"),
+    c(
+      "2024-01-01 15:30:00",
+      "2024-01-01 13:30:00",
+      "2024-01-01 15:30:00",
+      "2024-01-01 00:00:00",
+      "2024-01-01 17:00:00",
+      NA,
+      NA
+    )
+  )
+})
+
+test_that("slider values written as milliseconds are read for date sliders", {
+  spec <- list(id = "d", kind = "slider", data_type = "date")
+  ms <- format(
+    1000 * as.numeric(as.POSIXct("2024-06-01", tz = "UTC")),
+    scientific = FALSE
+  )
+  expect_identical(coerce_input_value(ms, spec), as.Date("2024-06-01"))
+})
+
+test_that("tabsets with an id are inputs whose value is the shown tab", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::tabsetPanel(
+    id = "tabs",
+    selected = "b",
+    shiny::tabPanel(
+      "First",
+      "1",
+      value = "a",
+      shiny::textInput("inside", "Inside")
+    ),
+    shiny::tabPanel("Second", "2", value = "b"),
+    shiny::navbarMenu("More", shiny::tabPanel("Third", "3", value = "c"))
+  ))
+  specs <- describe_ui_inputs(ui)
+  expect_named(specs, c("tabs", "inside"))
+  tabs <- specs$tabs
+  expect_identical(tabs$kind, "tabs")
+  expect_identical(tabs$choices, c("a", "b", "c"))
+  expect_identical(tabs$choice_labels, c("First", "Second", "Third"))
+  expect_identical(tabs$value, "b")
+
+  schema <- input_json_schema(tabs)
+  expect_identical(schema$type, "string")
+  expect_identical(unclass(schema$enum), c("a", "b", "c"))
+  expect_match(schema$description, "Default: b.", fixed = TRUE)
+  expect_identical(coerce_input_value("c", tabs, strict = TRUE), "c")
+  expect_error(
+    coerce_input_value("z", tabs, strict = TRUE),
+    class = "shinymcp_error_arguments"
+  )
+
+  # Tabsets without an id aren't inputs.
+  plain <- describe_ui_inputs(shiny::tabsetPanel(shiny::tabPanel("A", "a")))
+  expect_length(plain, 0)
+})
+
+test_that("bslib navsets and navbar pages are tab inputs too", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("bslib")
+  navset <- describe_ui_inputs(bslib::page_fluid(bslib::navset_tab(
+    id = "nt",
+    selected = "Two",
+    bslib::nav_panel("One", "1"),
+    bslib::nav_panel("Two", "2")
+  )))
+  expect_identical(navset$nt$choices, c("One", "Two"))
+  expect_identical(navset$nt$value, "Two")
+
+  navbar <- describe_ui_inputs(shiny::navbarPage(
+    "App",
+    id = "nav",
+    shiny::tabPanel("P", "p"),
+    shiny::tabPanel("Q", "q")
+  ))
+  expect_identical(navbar$nav$kind, "tabs")
+  expect_identical(navbar$nav$value, "P")
 })

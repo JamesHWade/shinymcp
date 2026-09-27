@@ -115,7 +115,10 @@ as_mcp_app.shiny.appobj <- function(
     return(x$mcpServer$apps[[1]])
   }
   name <- name %||% "shiny-app"
-  ui <- extract_shiny_ui(x)
+  # Start the app as runApp() would before building its UI: a shinyAppDir()
+  # app's ui.R may use what its global.R defines.
+  lifecycle <- app_lifecycle(on_start = x$onStart, on_stop = x$onStop)
+  ui <- lifecycle$within(function() extract_shiny_ui(x))
 
   if (!isTRUE(live)) {
     return(explicit_tools_app(
@@ -137,7 +140,7 @@ as_mcp_app.shiny.appobj <- function(
     tool_name = tool_name,
     title = title,
     description = description,
-    on_start = x$onStart,
+    lifecycle = lifecycle,
     selective = selective
   )
   warn_unsupported_inputs(runtime)
@@ -263,6 +266,15 @@ explicit_tools_app <- function(
   version,
   ...
 ) {
+  if (length(tools) == 0) {
+    shinymcp_abort(
+      c(
+        "An app with {.code live = FALSE} needs {.arg tools}.",
+        "i" = "Pass the tools its UI calls, or leave {.arg live} as {.code TRUE} to run the Shiny server function."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
   if (is.null(selective)) {
     selective <- has_any_mcp_annotations(ui)
   }

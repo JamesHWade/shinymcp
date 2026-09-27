@@ -18,19 +18,6 @@ write_app_file <- function(dir, lines, file = "app.R") {
   dir
 }
 
-# shinyAppDir()'s onStart, run when the first view opens, moves into the app
-# directory and attaches shiny. Undo both when the test ends.
-local_app_dir_side_effects <- function(env = parent.frame()) {
-  withr::local_dir(getwd(), .local_envir = env)
-  attached <- "package:shiny" %in% search()
-  withr::defer(
-    if (!attached && "package:shiny" %in% search()) {
-      detach("package:shiny", character.only = TRUE)
-    },
-    envir = env
-  )
-}
-
 # ---- Shiny app objects ----
 
 test_that("a Shiny app becomes an McpApp that runs its server function", {
@@ -168,9 +155,6 @@ test_that("arguments in `...` reach mcp_app()", {
 })
 
 test_that("images = FALSE keeps plots out of the model's result", {
-  skip(
-    "Known bug: runtime results ignore mcp_app(images = FALSE); ShinyRuntime only checks context$images, so as_mcp_app(images = FALSE) still sends image blocks"
-  )
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(shiny::plotOutput("plot"))
   server <- function(input, output, session) {
@@ -435,9 +419,6 @@ test_that("marked radio buttons, checkbox groups and date inputs become argument
 })
 
 test_that("custom elements can be marked with an explicit id and type", {
-  skip(
-    "Known bug: bindMcp() aborts for elements whose role it can't detect (e.g. htmlwidget outputs) even with id and type given, though its error message says to provide them"
-  )
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(
     htmltools::div(id = "custom", class = "my-widget") |>
@@ -541,9 +522,6 @@ test_that("apps from shinyAppDir() give up their UI", {
 })
 
 test_that("the app's onStop runs when the runtime closes", {
-  skip(
-    "Known bug: as_mcp_app() keeps x$onStart but drops x$onStop, so a shinyAppDir() app setwd()s into its directory on the first view and never moves back"
-  )
   skip_if_not_installed("shiny")
   local_app_dir_side_effects()
   before <- getwd()
@@ -727,4 +705,13 @@ test_that("as_mcp_apps(split = 'manual') gives one card for the whole app", {
 
 test_that("as_mcp_apps() refuses other objects", {
   expect_error(as_mcp_apps(42), "must be a Shiny app path")
+})
+
+test_that("live = FALSE without tools says what's missing", {
+  skip_if_not_installed("shiny")
+  expect_error(
+    as_mcp_app(shiny::shinyApp(cars_ui(), cars_server), live = FALSE),
+    "needs `tools`",
+    class = "shinymcp_error_validation"
+  )
 })

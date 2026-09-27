@@ -32,7 +32,7 @@
 #'   loopback ones for a local server, allowed to call the HTTP endpoint,
 #'   for example `"https://chat.example.com"`. Use `"*"` to allow any.
 #' @param allowed_hosts For a server listening on this machine only, the
-#'   host names it may be reached at besides `localhost` and `127.0.0.1`,
+#'   host names it may be reached at besides `localhost` and IP addresses,
 #'   such as the public name of a reverse proxy in front of it. Requests for
 #'   any other host are refused, which protects a local server from web
 #'   pages that point their own host name at it (DNS rebinding).
@@ -65,6 +65,12 @@ serve <- function(
 ) {
   type <- match.arg(type)
   server <- McpServer$new(app)
+  on.exit(
+    for (a in server$apps) {
+      a$close()
+    },
+    add = TRUE
+  )
   for (a in server$apps) {
     warn_host_only_trigger(a, "serve()")
   }

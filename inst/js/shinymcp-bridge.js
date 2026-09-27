@@ -361,6 +361,7 @@
     if (hasClass(el, "shiny-input-checkboxgroup")) return "checkbox-group";
     if (hasClass(el, "shiny-date-range-input")) return "date-range";
     if (hasClass(el, "shiny-date-input")) return "date";
+    if (hasClass(el, "shiny-tab-input")) return "tabs";
     if (tag === "select") return el.multiple ? "select-multiple" : "select";
     if (tag === "textarea") return "textarea";
     if ((tag === "button" || tag === "a") && hasClass(el, "action-button")) return "action";
@@ -416,7 +417,89 @@
     if (label && typeof text === "string") label.textContent = text;
   }
 
+  // Tabsets (tabsetPanel(id =), navbarPage(id =), bslib navsets). The
+  // value is the shown pane's; Bootstrap's own script switches panes.
+  function tabContent(ul) {
+    var tabsetId = ul.getAttribute("data-tabsetid");
+    return tabsetId ? document.querySelector('.tab-content[data-tabsetid="' + cssEscape(tabsetId) + '"]') : null;
+  }
+
+  function tabAnchor(ul, value) {
+    var anchors = ul.querySelectorAll("a[data-value]");
+    for (var i = 0; i < anchors.length; i++) {
+      var a = anchors[i];
+      var toggle = a.getAttribute("data-bs-toggle") || a.getAttribute("data-toggle");
+      if (toggle === "tab" && a.getAttribute("data-value") === String(value)) return a;
+    }
+    return null;
+  }
+
+  function activateTab(a) {
+    if (!a) return;
+    var bs = window.bootstrap;
+    var $ = window.jQuery;
+    if (bs && bs.Tab && bs.Tab.getOrCreateInstance) {
+      bs.Tab.getOrCreateInstance(a).show();
+    } else if ($ && $.fn && $.fn.tab) {
+      $(a).tab("show");
+    } else {
+      a.click();
+    }
+  }
+
+  function shownTab(ul) {
+    var content = tabContent(ul);
+    if (content) {
+      var panes = content.children;
+      for (var i = 0; i < panes.length; i++) {
+        if (hasClass(panes[i], "tab-pane") && hasClass(panes[i], "active")) {
+          return panes[i].getAttribute("data-value");
+        }
+      }
+    }
+    var anchors = ul.querySelectorAll("a[data-value]");
+    for (var j = 0; j < anchors.length; j++) {
+      var a = anchors[j];
+      var toggle = a.getAttribute("data-bs-toggle") || a.getAttribute("data-toggle");
+      if (toggle === "tab" && (hasClass(a, "active") || hasClass(a.parentNode, "active"))) {
+        return a.getAttribute("data-value");
+      }
+    }
+    return null;
+  }
+
   var ADAPTERS = {
+    tabs: function (el) {
+      var last = null;
+      return {
+        get: function () { return shownTab(el); },
+        set: function (v) {
+          if (v === null || v === undefined) return;
+          activateTab(tabAnchor(el, v));
+          last = String(v);
+        },
+        bind: function () {
+          var self = this;
+          last = shownTab(el);
+          function check() {
+            var now = shownTab(el);
+            if (now !== last) {
+              last = now;
+              self.emit();
+            }
+          }
+          // Bootstrap switches panes after the click, and after a fade.
+          listen(el, ["click"], function () {
+            setTimeout(check, 0);
+            setTimeout(check, 400);
+          });
+        },
+        receiveMessage: function (msg) {
+          if (msg.value !== undefined) this.set(msg.value);
+        }
+      };
+    },
+
     text: function (el) {
       var updateOnChange = el.getAttribute("data-update-on") === "change";
       return {
@@ -745,7 +828,8 @@
 
     function fromValue(v) {
       if (v === null || v === undefined) return null;
-      if ((dataType === "date" || dataType === "datetime") && typeof v === "string") {
+      // updateSliderInput() sends dates as milliseconds, in strings.
+      if ((dataType === "date" || dataType === "datetime") && typeof v === "string" && !/^-?[0-9.]+$/.test(v)) {
         var t = Date.parse(v.length === 10 ? v + "T00:00:00Z" : v);
         return isNaN(t) ? null : t;
       }
@@ -856,6 +940,7 @@
     ".shiny-input-checkboxgroup[id]",
     ".shiny-date-input[id]",
     ".shiny-date-range-input[id]",
+    ".shiny-tab-input[id]",
     ".action-button[id]"
   ].join(",");
 
@@ -1754,7 +1839,133 @@
     afterDomChange(modalBackdrop);
   }
 
+  // insertTab(), removeTab(), hideTab() and showTab(), as Shiny's client
+  // does them.
+  function tabTargets(ul, target) {
+    var a = tabAnchor(ul, target);
+    if (!a) {
+      var any = ul.querySelectorAll("a[data-value]");
+      for (var i = 0; i < any.length; i++) {
+        if (any[i].getAttribute("data-value") === String(target)) a = any[i];
+      }
+    }
+    if (!a) return null;
+    var panes = [];
+    var content = tabContent(ul);
+    if (content) {
+      var menu = a.nextElementSibling;
+      if (menu && hasClass(menu, "dropdown-menu")) {
+        // A menu: every tab in it.
+        var menuId = menu.getAttribute("data-tabsetid");
+        each(content.querySelectorAll('.tab-pane[id^="tab-' + menuId + '-"]'), function (p) { panes.push(p); });
+      } else {
+        var pane = content.querySelector('.tab-pane[data-value="' + cssEscape(String(target)) + '"]');
+        if (pane) panes.push(pane);
+      }
+    }
+    return { li: a.parentNode, panes: panes };
+  }
+
+  function ensureShownTab(ul) {
+    if (shownTab(ul) !== null) return;
+    var anchors = ul.querySelectorAll("a[data-value]");
+    for (var i = 0; i < anchors.length; i++) {
+      var a = anchors[i];
+      var toggle = a.getAttribute("data-bs-toggle") || a.getAttribute("data-toggle");
+      if (toggle === "tab" && a.parentNode.style.display !== "none") {
+        activateTab(a);
+        return;
+      }
+    }
+  }
+
+  function tabIndex(ul, tabsetId) {
+    var highest = 0;
+    each(ul.querySelectorAll("a[href]"), function (a) {
+      var match = (a.getAttribute("href") || "").match(new RegExp("#tab-" + tabsetId + "-([0-9]+)$"));
+      if (match) highest = Math.max(highest, Number(match[1]));
+    });
+    return highest + 1;
+  }
+
+  function handleTabChange(change) {
+    var ul = byId(change.id);
+    if (!ul) return;
+    if (change.op === "tab-visibility" || change.op === "remove-tab") {
+      var found = tabTargets(ul, change.target);
+      if (!found) return;
+      var items = [found.li].concat(found.panes);
+      each(items, function (el) {
+        if (change.op === "remove-tab") {
+          if (el.parentNode) el.parentNode.removeChild(el);
+        } else if (change.type === "show") {
+          el.style.display = "";
+        } else {
+          el.style.display = "none";
+          el.classList.remove("active");
+        }
+      });
+      ensureShownTab(ul);
+      if (ul.__shinymcpAdapter) ul.__shinymcpAdapter.emit();
+      return;
+    }
+    // insert-tab
+    var li = change.li || {};
+    var div = change.div || {};
+    loadDeps(li.deps);
+    loadDeps(div.deps);
+    var holder = document.createElement("div");
+    holder.innerHTML = li.html || "";
+    var item = holder.querySelector("li");
+    if (!item) return;
+    var tabset = ul;
+    var tabsetId = ul.getAttribute("data-tabsetid");
+    if (change.menu) {
+      var toggle = ul.querySelector('a.dropdown-toggle[data-value="' + cssEscape(change.menu) + '"]');
+      var menu = toggle ? toggle.nextElementSibling : null;
+      if (menu && hasClass(menu, "dropdown-menu")) {
+        tabset = menu;
+        tabsetId = menu.getAttribute("data-tabsetid");
+      }
+    }
+    var link = item.querySelector("a");
+    var paneId = null;
+    if (link && (link.getAttribute("data-bs-toggle") || link.getAttribute("data-toggle")) === "tab") {
+      paneId = "tab-" + tabsetId + "-" + tabIndex(tabset, tabsetId);
+      link.setAttribute("href", "#" + paneId);
+      if (link.hasAttribute("data-bs-target")) link.setAttribute("data-bs-target", "#" + paneId);
+    }
+    var target = change.target !== undefined && change.target !== null ? tabTargets(ul, change.target) : null;
+    if (target && target.li.parentNode) {
+      target.li.parentNode.insertBefore(item, change.position === "before" ? target.li : target.li.nextSibling);
+    } else if (change.position === "before") {
+      tabset.insertBefore(item, tabset.firstChild);
+    } else {
+      tabset.appendChild(item);
+    }
+    var content = tabContent(ul);
+    if (content) {
+      var paneHolder = document.createElement("div");
+      paneHolder.innerHTML = div.html || "";
+      var nodes = Array.prototype.slice.call(paneHolder.childNodes);
+      each(nodes, function (node) {
+        content.appendChild(node);
+        if (node.nodeType === 1) {
+          if (paneId && node.id === "tab-tsid-id") node.id = paneId;
+          runScripts(node);
+          afterDomChange(node);
+        }
+      });
+    }
+    afterDomChange(item);
+    if (change.select && link) activateTab(link);
+  }
+
   function handleUiChange(change) {
+    if (change.op === "tab-visibility" || change.op === "remove-tab" || change.op === "insert-tab") {
+      handleTabChange(change);
+      return;
+    }
     if (change.op === "remove") {
       var targets = change.multiple
         ? document.querySelectorAll(change.selector)

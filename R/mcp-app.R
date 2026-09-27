@@ -16,7 +16,8 @@
 McpApp <- R6::R6Class(
   "McpApp",
   public = list(
-    #' @field name App name; the UI resource is `ui://<name>`.
+    #' @field name App name; the UI resource is `ui://<name>`, with any
+    #'   characters a URI can't carry percent-encoded.
     name = NULL,
     #' @field version App version string.
     version = NULL,
@@ -74,6 +75,15 @@ McpApp <- R6::R6Class(
       }
       if (!is.null(theme)) {
         rlang::check_installed("bslib", reason = "to theme an MCP App.")
+        if (is_page(ui)) {
+          shinymcp_abort(
+            c(
+              "{.arg theme} applies only to a UI that isn't already a page.",
+              "i" = "Give the theme to your page function instead, as in {.code bslib::page_fluid(theme = ...)}."
+            ),
+            class = "shinymcp_error_validation"
+          )
+        }
         ui <- bslib::page(theme = theme, ui)
       }
       if (!is.null(trigger)) {
@@ -141,7 +151,7 @@ McpApp <- R6::R6Class(
 
     #' @description The app's `ui://` resource URI.
     resource_uri = function() {
-      paste0("ui://", self$name)
+      paste0("ui://", utils::URLencode(self$name, reserved = TRUE))
     },
 
     #' @description The `_meta` published with the app's `ui://` resource
@@ -277,6 +287,9 @@ McpApp <- R6::R6Class(
         list(caller = "model", transport = "in-process"),
         context %||% list()
       )
+      if (!private$.images) {
+        context$images <- FALSE
+      }
       raw <- tryCatch(
         with_request_context(
           context,
@@ -318,6 +331,16 @@ McpApp <- R6::R6Class(
     #'   app, or `NULL`.
     runtime = function() {
       private$.runtime
+    },
+
+    #' @description Close the app's open views and stop the Shiny app
+    #'   behind it, if any, running its `onStop` hook. [serve()] and
+    #'   [mcp_endpoint()] call this when they stop.
+    close = function() {
+      if (!is.null(private$.runtime)) {
+        private$.runtime$close_all()
+      }
+      invisible(self)
     },
 
     #' @description Output ids and types found in the UI.

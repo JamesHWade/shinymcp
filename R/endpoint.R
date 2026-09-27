@@ -30,7 +30,8 @@
 #' @param allowed_hosts Host names the app is reached at, when it runs
 #'   somewhere other than Posit Connect, shinyapps.io, or Shiny Server (for
 #'   example in a container behind your own proxy). Elsewhere, requests for
-#'   host names other than `localhost` are refused; see [serve()].
+#'   host names other than `localhost` or an IP address are refused; see
+#'   [serve()].
 #' @param preview For apps, whether browsers get a preview page at `/`.
 #' @param ... Passed to [as_mcp_app()] when `x` is a Shiny app.
 #' @return A Shiny app object.
@@ -57,7 +58,16 @@ mcp_endpoint <- function(
 ) {
   rlang::check_installed("shiny", reason = "to serve MCP from a Shiny app.")
   if (inherits(x, "shiny.appobj")) {
-    apps <- list(as_mcp_app(x, ...))
+    # Start the app now, as runApp() would, so its UI can be built (a
+    # shinyAppDir() app's ui.R may use what global.R defines). runApp() then
+    # finds it started, and stops it as usual.
+    if (is.function(x$onStart)) {
+      x$onStart()
+      x$onStart <- NULL
+    }
+    started <- x
+    started$onStop <- NULL
+    apps <- list(as_mcp_app(started, ...))
     base <- x
   } else {
     apps <- as_app_list(x)
@@ -106,6 +116,15 @@ mcp_endpoint <- function(
       return(wrapped(req))
     }
     rook_to_shiny_response(response)
+  }
+  stop_app <- base$onStop
+  base$onStop <- function() {
+    for (app in server$apps) {
+      app$close()
+    }
+    if (is.function(stop_app)) {
+      stop_app()
+    }
   }
   base$mcpServer <- server
   base

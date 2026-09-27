@@ -100,7 +100,8 @@ mcp_tool_from_ellmer <- function(tool) {
         schema = input_schema,
         types = types,
         fun = tool,
-        convert = convert
+        convert = convert,
+        check = !identical(context$caller, "app")
       )
       do.call(tool, args)
     },
@@ -129,6 +130,7 @@ mcp_tool_from_list <- function(tool, call = rlang::caller_env()) {
     )
   }
 
+  declared_schema <- !is.null(tool$inputSchema)
   input_schema <- normalize_json_schema(
     tool$inputSchema %||%
       if (is.function(fun)) {
@@ -149,7 +151,9 @@ mcp_tool_from_list <- function(tool, call = rlang::caller_env()) {
         arguments,
         schema = input_schema,
         fun = fun,
-        convert = !identical(tool$convert, FALSE)
+        convert = !identical(tool$convert, FALSE),
+        check = !identical(context$caller, "app"),
+        check_types = declared_schema
       )
       do.call(fun, args)
     }

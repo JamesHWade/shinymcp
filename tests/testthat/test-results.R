@@ -854,3 +854,20 @@ test_that("tables_to_markdown() leaves HTML without tables alone", {
   expect_equal(tables_to_markdown("<p>no table</p>"), "<p>no table</p>")
   expect_equal(html_to_text("<table></table>"), "")
 })
+
+test_that("base64 data has no line breaks", {
+  png <- as.raw(c(
+    0x89,
+    0x50,
+    0x4e,
+    0x47,
+    0x0d,
+    0x0a,
+    0x1a,
+    0x0a,
+    rep(0:255, 4)
+  ))
+  result <- build_tool_result(mcp_result_image(png))
+  expect_false(grepl("\n", result$content[[2]]$data, fixed = TRUE))
+  expect_identical(jsonlite::base64_dec(result$content[[2]]$data), png)
+})

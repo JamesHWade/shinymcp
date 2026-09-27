@@ -241,9 +241,14 @@ prepare_tool_arguments <- function(
   schema = NULL,
   types = NULL,
   fun = NULL,
-  convert = TRUE
+  convert = TRUE,
+  check = FALSE,
+  check_types = TRUE
 ) {
   if (is.null(arguments) || length(arguments) == 0) {
+    if (isTRUE(check)) {
+      check_tool_arguments(list(), schema, fun = fun, types = FALSE)
+    }
     return(list())
   }
   if (is.null(names(arguments)) || any(!nzchar(names(arguments)))) {
@@ -272,6 +277,15 @@ prepare_tool_arguments <- function(
     }
   }
 
+  if (isTRUE(check)) {
+    check_tool_arguments(
+      arguments,
+      schema,
+      fun = fun,
+      types = isTRUE(convert) && isTRUE(check_types)
+    )
+  }
+
   if (is.function(fun) && !is.primitive(fun)) {
     accepted <- names(formals(fun))
     if (!"..." %in% accepted) {
@@ -279,6 +293,78 @@ prepare_tool_arguments <- function(
     }
   }
   arguments
+}
+
+#' Check a model's arguments against a tool's input schema
+#'
+#' Required arguments the function has no default for must be present, and
+#' top-level values must have the schema's type and, for enums, one of its
+#' values. The error goes back to the model as a tool error, so it can
+#' correct the call.
+#' @param types Whether to check types: not for tools that take raw JSON,
+#'   nor for schemas guessed from a function's defaults.
+#' @noRd
+check_tool_arguments <- function(arguments, schema, fun = NULL, types = TRUE) {
+  if (is.null(schema)) {
+    return(invisible())
+  }
+  required <- as.character(unlist(schema$required))
+  if (is.function(fun) && !is.primitive(fun)) {
+    defaults <- formals(fun)
+    has_default <- names(defaults)[
+      !vapply(defaults, rlang::is_missing, logical(1))
+    ]
+    required <- setdiff(required, has_default)
+  }
+  missing <- setdiff(required, names(arguments))
+  if (length(missing)) {
+    shinymcp_abort(
+      "Missing required argument{?s}: {.arg {missing}}.",
+      class = "shinymcp_error_arguments"
+    )
+  }
+  if (!types) {
+    return(invisible())
+  }
+  for (nm in intersect(names(arguments), names(schema$properties))) {
+    problem <- argument_problem(arguments[[nm]], schema$properties[[nm]])
+    if (!is.null(problem)) {
+      shinymcp_abort(
+        "{.arg {nm}} must be {problem}.",
+        class = "shinymcp_error_arguments"
+      )
+    }
+  }
+  invisible()
+}
+
+#' @noRd
+argument_problem <- function(x, prop) {
+  type <- setdiff(as.character(unlist(prop$type)), "null")
+  allowed <- unlist(prop$enum)
+  if (length(allowed) && is.atomic(x) && length(x) == 1) {
+    if (!as.character(x) %in% as.character(allowed)) {
+      shown <- utils::head(allowed, 10)
+      return(paste0(
+        "one of ",
+        paste0("\"", shown, "\"", collapse = ", "),
+        if (length(allowed) > 10) ", ..."
+      ))
+    }
+    return(NULL)
+  }
+  if (length(type) != 1) {
+    return(NULL)
+  }
+  scalar <- is.atomic(x) && length(x) == 1 && !is.na(x)
+  switch(
+    type,
+    string = if (!(is.character(x) && length(x) == 1)) "a string",
+    number = if (!(scalar && is.numeric(x))) "a number",
+    integer = if (!(scalar && is.numeric(x) && x == round(x))) "a whole number",
+    boolean = if (!(scalar && is.logical(x))) "true or false",
+    NULL
+  )
 }
 
 #' @noRd

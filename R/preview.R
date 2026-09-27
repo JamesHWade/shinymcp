@@ -101,6 +101,9 @@ preview_app <- function(
     port = started$port,
     stop = function() {
       httpuv::stopServer(started$server)
+      for (a in server$apps) {
+        a$close()
+      }
       invisible(NULL)
     }
   ))

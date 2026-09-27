@@ -86,7 +86,8 @@ base64_file <- function(path) {
 #' Base64-encode a raw vector
 #' @noRd
 base64_raw <- function(x) {
-  as.character(jsonlite::base64_enc(x))
+  # jsonlite wraps lines; MCP hosts expect plain base64.
+  gsub("\n", "", as.character(jsonlite::base64_enc(x)), fixed = TRUE)
 }
 
 #' MIME type from a file extension

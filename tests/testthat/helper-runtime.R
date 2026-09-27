@@ -71,3 +71,17 @@ rt_instance <- function(app, id) {
 rt_session_input <- function(app, id, input_id) {
   shiny::isolate(rt_instance(app, id)$session$input[[input_id]])
 }
+
+# shinyAppDir()'s onStart sources global.R and attaches shiny (reading ui.R
+# does). Keep the working directory and search path as they were when the
+# test ends, whatever the runtime does.
+local_app_dir_side_effects <- function(env = parent.frame()) {
+  withr::local_dir(getwd(), .local_envir = env)
+  attached <- "package:shiny" %in% search()
+  withr::defer(
+    if (!attached && "package:shiny" %in% search()) {
+      detach("package:shiny", character.only = TRUE)
+    },
+    envir = env
+  )
+}

@@ -51,6 +51,11 @@ detect_mcp_role <- function(tag) {
     return(list(role = "output", id = tag_id, type = "plot"))
   }
 
+  # Other htmlwidgets (plotly, leaflet, ...).
+  if (grepl("html-widget-output", classes, fixed = TRUE)) {
+    return(list(role = "output", id = tag_id, type = "widget"))
+  }
+
   # --- Input pattern ---
 
   if (
