@@ -165,14 +165,17 @@ in place of Shiny's. It draws Shiny's inputs itself, and shows every kind of
 output: text, tables, plots and images, `renderUI()`, and htmlwidgets such
 as plotly, DT, reactable, and leaflet. Notifications, modal dialogs,
 `insertUI()`, tab changes (`updateTabsetPanel()`, `insertTab()`,
-`hideTab()`), downloads, and file uploads work. `invalidateLater()` and
-`reactivePoll()` keep running while the app is open, and an
-`ExtendedTask`'s result appears when the task finishes. Clicks, double clicks,
-hovers, and brushes on a plot (`plotOutput(click =, brush =)`) send what
-they send in a browser, so `nearPoints()` and `brushedPoints()` work.
-Select inputs are the browser's own; one whose choices stay on the server
-(`updateSelectizeInput(server = TRUE)`) shows the first 1,000 and a search
-box for the rest.
+`hideTab()`), downloads, and file uploads work.
+
+`invalidateLater()` and `reactivePoll()` keep running while the app is
+open, and an `ExtendedTask`'s result appears when the task finishes.
+Clicks, double clicks, hovers, and brushes on a plot
+(`plotOutput(click =, brush =)`) send what they send in a browser, so
+`nearPoints()` and `brushedPoints()` work.
+
+Select inputs are the browser's own. One whose choices stay on the server
+(`updateSelectizeInput(server = TRUE)`) shows the first 1,000 of them,
+with a search box for the rest.
 
 `conditionalPanel()` works too, with one difference. Shiny runs a panel's
 condition as JavaScript, which chat clients forbid, so shinymcp reads it
@@ -184,7 +187,8 @@ can't read shows its panel, with a warning in the browser's console.
 
 Packages that talk to Shiny's JavaScript work too. The page provides
 `window.Shiny` with what they use: input bindings (shinyWidgets' pickers,
-switches, and button groups), `Shiny.setInputValue()` (row selection in DT,
+switches, and button groups; bslib's sidebars, accordions, and task
+buttons), `Shiny.setInputValue()` (row selection in DT,
 `plotly::event_data()`, clicks on a leaflet map), custom message handlers
 (shinyjs), and the events that loading spinners listen for
 (shinycssloaders).
