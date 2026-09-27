@@ -1,97 +1,117 @@
+/* shinymcp host: an MCP App embedded in a Shiny page.
+ *
+ * Colors come from Bootstrap's variables when the page has them (bslib),
+ * so the frame follows the page's theme, including dark mode.
+ */
+
 .shinymcp-host {
-  border: 1px solid #d8dde6;
-  border-radius: 12px;
-  background: #fff;
+  --shinymcp-host-border: var(--bs-border-color, #d6d9de);
+  --shinymcp-host-muted: var(--bs-secondary-color, #5c6370);
+  --shinymcp-host-bg: var(--bs-body-bg, #fff);
+  --shinymcp-host-bar: var(--bs-tertiary-bg, #f6f7f9);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--shinymcp-host-border);
+  border-radius: var(--bs-border-radius-lg, 8px);
+  background: var(--shinymcp-host-bg);
   overflow: hidden;
 }
 
-.shinymcp-host[data-shinymcp-fullscreen="true"],
-.shinymcp-host:fullscreen,
-.shinymcp-host:-webkit-full-screen {
-  position: fixed;
-  inset: 1rem;
-  z-index: 2147483000;
-  display: flex;
-  flex-direction: column;
-  border-radius: 10px;
-  box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.55);
+.shinymcp-host[data-shinymcp-border="false"] {
+  border-color: transparent;
 }
 
 .shinymcp-host-toolbar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  justify-content: space-between;
-  padding: 0.625rem 0.875rem;
-  background: #f6f8fb;
-  border-bottom: 1px solid #e3e8ef;
+  gap: 12px;
+  min-height: 36px;
+  padding: 4px 6px 4px 12px;
+  background: var(--shinymcp-host-bar);
+  border-bottom: 1px solid var(--shinymcp-host-border);
   font-size: 0.875rem;
 }
 
-.shinymcp-host-status {
-  color: #355070;
-  min-height: 1.25rem;
+.shinymcp-host-title {
+  flex: 1;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shinymcp-host-busy {
+  color: var(--shinymcp-host-muted);
+  font-size: 0.8125rem;
+}
+
+.shinymcp-host-busy[hidden] {
+  display: none;
 }
 
 .shinymcp-host-actions {
   display: flex;
-  align-items: center;
-  gap: 0.5rem;
+  gap: 4px;
 }
 
 .shinymcp-host-button {
-  border: 0;
-  border-radius: 999px;
-  background: #0f62fe;
-  color: #fff;
-  padding: 0.35rem 0.85rem;
-  font-size: 0.82rem;
+  font: inherit;
+  font-size: 0.8125rem;
+  color: inherit;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--bs-border-radius, 6px);
+  padding: 3px 10px;
   cursor: pointer;
 }
 
 .shinymcp-host-button:hover {
-  background: #0b4ecc;
+  border-color: var(--shinymcp-host-border);
+  background: var(--shinymcp-host-bg);
 }
 
-.shinymcp-host-button-secondary {
-  background: #dde6f4;
-  color: #28415f;
-}
-
-.shinymcp-host-button-secondary:hover {
-  background: #cfdcee;
+.shinymcp-host-button[hidden] {
+  display: none;
 }
 
 .shinymcp-host-error {
-  display: none;
-  padding: 0.625rem 0.875rem;
-  color: #8b1e3f;
-  background: #fff4f6;
-  border-bottom: 1px solid #f4c7d2;
-  font-size: 0.84rem;
+  padding: 8px 12px;
+  color: var(--bs-danger-text-emphasis, #9f1239);
+  background: var(--bs-danger-bg-subtle, #fff1f2);
+  border-bottom: 1px solid var(--bs-danger-border-subtle, #fecdd3);
+  font-size: 0.875rem;
   white-space: pre-wrap;
 }
 
-.shinymcp-host-error[data-visible="true"] {
-  display: block;
+.shinymcp-host-error[hidden] {
+  display: none;
 }
 
 .shinymcp-host-frame {
   display: block;
   width: 100%;
-  min-height: 180px;
+  height: 160px;
   border: 0;
-  background: #fff;
+  background: transparent;
+  color-scheme: normal;
 }
 
-.shinymcp-host[data-shinymcp-fullscreen="true"] .shinymcp-host-frame,
+/* Full screen, in the browser's own mode or as an overlay where that
+   isn't allowed (for example, inside another iframe). */
+.shinymcp-host:fullscreen,
+.shinymcp-host[data-shinymcp-fullscreen] {
+  border-radius: 0;
+}
+
+.shinymcp-host[data-shinymcp-fullscreen] {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483000;
+}
+
 .shinymcp-host:fullscreen .shinymcp-host-frame,
-.shinymcp-host:-webkit-full-screen .shinymcp-host-frame {
+.shinymcp-host[data-shinymcp-fullscreen] .shinymcp-host-frame {
   flex: 1 1 auto;
-  min-height: 0;
   height: auto !important;
-}
-
-.shinymcp-host[data-shinymcp-height]:not([data-shinymcp-height="auto"]) .shinymcp-host-frame {
-  height: var(--shinymcp-fixed-height);
+  min-height: 0;
 }

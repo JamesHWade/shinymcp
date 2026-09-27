@@ -1,978 +1,1939 @@
-// shinymcp-bridge.js
-// MCP Apps postMessage/JSON-RPC bridge for shinymcp
-// Implements the official MCP Apps postMessage protocol (spec 2026-01-26).
-// No external dependencies required.
+// shinymcp bridge
+//
+// Runs inside an MCP App's page and speaks the MCP Apps protocol
+// (2026-01-26) to the host over postMessage. It finds the page's inputs,
+// sends their values to the app's tools, and draws the results into the
+// page's outputs.
+//
+// Two modes, set by the page's configuration:
+//
+// * "tools": the page belongs to mcp_app(). Each tool's arguments are
+//   filled from inputs whose ids (or data-shinymcp-input attributes) match
+//   the argument names; tools run when their inputs change.
+// * "shiny": the page is a Shiny app served live with as_mcp_app(). Every
+//   input change goes to the app's view tool with the id of this view, and
+//   R answers with the outputs that changed, as a Shiny session would.
+//
+// Written in ES5 without dependencies so it can be inlined into any page.
 (function () {
   "use strict";
 
+  if (window.shinymcp && window.shinymcp.__bridge) return;
+
   var APPS_PROTOCOL_VERSION = "2026-01-26";
+  var VIEW_META = "shinymcp/view";
 
   // ---------------------------------------------------------------------------
-  // Utility: CSS.escape polyfill for ES5 environments
+  // Small utilities
   // ---------------------------------------------------------------------------
+
+  function each(list, fn) {
+    if (!list) return;
+    for (var i = 0; i < list.length; i++) fn(list[i], i);
+  }
+
+  function keys(obj) {
+    return obj && typeof obj === "object" ? Object.keys(obj) : [];
+  }
+
+  function assign(target) {
+    for (var i = 1; i < arguments.length; i++) {
+      var src = arguments[i];
+      if (!src) continue;
+      var k = keys(src);
+      for (var j = 0; j < k.length; j++) target[k[j]] = src[k[j]];
+    }
+    return target;
+  }
+
+  function hasClass(el, cls) {
+    return !!(el && el.classList && el.classList.contains(cls));
+  }
+
   var cssEscape =
     typeof CSS !== "undefined" && typeof CSS.escape === "function"
-      ? function (str) {
-          return CSS.escape(str);
-        }
-      : function (str) {
-          return str.replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
+      ? function (s) { return CSS.escape(s); }
+      : function (s) {
+          return String(s).replace(/([!"#$%&'()*+,./:;<=>?@[\\\]^`{|}~])/g, "\\$1");
         };
+
+  function byId(id) {
+    return id ? document.getElementById(id) : null;
+  }
+
+  function sameValue(a, b) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
+
+  function logWarn() {
+    if (window.console && console.warn) {
+      var args = ["[shinymcp]"].concat(Array.prototype.slice.call(arguments));
+      console.warn.apply(console, args);
+    }
+  }
+
+  function pad2(n) {
+    return (n < 10 ? "0" : "") + n;
+  }
+
+  // Local calendar date as YYYY-MM-DD.
+  function formatDate(d) {
+    return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate());
+  }
+
+  function todayString() {
+    return formatDate(new Date());
+  }
+
+  function parseNumber(v) {
+    if (v === null || v === undefined || v === "") return null;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Configuration
+  // ---------------------------------------------------------------------------
+
+  var config = {};
+  (function readConfig() {
+    var el = byId("shinymcp-config");
+    if (!el) return;
+    try {
+      config = JSON.parse(el.textContent || "{}") || {};
+    } catch (e) {
+      logWarn("could not read the page configuration", e);
+    }
+  })();
+
+  var MODE = config.mode === "shiny" ? "shiny" : "tools";
+  var TOOLS = Array.isArray(config.tools) ? config.tools : [];
+  var TRIGGER = config.trigger || "debounce";
+  var DEBOUNCE_MS = typeof config.debounceMs === "number" ? config.debounceMs : 250;
+
+  // ---------------------------------------------------------------------------
+  // JSON-RPC over postMessage
+  // ---------------------------------------------------------------------------
+
+  var nextId = 1;
+  var pending = {};
+  var tornDown = false;
+  var connected = !!(window.parent && window.parent !== window);
+
+  function post(message) {
+    if (!connected || tornDown) return;
+    window.parent.postMessage(message, "*");
+  }
+
+  function request(method, params) {
+    if (tornDown) return Promise.reject(new Error("The app has been closed."));
+    if (!connected) return Promise.reject(new Error("The app is not running inside an MCP host."));
+    var id = nextId++;
+    var message = { jsonrpc: "2.0", id: id, method: method };
+    if (params !== undefined) message.params = params;
+    return new Promise(function (resolve, reject) {
+      pending[id] = { resolve: resolve, reject: reject, method: method };
+      post(message);
+    });
+  }
+
+  function notify(method, params) {
+    var message = { jsonrpc: "2.0", method: method };
+    if (params !== undefined) message.params = params;
+    post(message);
+  }
+
+  function respond(id, result) {
+    post({ jsonrpc: "2.0", id: id, result: result || {} });
+  }
+
+  function respondError(id, code, message) {
+    post({ jsonrpc: "2.0", id: id, error: { code: code, message: message } });
+  }
+
+  function onMessage(event) {
+    if (tornDown || event.source !== window.parent) return;
+    var data = event.data;
+    if (!data || data.jsonrpc !== "2.0") return;
+
+    if (data.id !== undefined && data.id !== null && !data.method) {
+      var p = pending[data.id];
+      if (!p) return;
+      delete pending[data.id];
+      if (data.error) {
+        var err = new Error(data.error.message || "Request failed");
+        err.code = data.error.code;
+        err.data = data.error.data;
+        p.reject(err);
+      } else {
+        p.resolve(data.result);
+      }
+      return;
+    }
+    if (!data.method) return;
+    if (data.id !== undefined && data.id !== null) {
+      handleHostRequest(data);
+    } else {
+      handleHostNotification(data.method, data.params || {});
+    }
+  }
+
+  function handleHostRequest(msg) {
+    switch (msg.method) {
+      case "ping":
+        respond(msg.id, {});
+        break;
+      case "ui/resource-teardown":
+        closeView();
+        respond(msg.id, {});
+        teardown();
+        break;
+      default:
+        respondError(msg.id, -32601, "Method not supported by this app: " + msg.method);
+    }
+  }
+
+  function handleHostNotification(method, params) {
+    switch (method) {
+      case "ui/notifications/tool-input":
+        state.toolInputSeen = true;
+        applyToolInput(params.arguments || {});
+        break;
+      case "ui/notifications/tool-input-partial":
+        break;
+      case "ui/notifications/tool-result":
+        state.toolResultSeen = true;
+        handleResult(params, { initial: true });
+        break;
+      case "ui/notifications/tool-cancelled":
+        setBusy(-state.busy);
+        if (!state.firstResult) selfInit();
+        break;
+      case "ui/notifications/host-context-changed":
+        applyHostContext(params);
+        break;
+      // shinymcp's own hosts send these: run changes now (the "manual"
+      // trigger), optionally setting inputs first, or restore the inputs
+      // the view opened with.
+      case "x-shinymcp/execute":
+        if (params.inputs && typeof params.inputs === "object") {
+          setInputsSilently(params.inputs);
+          each(keys(params.inputs), function (id) { state.changed[id] = true; });
+        }
+        runPending(true);
+        break;
+      case "x-shinymcp/reset":
+        resetInputs();
+        break;
+      default:
+        break;
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // State
   // ---------------------------------------------------------------------------
-  var config = {};
-  var inputCache = {}; // argName -> element, built from config.toolArgs
-  var inputListeners = [];
-  var messageHandler = null;
-  var tornDown = false;
-  var nextId = 1;
-  var pendingRequests = {};
-  var hostContext = null;
-  var callToolTimer = null;
-  var initialInputSnapshot = {};
+
+  var state = {
+    hostContext: {},
+    hostCapabilities: {},
+    initialized: false,
+    toolInputSeen: false,
+    toolResultSeen: false,
+    firstResult: false,
+    busy: 0,
+    entryTool: null,
+    instance: null,
+    changed: {},
+    dirty: false,
+    revision: 0,
+    loadedDeps: {},
+    customHandlers: {},
+    contextListeners: []
+  };
+  each(config.deps || [], function (key) {
+    state.loadedDeps[key] = true;
+  });
 
   // ---------------------------------------------------------------------------
-  // Utility: read the value of a form element
+  // Host context: theme, style variables, fonts, sizing
   // ---------------------------------------------------------------------------
-  function getInputValue(el) {
-    if (!el) return null;
+
+  // MCP Apps style variables mapped onto Bootstrap's, so bslib pages follow
+  // the host's palette and type.
+  var BOOTSTRAP_VARS = {
+    "--color-background-primary": ["--bs-body-bg"],
+    "--color-background-secondary": ["--bs-secondary-bg", "--bs-tertiary-bg"],
+    "--color-text-primary": ["--bs-body-color", "--bs-emphasis-color"],
+    "--color-text-secondary": ["--bs-secondary-color"],
+    "--color-border-primary": ["--bs-border-color"],
+    "--color-ring-primary": ["--bs-focus-ring-color"],
+    "--font-sans": ["--bs-body-font-family", "--bs-font-sans-serif"],
+    "--font-mono": ["--bs-font-monospace"],
+    "--border-radius-md": ["--bs-border-radius"],
+    "--border-radius-sm": ["--bs-border-radius-sm"],
+    "--border-radius-lg": ["--bs-border-radius-lg"]
+  };
+
+  function applyHostContext(ctx) {
+    if (!ctx || typeof ctx !== "object") return;
+    assign(state.hostContext, ctx);
+    var root = document.documentElement;
+
+    if (ctx.theme === "light" || ctx.theme === "dark") {
+      root.setAttribute("data-theme", ctx.theme);
+      root.setAttribute("data-bs-theme", ctx.theme);
+      root.style.colorScheme = ctx.theme;
+    }
+    if (typeof ctx.locale === "string" && ctx.locale) {
+      root.lang = ctx.locale;
+    }
+    var styles = ctx.styles || {};
+    if (styles.variables && typeof styles.variables === "object" && config.hostStyles !== false) {
+      each(keys(styles.variables), function (name) {
+        var value = styles.variables[name];
+        if (name.indexOf("--") !== 0 || typeof value !== "string") return;
+        root.style.setProperty(name, value);
+        each(BOOTSTRAP_VARS[name] || [], function (bsName) {
+          root.style.setProperty(bsName, value);
+        });
+      });
+    }
+    if (styles.css && typeof styles.css.fonts === "string" && !byId("shinymcp-host-fonts")) {
+      var style = document.createElement("style");
+      style.id = "shinymcp-host-fonts";
+      style.textContent = styles.css.fonts;
+      document.head.appendChild(style);
+    }
+    var dims = ctx.containerDimensions;
+    if (dims && typeof dims === "object") {
+      if (typeof dims.height === "number") {
+        root.style.height = "100vh";
+        root.classList.add("shinymcp-fixed-height");
+      } else {
+        root.style.height = "";
+        root.classList.remove("shinymcp-fixed-height");
+      }
+    }
+    if (ctx.displayMode) {
+      root.setAttribute("data-display-mode", ctx.displayMode);
+    }
+    // The tool call that opened this view, when the host says.
+    if (ctx.toolInfo && ctx.toolInfo.tool && typeof ctx.toolInfo.tool.name === "string") {
+      state.entryTool = ctx.toolInfo.tool.name;
+    }
+    each(state.contextListeners, function (fn) {
+      try {
+        fn(state.hostContext);
+      } catch (e) {
+        logWarn("host context listener failed", e);
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inputs
+  //
+  // Each input gets an adapter with get(), set(value), receiveMessage(msg),
+  // and change listeners. Adapters give Shiny's inputs native behaviour in a
+  // page without Shiny's JavaScript: sliders become range inputs, date
+  // pickers become date inputs, action buttons count their clicks.
+  // ---------------------------------------------------------------------------
+
+  var adapters = {}; // DOM id -> adapter
+
+  function inputKind(el) {
     var tag = el.tagName.toLowerCase();
     var type = (el.getAttribute("type") || "").toLowerCase();
-
-    // Radio-group container: div or fieldset wrapping radio inputs
-    if (
-      (tag === "div" || tag === "fieldset") &&
-      el.querySelector('input[type="radio"]')
-    ) {
-      var selectedRadio = el.querySelector('input[type="radio"]:checked');
-      return selectedRadio ? selectedRadio.value : null;
-    }
-
-    if (tag === "select") return el.value;
-    if (tag === "textarea") return el.value;
-
+    if (hasClass(el, "shiny-input-radiogroup") || el.getAttribute("data-shinymcp-type") === "radio") return "radio";
+    if (hasClass(el, "shiny-input-checkboxgroup")) return "checkbox-group";
+    if (hasClass(el, "shiny-date-range-input")) return "date-range";
+    if (hasClass(el, "shiny-date-input")) return "date";
+    if (tag === "select") return el.multiple ? "select-multiple" : "select";
+    if (tag === "textarea") return "textarea";
+    if ((tag === "button" || tag === "a") && hasClass(el, "action-button")) return "action";
+    if (tag === "button" && el.getAttribute("data-shinymcp-type") === "button") return "action";
     if (tag === "input") {
-      if (type === "checkbox") return el.checked;
-      if (type === "number" || type === "range") {
-        var num = parseFloat(el.value);
-        return isNaN(num) ? null : num;
-      }
-      if (type === "radio") {
-        var name = el.getAttribute("name");
-        if (name) {
-          var form = el.closest("form") || document;
-          var checked = form.querySelector(
-            'input[type="radio"][name="' + name + '"]:checked'
-          );
-          return checked ? checked.value : null;
-        }
-        return el.checked ? el.value : null;
-      }
-      return el.value;
+      if (hasClass(el, "js-range-slider")) return el.getAttribute("data-type") === "double" ? "slider-range" : "slider";
+      if (type === "range") return "slider";
+      if (type === "checkbox") return "checkbox";
+      if (type === "number") return "number";
+      if (type === "password") return "password";
+      if (type === "file") return "file";
+      if (type === "date") return "date";
+      if (type === "radio" || type === "submit" || type === "button" || type === "hidden") return null;
+      return "text";
     }
-
-    if (tag === "button" || type === "button" || type === "submit") {
-      return el.value || el.textContent || true;
-    }
-
-    if (el.value !== undefined) return el.value;
-    return el.textContent || null;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Auto-detect: resolve form elements by tool argument names
-  // ---------------------------------------------------------------------------
-
-  // Deduplicated list of all argument names across all tools
-  function getAllArgNames() {
-    if (!config.toolArgs || typeof config.toolArgs !== "object") return [];
-    var seen = {};
-    var result = [];
-    var tools = Object.keys(config.toolArgs);
-    for (var i = 0; i < tools.length; i++) {
-      var args = config.toolArgs[tools[i]];
-      if (!Array.isArray(args)) continue;
-      for (var j = 0; j < args.length; j++) {
-        if (!seen[args[j]]) {
-          seen[args[j]] = true;
-          result.push(args[j]);
-        }
-      }
-    }
-    return result;
-  }
-
-  // Find the DOM element for a given argument name, with priority:
-  // 1. Explicit data-shinymcp-input attribute
-  // 2. Standard form elements by id (input, select, textarea, button)
-  // 3. Container with id holding radio inputs
-  function resolveInputElement(argName) {
-    var escaped = cssEscape(argName);
-
-    // Priority 1: explicit attribute
-    var explicit = document.querySelector(
-      '[data-shinymcp-input="' + escaped + '"]'
-    );
-    if (explicit) return explicit;
-
-    // Priority 2: standard form elements by id
-    var selectors = [
-      'select#' + escaped,
-      'input#' + escaped,
-      'textarea#' + escaped,
-      'button#' + escaped,
-    ];
-    for (var i = 0; i < selectors.length; i++) {
-      var el = document.querySelector(selectors[i]);
-      if (el) return el;
-    }
-
-    // Priority 3: container with id holding radio inputs
-    var container = document.getElementById(argName);
-    if (
-      container &&
-      container.querySelector('input[type="radio"]')
-    ) {
-      return container;
-    }
-
     return null;
   }
 
-  // Build the argName -> element cache from config.toolArgs
-  function buildInputCache() {
-    inputCache = {};
-    var argNames = getAllArgNames();
-    for (var i = 0; i < argNames.length; i++) {
-      var el = resolveInputElement(argNames[i]);
-      if (el) {
-        inputCache[argNames[i]] = el;
-      } else {
-        console.warn(
-          "[shinymcp-bridge] No DOM element found for tool argument '" +
-            argNames[i] +
-            "'. Use mcp_input() to explicitly mark it, or ensure an " +
-            "element with id='" +
-            argNames[i] +
-            "' exists."
-        );
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Utility: collect all current input values
-  // ---------------------------------------------------------------------------
-  function collectAllInputs() {
-    var inputs = {};
-
-    // Collect from auto-detected cache first
-    var cacheKeys = Object.keys(inputCache);
-    for (var i = 0; i < cacheKeys.length; i++) {
-      inputs[cacheKeys[i]] = getInputValue(inputCache[cacheKeys[i]]);
-    }
-
-    // Fall back to explicit data-shinymcp-input scan (backward compat + extras)
-    var elements = document.querySelectorAll("[data-shinymcp-input]");
-    for (var j = 0; j < elements.length; j++) {
-      var el = elements[j];
-      var id = el.getAttribute("data-shinymcp-input");
-      if (id && !(id in inputs)) {
-        inputs[id] = getInputValue(el);
-      }
-    }
-
-    return inputs;
-  }
-
-  // ---------------------------------------------------------------------------
-  // Utility: update an output element
-  // ---------------------------------------------------------------------------
-  function updateOutput(id, value, type) {
-    var el = document.querySelector(
-      '[data-shinymcp-output="' + id + '"]'
-    );
-    if (!el) return;
-
-    type = type || el.getAttribute("data-shinymcp-output-type") || "text";
-
-    switch (type) {
-      case "text":
-        el.textContent = value;
-        break;
-      case "html":
-        el.innerHTML = value;
-        break;
-      case "plot":
-        el.innerHTML =
-          '<img src="data:image/png;base64,' + value + '" alt="Plot output">';
-        break;
-      case "table":
-        el.innerHTML = value;
-        break;
-      default:
-        el.textContent = value;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // JSON-RPC messaging via postMessage
-  // ---------------------------------------------------------------------------
-  function sendRequest(method, params) {
-    if (tornDown) return null;
-    if (!window.parent || window.parent === window) return null;
-
-    var id = nextId++;
-    var message = {
-      jsonrpc: "2.0",
-      id: id,
-      method: method,
+  function makeAdapter(el, id) {
+    var kind = inputKind(el);
+    if (!kind) return null;
+    var factory = ADAPTERS[kind] || ADAPTERS.text;
+    var adapter = factory(el);
+    adapter.id = id || el.id;
+    adapter.kind = kind;
+    adapter.el = el;
+    adapter.listeners = [];
+    adapter.emit = function () {
+      for (var i = 0; i < adapter.listeners.length; i++) adapter.listeners[i](adapter);
     };
-    if (params !== undefined) {
-      message.params = params;
-    }
+    if (adapter.bind) adapter.bind();
+    return adapter;
+  }
 
-    return new Promise(function (resolve, reject) {
-      pendingRequests[id] = { resolve: resolve, reject: reject };
-      window.parent.postMessage(message, "*");
+  function listen(el, events, fn) {
+    each(events, function (ev) {
+      el.addEventListener(ev, fn);
     });
   }
 
-  function sendNotification(method, params) {
-    if (tornDown) return;
-    if (!window.parent || window.parent === window) return;
-
-    var message = {
-      jsonrpc: "2.0",
-      method: method,
-    };
-    if (params !== undefined) {
-      message.params = params;
+  function labelFor(adapter) {
+    var el = adapter.el;
+    var label = document.querySelector('label[for="' + cssEscape(el.id || adapter.id) + '"]');
+    if (!label) {
+      var group = el.closest ? el.closest(".shiny-input-container, .shinymcp-input-group, .form-group") : null;
+      label = group ? group.querySelector("label") : null;
     }
-
-    window.parent.postMessage(message, "*");
+    return label;
   }
 
-  function sendResponse(id, result) {
-    if (tornDown) return;
-    if (!window.parent || window.parent === window) return;
-
-    window.parent.postMessage(
-      {
-        jsonrpc: "2.0",
-        id: id,
-        result: result || {},
-      },
-      "*"
-    );
+  function setLabel(adapter, text) {
+    var label = labelFor(adapter);
+    if (label && typeof text === "string") label.textContent = text;
   }
 
-  // ---------------------------------------------------------------------------
-  // Model context updates
-  // ---------------------------------------------------------------------------
-
-  // ui/update-model-context is a request per the MCP Apps spec (the host
-  // acknowledges it). Failures are logged but never block the UI.
-  function updateModelContext(structuredContent) {
-    var promise = sendRequest("ui/update-model-context", {
-      structuredContent: structuredContent,
-    });
-    if (promise) {
-      promise["catch"](function (err) {
-        console.warn(
-          "[shinymcp-bridge] ui/update-model-context failed:",
-          err
-        );
-      });
-    }
-    return promise;
-  }
-
-  // Debounce model-context updates so rapid input events (one per keystroke
-  // on text inputs) collapse into one trailing request per quiet period.
-  var modelContextTimer = null;
-  function scheduleModelContextUpdate() {
-    if (modelContextTimer) clearTimeout(modelContextTimer);
-    modelContextTimer = setTimeout(function () {
-      modelContextTimer = null;
-      updateModelContext(collectAllInputs());
-    }, currentDebounceMs());
-  }
-
-  // ---------------------------------------------------------------------------
-  // Host context (theme, locale, styles)
-  // ---------------------------------------------------------------------------
-
-  // Merge a (possibly partial) host context update and apply what we can:
-  // theme maps to Bootstrap/bslib's data-bs-theme attribute, locale to the
-  // document language, and styles.variables to CSS custom properties.
-  function applyHostContext(context) {
-    if (!context || typeof context !== "object") return;
-    if (!hostContext) hostContext = {};
-    var keys = Object.keys(context);
-    for (var i = 0; i < keys.length; i++) {
-      hostContext[keys[i]] = context[keys[i]];
-    }
-
-    if (context.theme === "dark" || context.theme === "light") {
-      document.documentElement.setAttribute("data-bs-theme", context.theme);
-    }
-    if (typeof context.locale === "string" && context.locale) {
-      document.documentElement.lang = context.locale;
-    }
-    if (
-      context.styles &&
-      context.styles.variables &&
-      typeof context.styles.variables === "object"
-    ) {
-      var varNames = Object.keys(context.styles.variables);
-      for (var j = 0; j < varNames.length; j++) {
-        var varName = varNames[j];
-        var varValue = context.styles.variables[varName];
-        if (varName.indexOf("--") === 0 && typeof varValue === "string") {
-          document.documentElement.style.setProperty(varName, varValue);
+  var ADAPTERS = {
+    text: function (el) {
+      var updateOnChange = el.getAttribute("data-update-on") === "change";
+      return {
+        get: function () { return el.value; },
+        set: function (v) { el.value = v === null || v === undefined ? "" : String(v); },
+        bind: function () {
+          var self = this;
+          listen(el, updateOnChange ? ["change"] : ["input", "change"], function () { self.emit(); });
+        },
+        receiveMessage: function (msg) {
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.placeholder !== undefined) el.placeholder = msg.placeholder;
+          if (msg.label !== undefined) setLabel(this, msg.label);
         }
-      }
-    }
-  }
+      };
+    },
 
-  // ---------------------------------------------------------------------------
-  // Server tool calling
-  // ---------------------------------------------------------------------------
+    textarea: function (el) {
+      var adapter = ADAPTERS.text(el);
+      return adapter;
+    },
 
-  // Build reverse lookup: input arg name -> list of tool names that use it
-  function buildArgToToolsMap() {
-    var map = {};
-    if (!config.toolArgs || typeof config.toolArgs !== "object") return map;
-    var tools = Object.keys(config.toolArgs);
-    for (var i = 0; i < tools.length; i++) {
-      var args = config.toolArgs[tools[i]];
-      if (!Array.isArray(args)) continue;
-      for (var j = 0; j < args.length; j++) {
-        if (!map[args[j]]) {
-          map[args[j]] = [];
+    password: function (el) {
+      var adapter = ADAPTERS.text(el);
+      adapter.secret = true;
+      return adapter;
+    },
+
+    number: function (el) {
+      var updateOnChange = el.getAttribute("data-update-on") === "change";
+      return {
+        get: function () { return parseNumber(el.value); },
+        set: function (v) { el.value = v === null || v === undefined ? "" : String(v); },
+        bind: function () {
+          var self = this;
+          listen(el, updateOnChange ? ["change"] : ["input", "change"], function () { self.emit(); });
+        },
+        receiveMessage: function (msg) {
+          each(["min", "max", "step"], function (k) {
+            if (msg[k] !== undefined && msg[k] !== null) el.setAttribute(k, msg[k]);
+          });
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.label !== undefined) setLabel(this, msg.label);
         }
-        map[args[j]].push(tools[i]);
-      }
-    }
-    return map;
-  }
+      };
+    },
 
-  var argToToolsMap = {};
-  var pendingChangedInputs = [];
-
-  // Find which tools are affected by a set of changed input names.
-  // If changedInputNames is null, returns all tools (used for initial call).
-  function findAffectedTools(changedInputNames) {
-    if (!config.toolArgs || typeof config.toolArgs !== "object") {
-      // Legacy fallback: no toolArgs config means call all tools with all inputs.
-      // Prior to multi-tool support, only config.tools[0] was called.
-      // Apps generated by shinymcp always include toolArgs, so this path is
-      // only hit by hand-written configs or very old generated HTML.
-      return config.tools || [];
-    }
-    if (!changedInputNames) {
-      return Object.keys(config.toolArgs);
-    }
-    var seen = {};
-    var result = [];
-    for (var i = 0; i < changedInputNames.length; i++) {
-      var tools = argToToolsMap[changedInputNames[i]];
-      if (!tools) continue;
-      for (var j = 0; j < tools.length; j++) {
-        if (!seen[tools[j]]) {
-          seen[tools[j]] = true;
-          result.push(tools[j]);
-        }
-      }
-    }
-    return result;
-  }
-
-  // Collect only the input values relevant to a specific tool
-  function collectToolInputs(toolName, allInputs) {
-    if (!config.toolArgs || !config.toolArgs[toolName]) return allInputs;
-    var argNames = config.toolArgs[toolName];
-    var result = {};
-    for (var i = 0; i < argNames.length; i++) {
-      if (argNames[i] in allInputs) {
-        result[argNames[i]] = allInputs[argNames[i]];
-      }
-    }
-    return result;
-  }
-
-  function currentTriggerMode() {
-    return config.trigger || "debounce";
-  }
-
-  function currentDebounceMs() {
-    return typeof config.debounceMs === "number" ? config.debounceMs : 250;
-  }
-
-  function callServerTools(inputs, changedInputNames) {
-    if (!config.tools || config.tools.length === 0) return;
-
-    var toolNames = findAffectedTools(changedInputNames);
-    if (changedInputNames && toolNames.length === 0) {
-      console.warn(
-        "[shinymcp-bridge] Input change for '" +
-          changedInputNames.join(", ") +
-          "' did not map to any tool. Check toolArgs configuration."
-      );
-    }
-    for (var i = 0; i < toolNames.length; i++) {
-      callSingleTool(toolNames[i], collectToolInputs(toolNames[i], inputs));
-    }
-  }
-
-  function callSingleTool(toolName, args) {
-    var promise = sendRequest("tools/call", {
-      name: toolName,
-      arguments: args,
-    });
-
-    if (promise) {
-      promise.then(function (result) {
-        handleToolResult(result);
-      })["catch"](function (err) {
-        console.error(
-          "[shinymcp-bridge] Tool call failed for '" + toolName + "':",
-          err
-        );
-      });
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Input change handling
-  // ---------------------------------------------------------------------------
-  function onInputChanged(event) {
-    // Check if the changed element is a tracked input (cached or explicit)
-    var changedArgName = null;
-    var el = event.target.closest("[data-shinymcp-input]");
-    if (el) {
-      changedArgName = el.getAttribute("data-shinymcp-input");
-    } else {
-      // Check if target (or its ancestor) is a form element inside a cached element
-      var targetTag = event.target.tagName.toLowerCase();
-      var isFormEl =
-        targetTag === "input" ||
-        targetTag === "select" ||
-        targetTag === "textarea" ||
-        targetTag === "button";
-      if (!isFormEl) return;
-
-      var cacheKeys = Object.keys(inputCache);
-      for (var i = 0; i < cacheKeys.length; i++) {
-        if (inputCache[cacheKeys[i]].contains(event.target)) {
-          changedArgName = cacheKeys[i];
-          break;
-        }
-      }
-      if (!changedArgName) return;
-    }
-
-    var inputs = collectAllInputs();
-
-    // Update model context with current input values (debounced)
-    scheduleModelContextUpdate();
-
-    // Accumulate changed input names across debounce intervals so rapid
-    // changes to inputs in different tool groups all trigger their tools.
-    if (changedArgName && pendingChangedInputs.indexOf(changedArgName) === -1) {
-      pendingChangedInputs.push(changedArgName);
-    }
-    if (callToolTimer) clearTimeout(callToolTimer);
-
-    if (currentTriggerMode() === "change") {
-      var changeInputs = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
-      pendingChangedInputs = [];
-      callServerTools(inputs, changeInputs);
-      return;
-    }
-
-    if (currentTriggerMode() === "debounce") {
-      callToolTimer = setTimeout(function () {
-        var toSend = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
-        pendingChangedInputs = [];
-        callServerTools(inputs, toSend);
-      }, currentDebounceMs());
-    }
-  }
-
-  function attachListenerToElement(el) {
-    var tag = el.tagName.toLowerCase();
-    var type = (el.getAttribute("type") || "").toLowerCase();
-
-    var events = [];
-    if (
-      tag === "select" ||
-      type === "checkbox" ||
-      type === "radio" ||
-      type === "range"
-    ) {
-      events.push("change");
-    } else if (tag === "input" || tag === "textarea") {
-      events.push("input");
-      events.push("change");
-    } else if (tag === "button" || type === "button" || type === "submit") {
-      events.push("click");
-    } else if (
-      (tag === "div" || tag === "fieldset") &&
-      el.querySelector('input[type="radio"]')
-    ) {
-      // Radio-group container: listen for change events bubbling up
-      events.push("change");
-    } else {
-      events.push("change");
-      events.push("input");
-    }
-
-    for (var j = 0; j < events.length; j++) {
-      el.addEventListener(events[j], onInputChanged);
-      inputListeners.push({ element: el, event: events[j] });
-    }
-  }
-
-  function attachInputListeners() {
-    var bound = [];
-
-    function isBound(el) {
-      for (var k = 0; k < bound.length; k++) {
-        if (bound[k] === el) return true;
-      }
-      return false;
-    }
-
-    // Bind cached (auto-detected) elements
-    var cacheKeys = Object.keys(inputCache);
-    for (var i = 0; i < cacheKeys.length; i++) {
-      var el = inputCache[cacheKeys[i]];
-      if (!isBound(el)) {
-        attachListenerToElement(el);
-        bound.push(el);
-      }
-    }
-
-    // Bind explicit data-shinymcp-input elements (backward compat)
-    var elements = document.querySelectorAll("[data-shinymcp-input]");
-    for (var j = 0; j < elements.length; j++) {
-      if (!isBound(elements[j])) {
-        attachListenerToElement(elements[j]);
-        bound.push(elements[j]);
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Handle incoming messages from the host
-  // ---------------------------------------------------------------------------
-  function handleHostMessage(event) {
-    if (tornDown) return;
-
-    var data = event.data;
-    if (!data || data.jsonrpc !== "2.0") return;
-
-    // Handle responses (success or error) to our requests.
-    // Responses have an id but no method; requests from the host have both.
-    if (data.id !== undefined && !data.method) {
-      var pending = pendingRequests[data.id];
-      if (pending) {
-        delete pendingRequests[data.id];
-        if (data.error) {
-          var err = new Error(
-            (data.error && data.error.message) || "JSON-RPC error"
-          );
-          err.code = data.error && data.error.code;
-          err.data = data.error && data.error.data;
-          pending.reject(err);
-        } else {
-          pending.resolve(data.result);
-        }
-      }
-      return;
-    }
-
-    // Handle notifications and requests from host
-    if (!data.method) return;
-
-    switch (data.method) {
-      case "ping":
-        if (data.id !== undefined) {
-          sendResponse(data.id, {});
-        }
-        break;
-
-      case "ui/notifications/tool-result":
-        handleToolResult(data.params);
-        break;
-
-      case "ui/notifications/tool-input":
-        handleToolInput(data.params);
-        break;
-
-      // shinymcp-private host extensions (used by the bundled Shiny host).
-      // The ui/notifications/* prefix is reserved by the MCP Apps spec, so
-      // the x-shinymcp/* spellings are the forward-looking names; both are
-      // accepted while the bundled host migrates.
-      case "ui/notifications/trigger-tool-call":
-      case "x-shinymcp/trigger-tool-call":
-        if (callToolTimer) clearTimeout(callToolTimer);
-        var changedInputs = pendingChangedInputs.length > 0 ? pendingChangedInputs : null;
-        pendingChangedInputs = [];
-        callServerTools(collectAllInputs(), changedInputs);
-        break;
-
-      case "ui/notifications/reset":
-      case "x-shinymcp/reset":
-        handleToolInput({ arguments: initialInputSnapshot });
-        updateModelContext(collectAllInputs());
-        if (
-          currentTriggerMode() === "change" ||
-          currentTriggerMode() === "debounce"
-        ) {
-          callServerTools(collectAllInputs(), null);
-        }
-        break;
-
-      case "ui/notifications/tool-input-partial":
-        // Streaming partial input - could update UI progressively
-        break;
-
-      case "ui/notifications/tool-cancelled":
-        // Tool was cancelled
-        break;
-
-      case "ui/notifications/host-context-changed":
-        applyHostContext(data.params);
-        break;
-
-      case "ui/resource-teardown":
-        // Respond to teardown request then clean up
-        sendResponse(data.id, {});
-        teardown();
-        break;
-
-      default:
-        break;
-    }
-  }
-
-  function handleToolResult(params) {
-    if (!params) return;
-
-    var content = params.content;
-    if (!content || !Array.isArray(content)) return;
-
-    // Extract text content from the tool result
-    var textContent = "";
-    for (var i = 0; i < content.length; i++) {
-      if (content[i].type === "text") {
-        textContent += content[i].text;
-      }
-    }
-
-    // Try to parse as structured content and update outputs
-    if (params.structuredContent && typeof params.structuredContent === "object") {
-      var singleResult = params.structuredContent.__shinymcp_result__;
-      if (singleResult && typeof singleResult === "object") {
-        var singleOutputs = document.querySelectorAll("[data-shinymcp-output]");
-        if (singleOutputs.length === 1) {
-          updateOutput(
-            singleOutputs[0].getAttribute("data-shinymcp-output"),
-            singleResult.value,
-            singleResult.type
-          );
-          return;
-        }
-      }
-
-      var typeMap = params.structuredContent.__shinymcp_types__ || {};
-      var keys = Object.keys(params.structuredContent);
-      for (var j = 0; j < keys.length; j++) {
-        if (
-          keys[j] === "__shinymcp_result__" ||
-          keys[j] === "__shinymcp_types__"
-        ) {
-          continue;
-        }
-        updateOutput(
-          keys[j],
-          params.structuredContent[keys[j]],
-          typeMap[keys[j]]
-        );
-      }
-    } else if (textContent) {
-      // Update all text outputs with the raw text result
-      var outputs = document.querySelectorAll("[data-shinymcp-output]");
-      if (outputs.length === 1) {
-        var outputType =
-          outputs[0].getAttribute("data-shinymcp-output-type") || "text";
-        updateOutput(
-          outputs[0].getAttribute("data-shinymcp-output"),
-          textContent,
-          outputType
-        );
-      }
-    }
-  }
-
-  function handleToolInput(params) {
-    if (!params || !params.arguments) return;
-
-    // Update input elements with the tool arguments
-    var args = params.arguments;
-    var keys = Object.keys(args);
-    for (var i = 0; i < keys.length; i++) {
-      var inputId = keys[i];
-      var value = args[inputId];
-
-      // Try cache first, then explicit attribute
-      var el = inputCache[inputId] ||
-        document.querySelector('[data-shinymcp-input="' + inputId + '"]');
-      if (!el) continue;
-
-      var tag = el.tagName.toLowerCase();
-      var type = (el.getAttribute("type") || "").toLowerCase();
-
-      // Radio-group container
-      if (
-        (tag === "div" || tag === "fieldset") &&
-        el.querySelector('input[type="radio"]')
-      ) {
-        var radios = el.querySelectorAll('input[type="radio"]');
-        for (var j = 0; j < radios.length; j++) {
-          radios[j].checked = radios[j].value === String(value);
-        }
-      } else if (type === "checkbox") {
-        el.checked = !!value;
-      } else if (tag === "select" || tag === "input" || tag === "textarea") {
-        el.value = value;
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Teardown: clean up all listeners and observers
-  // ---------------------------------------------------------------------------
-  function teardown() {
-    if (tornDown) return;
-    tornDown = true;
-
-    for (var i = 0; i < inputListeners.length; i++) {
-      var entry = inputListeners[i];
-      entry.element.removeEventListener(entry.event, onInputChanged);
-    }
-    inputListeners = [];
-
-    if (callToolTimer) clearTimeout(callToolTimer);
-    if (modelContextTimer) clearTimeout(modelContextTimer);
-    callToolTimer = null;
-    modelContextTimer = null;
-
-    // Settle anything still waiting on the host so callers don't hang.
-    var pendingIds = Object.keys(pendingRequests);
-    for (var j = 0; j < pendingIds.length; j++) {
-      var pending = pendingRequests[pendingIds[j]];
-      if (pending && pending.reject) {
-        pending.reject(new Error("shinymcp bridge was torn down"));
-      }
-    }
-    pendingRequests = {};
-
-    if (messageHandler) {
-      window.removeEventListener("message", messageHandler);
-      messageHandler = null;
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Initialization: implements the official MCP Apps ui/initialize handshake
-  // ---------------------------------------------------------------------------
-  function init() {
-    // Read config from embedded JSON
-    var configEl = document.getElementById("shinymcp-config");
-    if (configEl) {
-      try {
-        config = JSON.parse(configEl.textContent);
-      } catch (e) {
-        console.warn("[shinymcp-bridge] Failed to parse config:", e);
-        config = {};
-      }
-    }
-
-    // Set up postMessage listener
-    messageHandler = handleHostMessage;
-    window.addEventListener("message", messageHandler);
-
-    // Build auto-detect cache and arg->tool reverse lookup, then attach listeners
-    buildInputCache();
-    argToToolsMap = buildArgToToolsMap();
-    attachInputListeners();
-
-    // Send ui/initialize request per MCP Apps spec
-    // Fields must match McpUiInitializeRequestSchema exactly:
-    // appInfo (not clientInfo), appCapabilities, protocolVersion
-    var initPromise = sendRequest("ui/initialize", {
-      protocolVersion: APPS_PROTOCOL_VERSION,
-      appInfo: {
-        name: config.appName || "shinymcp-app",
-        version: config.version || "0.0.1",
-      },
-      appCapabilities: {
-        availableDisplayModes: ["inline", "fullscreen"],
-      },
-    });
-
-    // Handle initialize response
-    if (initPromise) {
-      initPromise
-        .then(function (result) {
-          applyHostContext(result.hostContext || null);
-
-          if (
-            hostContext &&
-            hostContext.initialArguments &&
-            typeof hostContext.initialArguments === "object"
-          ) {
-            handleToolInput({ arguments: hostContext.initialArguments });
+    checkbox: function (el) {
+      return {
+        get: function () { return !!el.checked; },
+        set: function (v) { el.checked = !!v; },
+        bind: function () {
+          var self = this;
+          listen(el, ["change"], function () { self.emit(); });
+        },
+        receiveMessage: function (msg) {
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.label !== undefined) {
+            var span = el.parentNode && el.parentNode.querySelector("span");
+            if (span) span.textContent = msg.label;
+            else setLabel(this, msg.label);
           }
-          initialInputSnapshot = collectAllInputs();
+        }
+      };
+    },
 
-          // Send initialized notification
-          sendNotification("ui/notifications/initialized", {});
+    select: function (el) {
+      return {
+        get: function () {
+          if (el.multiple) {
+            var out = [];
+            each(el.options, function (o) { if (o.selected) out.push(o.value); });
+            return out;
+          }
+          return el.selectedIndex >= 0 ? el.value : null;
+        },
+        set: function (v) {
+          if (el.multiple) {
+            var values = Array.isArray(v) ? v.map(String) : v === null || v === undefined ? [] : [String(v)];
+            each(el.options, function (o) { o.selected = values.indexOf(o.value) >= 0; });
+          } else if (v !== null && v !== undefined) {
+            el.value = String(Array.isArray(v) ? v[0] : v);
+          }
+        },
+        bind: function () {
+          var self = this;
+          listen(el, ["change"], function () { self.emit(); });
+        },
+        receiveMessage: function (msg) {
+          if (typeof msg.options === "string") {
+            var current = this.get();
+            el.innerHTML = msg.options;
+            if (msg.value === undefined && !el.multiple && current !== null) {
+              this.set(current);
+            }
+          }
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.label !== undefined) setLabel(this, msg.label);
+        }
+      };
+    },
 
-          // Set up auto-resize notifications (like the official SDK)
-          setupAutoResize();
+    "select-multiple": function (el) {
+      return ADAPTERS.select(el);
+    },
 
-          // Call all server tools with initial input values so outputs are populated
-          callServerTools(collectAllInputs(), null);
-        })
-        ["catch"](function (err) {
-          console.error("[shinymcp-bridge] ui/initialize failed:", err);
-        });
+    radio: function (el) {
+      function radios() {
+        return el.querySelectorAll('input[type="radio"]');
+      }
+      return {
+        get: function () {
+          var checked = el.querySelector('input[type="radio"]:checked');
+          return checked ? checked.value : null;
+        },
+        set: function (v) {
+          each(radios(), function (r) { r.checked = v !== null && v !== undefined && r.value === String(v); });
+        },
+        bind: function () {
+          var self = this;
+          listen(el, ["change"], function () { self.emit(); });
+        },
+        receiveMessage: function (msg) {
+          if (typeof msg.options === "string") {
+            var group = el.querySelector(".shiny-options-group") || el;
+            group.innerHTML = msg.options;
+          }
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.label !== undefined) setLabel(this, msg.label);
+        }
+      };
+    },
+
+    "checkbox-group": function (el) {
+      function boxes() {
+        return el.querySelectorAll('input[type="checkbox"]');
+      }
+      return {
+        get: function () {
+          var out = [];
+          each(boxes(), function (b) { if (b.checked) out.push(b.value); });
+          return out;
+        },
+        set: function (v) {
+          var values = Array.isArray(v) ? v.map(String) : v === null || v === undefined ? [] : [String(v)];
+          each(boxes(), function (b) { b.checked = values.indexOf(b.value) >= 0; });
+        },
+        bind: function () {
+          var self = this;
+          listen(el, ["change"], function () { self.emit(); });
+        },
+        receiveMessage: function (msg) {
+          if (typeof msg.options === "string") {
+            var group = el.querySelector(".shiny-options-group") || el;
+            group.innerHTML = msg.options;
+          }
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.label !== undefined) setLabel(this, msg.label);
+        }
+      };
+    },
+
+    date: function (el) {
+      // Shiny's dateInput: a container (with the id) around a text input
+      // meant for bootstrap-datepicker. Use the browser's date input.
+      var input = el.tagName.toLowerCase() === "input" ? el : el.querySelector("input");
+      if (input) {
+        input.type = "date";
+        var initial = input.getAttribute("data-initial-date");
+        input.value = initial || input.value || todayString();
+        if (input.getAttribute("data-min-date")) input.min = input.getAttribute("data-min-date");
+        if (input.getAttribute("data-max-date")) input.max = input.getAttribute("data-max-date");
+      }
+      return {
+        get: function () { return input && input.value ? input.value : null; },
+        set: function (v) { if (input) input.value = v ? String(v).slice(0, 10) : ""; },
+        bind: function () {
+          var self = this;
+          if (input) listen(input, ["change"], function () { self.emit(); });
+        },
+        receiveMessage: function (msg) {
+          if (!input) return;
+          if (msg.min !== undefined) input.min = msg.min || "";
+          if (msg.max !== undefined) input.max = msg.max || "";
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.label !== undefined) setLabel(this, msg.label);
+        },
+        dataType: "date"
+      };
+    },
+
+    "date-range": function (el) {
+      var inputs = el.querySelectorAll("input");
+      each(inputs, function (input) {
+        input.type = "date";
+        input.value = input.getAttribute("data-initial-date") || input.value || todayString();
+        if (input.getAttribute("data-min-date")) input.min = input.getAttribute("data-min-date");
+        if (input.getAttribute("data-max-date")) input.max = input.getAttribute("data-max-date");
+      });
+      return {
+        get: function () {
+          var out = [];
+          each(inputs, function (input) { out.push(input.value || null); });
+          return out;
+        },
+        set: function (v) {
+          if (v && typeof v === "object" && !Array.isArray(v)) v = [v.start, v.end];
+          if (!Array.isArray(v)) return;
+          each(inputs, function (input, i) { if (v[i]) input.value = String(v[i]).slice(0, 10); });
+        },
+        bind: function () {
+          var self = this;
+          each(inputs, function (input) { listen(input, ["change"], function () { self.emit(); }); });
+        },
+        receiveMessage: function (msg) {
+          each(inputs, function (input) {
+            if (msg.min !== undefined) input.min = msg.min || "";
+            if (msg.max !== undefined) input.max = msg.max || "";
+          });
+          if (msg.value !== undefined) this.set(msg.value);
+          if (msg.label !== undefined) setLabel(this, msg.label);
+        },
+        dataType: "date"
+      };
+    },
+
+    slider: function (el) {
+      return sliderAdapter(el, false);
+    },
+
+    "slider-range": function (el) {
+      return sliderAdapter(el, true);
+    },
+
+    action: function (el) {
+      var count = 0;
+      if (el.tagName.toLowerCase() === "a") el.setAttribute("href", "#");
+      return {
+        get: function () { return count; },
+        set: function (v) {
+          var n = parseInt(v, 10);
+          if (!isNaN(n)) count = n;
+        },
+        bind: function () {
+          var self = this;
+          el.addEventListener("click", function (e) {
+            e.preventDefault();
+            if (el.disabled || hasClass(el, "disabled")) return;
+            count++;
+            self.emit();
+          });
+        },
+        receiveMessage: function (msg) {
+          if (msg.label !== undefined) {
+            var label = el.querySelector(".action-label") || el;
+            label.innerHTML = msg.label;
+          }
+          if (msg.disabled !== undefined) {
+            el.disabled = !!msg.disabled;
+            el.classList.toggle("disabled", !!msg.disabled);
+          }
+        },
+        event: true
+      };
+    },
+
+    file: function (el) {
+      el.disabled = true;
+      var group = el.closest(".shiny-input-container") || el.parentNode;
+      if (group && !group.querySelector(".shinymcp-file-note")) {
+        var note = document.createElement("div");
+        note.className = "shinymcp-file-note";
+        note.textContent = "File uploads aren't available in chat.";
+        group.appendChild(note);
+      }
+      return {
+        get: function () { return null; },
+        set: function () {},
+        receiveMessage: function () {},
+        unsupported: true
+      };
     }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Public API: host interaction helpers for app authors
-  // ---------------------------------------------------------------------------
-
-  // sendRequest returns null when there is no host (standalone page) or
-  // after teardown; the public API must always hand back a Promise so
-  // documented .then/.catch chains never throw on null.
-  function requestOrReject(method, params) {
-    return (
-      sendRequest(method, params) ||
-      Promise.reject(new Error("shinymcp bridge is not connected to a host"))
-    );
-  }
-
-  window.shinymcp = {
-    // Call a server tool through the host. Returns a Promise of the result.
-    callTool: function (name, args) {
-      return requestOrReject("tools/call", {
-        name: name,
-        arguments: args || {},
-      });
-    },
-    // Push structured content into the model's context for future turns.
-    updateModelContext: updateModelContext,
-    // Read a server resource through the host. Resolves with the
-    // resources/read result: { contents: [{ uri, mimeType, text }] }.
-    // Useful for lazy-loading data declared via mcp_app(resources = ).
-    readResource: function (uri) {
-      return requestOrReject("resources/read", { uri: uri });
-    },
-    // Ask the host to open an external URL.
-    openLink: function (url) {
-      return requestOrReject("ui/open-link", { url: url });
-    },
-    // Send a message into the host conversation on the user's behalf.
-    sendMessage: function (text) {
-      return requestOrReject("ui/message", {
-        role: "user",
-        content: { type: "text", text: text },
-      });
-    },
-    // Request a display mode change: "inline", "fullscreen", or "pip".
-    requestDisplayMode: function (mode) {
-      return requestOrReject("ui/request-display-mode", { mode: mode });
-    },
-    // Send a log message to the host.
-    log: function (level, data) {
-      sendNotification("notifications/message", {
-        level: level || "info",
-        logger: "shinymcp",
-        data: data,
-      });
-    },
-    // Read the most recent host context (theme, locale, displayMode, ...).
-    getHostContext: function () {
-      return hostContext;
-    },
   };
 
+  // Shiny's sliderInput renders an <input class="js-range-slider"> with its
+  // settings in data attributes, meant for ionRangeSlider. Draw native range
+  // inputs instead. Date sliders count milliseconds, as ionRangeSlider does.
+  function sliderAdapter(el, range) {
+    var isNative = (el.getAttribute("type") || "").toLowerCase() === "range";
+    var dataType = el.getAttribute("data-data-type") || "number";
+    var min = parseNumber(isNative ? el.min : el.getAttribute("data-min"));
+    var max = parseNumber(isNative ? el.max : el.getAttribute("data-max"));
+    var step = parseNumber(isNative ? el.step : el.getAttribute("data-step"));
+    var from = parseNumber(isNative ? el.value : el.getAttribute("data-from"));
+    var to = parseNumber(el.getAttribute("data-to"));
+    var ranges = [];
+    var labels = [];
+
+    function format(v) {
+      if (v === null) return "";
+      if (dataType === "date") return new Date(v).toISOString().slice(0, 10);
+      if (dataType === "datetime") return new Date(v).toISOString().slice(0, 16).replace("T", " ");
+      var prefix = el.getAttribute("data-prefix") || "";
+      var postfix = el.getAttribute("data-postfix") || "";
+      return prefix + String(v) + postfix;
+    }
+
+    function toValue(v) {
+      if (v === null) return null;
+      if (dataType === "date") return new Date(v).toISOString().slice(0, 10);
+      if (dataType === "datetime") return new Date(v).toISOString();
+      return v;
+    }
+
+    function fromValue(v) {
+      if (v === null || v === undefined) return null;
+      if ((dataType === "date" || dataType === "datetime") && typeof v === "string") {
+        var t = Date.parse(v.length === 10 ? v + "T00:00:00Z" : v);
+        return isNaN(t) ? null : t;
+      }
+      return parseNumber(v);
+    }
+
+    function makeRange(value) {
+      var input = document.createElement("input");
+      input.type = "range";
+      if (min !== null) input.min = min;
+      if (max !== null) input.max = max;
+      input.step = step !== null ? step : "any";
+      if (value !== null) input.value = value;
+      return input;
+    }
+
+    if (isNative) {
+      ranges.push(el);
+      var label = document.createElement("output");
+      label.className = "shinymcp-slider-value";
+      el.parentNode.insertBefore(label, el.nextSibling);
+      labels.push(label);
+    } else {
+      var wrap = document.createElement("div");
+      wrap.className = range ? "shinymcp-slider shinymcp-slider-range" : "shinymcp-slider";
+      var values = range ? [from, to] : [from];
+      each(values, function (v) {
+        var input = makeRange(v);
+        var out = document.createElement("output");
+        out.className = "shinymcp-slider-value";
+        wrap.appendChild(input);
+        wrap.appendChild(out);
+        ranges.push(input);
+        labels.push(out);
+      });
+      el.style.display = "none";
+      el.parentNode.insertBefore(wrap, el.nextSibling);
+      var labelEl = document.querySelector('label[for="' + cssEscape(el.id) + '"]');
+      if (labelEl && ranges[0]) {
+        ranges[0].id = el.id + "-shinymcp-range";
+        labelEl.setAttribute("for", ranges[0].id);
+      }
+    }
+
+    function refreshLabels() {
+      each(ranges, function (r, i) { labels[i].textContent = format(parseNumber(r.value)); });
+    }
+    refreshLabels();
+
+    return {
+      get: function () {
+        var vals = [];
+        each(ranges, function (r) { vals.push(toValue(parseNumber(r.value))); });
+        if (!range) return vals[0];
+        vals.sort(function (a, b) { return fromValue(a) - fromValue(b); });
+        return vals;
+      },
+      set: function (v) {
+        var vals = Array.isArray(v) ? v : [v];
+        each(ranges, function (r, i) {
+          var n = fromValue(vals[i]);
+          if (n !== null) r.value = n;
+        });
+        refreshLabels();
+      },
+      bind: function () {
+        var self = this;
+        each(ranges, function (r) {
+          listen(r, ["input"], refreshLabels);
+          listen(r, ["change"], function () { self.emit(); });
+        });
+      },
+      receiveMessage: function (msg) {
+        if (msg.min !== undefined) { min = fromValue(msg.min); each(ranges, function (r) { r.min = min; }); }
+        if (msg.max !== undefined) { max = fromValue(msg.max); each(ranges, function (r) { r.max = max; }); }
+        if (msg.step !== undefined) { step = parseNumber(msg.step); each(ranges, function (r) { r.step = step; }); }
+        if (msg.value !== undefined) this.set(msg.value);
+        if (msg.label !== undefined) setLabel(this, msg.label);
+        refreshLabels();
+      },
+      dataType: dataType
+    };
+  }
+
+  // Find input elements in a subtree. In "shiny" mode every Shiny-style
+  // input counts; in "tools" mode only those tied to tool arguments.
+  var INPUT_SELECTOR = [
+    "[data-shinymcp-input]",
+    "select[id]",
+    "textarea[id]",
+    "input[id]",
+    ".shiny-input-radiogroup[id]",
+    ".shiny-input-checkboxgroup[id]",
+    ".shiny-date-input[id]",
+    ".shiny-date-range-input[id]",
+    ".action-button[id]"
+  ].join(",");
+
+  function scanInputs(root) {
+    var found = [];
+    var candidates = (root || document).querySelectorAll(INPUT_SELECTOR);
+    if (root && root.matches && root.matches(INPUT_SELECTOR)) found.push(root);
+    each(candidates, function (el) { found.push(el); });
+    each(found, function (el) {
+      if (el.__shinymcpAdapter) return;
+      // Inputs inside a group or date container belong to the container.
+      var owner = el.parentNode && el.parentNode.closest
+        ? el.parentNode.closest(".shiny-input-radiogroup[id], .shiny-input-checkboxgroup[id], .shiny-date-input[id], .shiny-date-range-input[id], [data-shinymcp-type='radio']")
+        : null;
+      if (owner && owner !== el) return;
+      var id = el.getAttribute("data-shinymcp-input") || el.id;
+      if (!id) return;
+      if (el.tagName.toLowerCase() === "input" && (el.type === "radio" || el.type === "checkbox") && el.name && el.closest("[data-shinymcp-type='radio'], .shiny-input-radiogroup, .shiny-input-checkboxgroup")) return;
+      // In "tools" mode the data-shinymcp-input name wins (a module's
+      // namespaced element carries its tool argument name there).
+      var key = MODE === "tools" ? id : el.id || id;
+      if (adapters[key]) return;
+      var adapter = makeAdapter(el, key);
+      if (!adapter) return;
+      el.__shinymcpAdapter = adapter;
+      adapter.listeners.push(onInputChanged);
+      adapters[key] = adapter;
+    });
+  }
+
+  function readInputs(ids) {
+    var out = {};
+    each(ids || keys(adapters), function (id) {
+      var a = adapters[id];
+      if (a && !a.unsupported) out[id] = a.get();
+    });
+    return out;
+  }
+
+  // Set input values without triggering tool calls.
+  var applying = false;
+  function setInputsSilently(values) {
+    applying = true;
+    try {
+      each(keys(values), function (id) {
+        var a = adapters[id];
+        if (a && !a.event) a.set(values[id]);
+      });
+    } finally {
+      applying = false;
+    }
+  }
+
+  function applyToolInput(args) {
+    if (MODE === "tools") setInputsSilently(args);
+    // In "shiny" mode the result's view state carries every input value.
+  }
+
+  var initialSnapshot = null;
+  function resetInputs() {
+    if (!initialSnapshot) return;
+    setInputsSilently(initialSnapshot);
+    each(keys(initialSnapshot), function (id) { state.changed[id] = true; });
+    runPending(true);
+  }
+
   // ---------------------------------------------------------------------------
-  // Auto-resize: notify host of content size changes
+  // Reacting to input changes
   // ---------------------------------------------------------------------------
-  function setupAutoResize() {
+
+  var timer = null;
+  var submitButton = null;
+
+  function onInputChanged(adapter) {
+    if (applying || tornDown) return;
+    state.changed[adapter.id] = true;
+    state.dirty = true;
+    if (submitButton) submitButton.disabled = false;
+    scheduleModelContext();
+    if (TRIGGER === "submit" || TRIGGER === "manual") return;
+    if (adapter.event || TRIGGER === "change") {
+      runPending(false);
+      return;
+    }
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(function () {
+      timer = null;
+      runPending(false);
+    }, DEBOUNCE_MS);
+  }
+
+  function runPending(force) {
+    if (timer) {
+      clearTimeout(timer);
+      timer = null;
+    }
+    var changed = keys(state.changed);
+    if (!changed.length && !force) return;
+    state.changed = {};
+    state.dirty = false;
+    if (submitButton) submitButton.disabled = true;
+    if (MODE === "shiny") {
+      viewUpdate(changed, {});
+    } else {
+      callTools(toolsForInputs(force && !changed.length ? null : changed));
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tools mode
+  // ---------------------------------------------------------------------------
+
+  function appTools() {
+    return TOOLS.filter(function (t) { return t.app !== false; });
+  }
+
+  function toolsForInputs(changed) {
+    var tools = appTools();
+    if (!changed) return tools;
+    return tools.filter(function (t) {
+      var args = t.args || [];
+      for (var i = 0; i < changed.length; i++) {
+        if (args.indexOf(changed[i]) >= 0) return true;
+      }
+      return false;
+    });
+  }
+
+  function toolArguments(tool) {
+    var out = {};
+    each(tool.args || [], function (arg) {
+      var a = adapters[arg];
+      if (!a || a.unsupported) return;
+      var v = a.get();
+      if (v !== null && v !== undefined) out[arg] = v;
+    });
+    return out;
+  }
+
+  function callMeta() {
+    var meta = { "shinymcp/caller": "app", "shinymcp/deps": keys(state.loadedDeps) };
+    return meta;
+  }
+
+  function callTools(tools) {
+    each(tools, function (tool) {
+      markRecalculating(tool.outputs, true);
+      callTool(tool.name, toolArguments(tool)).then(
+        function (result) {
+          markRecalculating(tool.outputs, false);
+          handleResult(result, {});
+        },
+        function (err) {
+          markRecalculating(tool.outputs, false);
+          showError("The " + tool.name + " tool failed: " + err.message);
+        }
+      );
+    });
+  }
+
+  function callTool(name, args) {
+    setBusy(1);
+    return request("tools/call", { name: name, arguments: args || {}, _meta: callMeta() }).then(
+      function (result) {
+        setBusy(-1);
+        return result;
+      },
+      function (err) {
+        setBusy(-1);
+        throw err;
+      }
+    );
+  }
+
+  // After the host's first result, run the other tools once so every output
+  // fills in, except tools that say they change something.
+  function fillRemainingOutputs(firstTool) {
+    var tools = appTools().filter(function (t) {
+      return t.name !== firstTool && t.readOnly !== false && t.destructive !== true;
+    });
+    if (tools.length) callTools(tools);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Shiny mode: the view's session in R
+  // ---------------------------------------------------------------------------
+
+  var inFlight = false;
+  var queued = null;
+
+  function outputSizes() {
+    var sizes = {};
+    each(document.querySelectorAll(".shiny-plot-output[id], .shiny-image-output[id]"), function (el) {
+      var w = el.clientWidth;
+      var h = el.clientHeight;
+      if (w > 0 && h > 0) sizes[el.id] = { width: w, height: h };
+    });
+    return sizes;
+  }
+
+  function inputKinds(ids) {
+    var kinds = {};
+    each(ids, function (id) {
+      var a = adapters[id];
+      if (a) kinds[id] = a.dataType ? { kind: a.kind, dataType: a.dataType } : { kind: a.kind };
+    });
+    return kinds;
+  }
+
+  function viewUpdate(changed, extra) {
+    var payload = assign(
+      {
+        action: "update",
+        inputs: readInputs(),
+        changed: changed,
+        kinds: inputKinds(state.instance ? changed : keys(adapters)),
+        sizes: outputSizes(),
+        pixelRatio: Math.min(window.devicePixelRatio || 1, 2)
+      },
+      extra
+    );
+    if (state.instance) payload.instance = state.instance;
+    if (inFlight) {
+      // One call at a time: fold later changes into the next call.
+      queued = queued || { changed: {} };
+      each(changed, function (id) { queued.changed[id] = true; });
+      return;
+    }
+    inFlight = true;
+    return callTool(config.runtime.viewTool, payload).then(
+      function (result) {
+        inFlight = false;
+        handleResult(result, {});
+        flushQueue();
+      },
+      function (err) {
+        inFlight = false;
+        showError("The app's R session didn't respond: " + err.message);
+        flushQueue();
+      }
+    );
+  }
+
+  function flushQueue() {
+    if (!queued) return;
+    var ids = keys(queued.changed);
+    queued = null;
+    viewUpdate(ids, {});
+  }
+
+  function closeView() {
+    if (MODE !== "shiny" || !state.instance || !config.runtime) return;
+    // Best effort: the host may already be gone.
+    request("tools/call", {
+      name: config.runtime.viewTool,
+      arguments: { action: "close", instance: state.instance },
+      _meta: callMeta()
+    })["catch"](function () {});
+  }
+
+  function download(outputId) {
+    if (MODE !== "shiny") return;
+    setBusy(1);
+    request("tools/call", {
+      name: config.runtime.viewTool,
+      arguments: {
+        action: "download",
+        instance: state.instance,
+        output: outputId,
+        inputs: readInputs()
+      },
+      _meta: callMeta()
+    }).then(
+      function (result) {
+        setBusy(-1);
+        if (result && result.isError) {
+          showError(resultText(result));
+          return;
+        }
+        var view = viewMeta(result);
+        if (view && view.instance) state.instance = view.instance;
+        if (view && view.download) saveFile(view.download);
+      },
+      function (err) {
+        setBusy(-1);
+        showError("Download failed: " + err.message);
+      }
+    );
+  }
+
+  // Ask the host to save a file; sandboxed pages can't download themselves.
+  function saveFile(file) {
+    var resource = {
+      uri: "file:///" + encodeURIComponent(file.filename || "download"),
+      mimeType: file.mimeType || "application/octet-stream",
+      blob: file.data
+    };
+    return request("ui/download-file", {
+      contents: [{ type: "resource", resource: resource }]
+    }).then(
+      function (result) {
+        if (result && result.isError) showToast({ html: "The download was cancelled.", type: "warning" });
+      },
+      function () {
+        showToast({
+          html: "This chat client doesn't support downloads from apps.",
+          type: "warning"
+        });
+      }
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Results
+  // ---------------------------------------------------------------------------
+
+  function viewMeta(result) {
+    return result && result._meta ? result._meta[VIEW_META] : null;
+  }
+
+  function resultText(result) {
+    var parts = [];
+    each((result && result.content) || [], function (block) {
+      if (block && block.type === "text") parts.push(block.text || "");
+    });
+    return parts.join("\n");
+  }
+
+  function handleResult(result, opts) {
+    if (!result) return;
+    var view = viewMeta(result);
+    if (result.isError) {
+      showError(resultText(result) || "The tool reported an error.");
+    } else {
+      clearError();
+    }
+
+    if (view) {
+      if (opts.initial && view.tool && !state.entryTool) state.entryTool = view.tool;
+      if (view.instance) state.instance = view.instance;
+      if (view.inputs) setInputsSilently(view.inputs);
+      each(view.inputMessages || [], function (m) { receiveInputMessage(m.id, m.message); });
+      if (view.outputs) renderOutputs(view.outputs);
+      if (view.result) renderSingle(view.result);
+      each(view.notifications || [], handleNotification);
+      each(view.modals || [], handleModal);
+      each(view.uiChanges || [], handleUiChange);
+      each(view.customMessages || [], function (m) { dispatchCustomMessage(m.type, m.message); });
+      each(view.messages || [], function (text) { sendMessage(text); });
+      if (view.modelContext && config.modelContext !== false) publishModelContext(view.modelContext);
+      if (view.restarted) logWarn("the app's R session was restarted; state kept outside inputs was reset");
+    } else if (result.structuredContent && typeof result.structuredContent === "object") {
+      renderFromStructured(result.structuredContent);
+    } else if (!result.isError) {
+      var text = resultText(result);
+      if (text) renderSingle({ kind: "text", value: text });
+    }
+
+    if (opts.initial && !state.firstResult) {
+      state.firstResult = true;
+      afterFirstResult(result, view);
+    }
+  }
+
+  function afterFirstResult(result, view) {
+    initialSnapshot = readInputs();
+    if (MODE === "shiny") {
+      if (!view || !view.instance) {
+        // The host dropped the result's _meta; start a session of our own.
+        viewUpdate([], { all: true });
+        return;
+      }
+      // Redraw plots at the size and density this page actually has.
+      setTimeout(function () {
+        if (needsResize()) viewUpdate([], {});
+      }, 50);
+      observePlotSizes();
+    } else {
+      fillRemainingOutputs(state.entryTool);
+    }
+  }
+
+  function needsResize() {
+    var ratio = Math.min(window.devicePixelRatio || 1, 2);
+    var needed = false;
+    each(document.querySelectorAll(".shiny-plot-output[id] img"), function (img) {
+      var out = img.parentNode;
+      var rendered = parseFloat(img.getAttribute("data-shinymcp-width") || img.getAttribute("width") || 0);
+      if (ratio > 1.2 || (rendered && Math.abs(out.clientWidth - rendered) > Math.max(8, rendered * 0.05))) {
+        needed = true;
+      }
+    });
+    return needed;
+  }
+
+  function observePlotSizes() {
     if (typeof ResizeObserver === "undefined") return;
+    var resizeTimer = null;
+    var observer = new ResizeObserver(function () {
+      if (resizeTimer) clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(function () {
+        if (needsResize()) viewUpdate([], {});
+      }, 300);
+    });
+    each(document.querySelectorAll(".shiny-plot-output[id]"), function (el) { observer.observe(el); });
+  }
 
-    var lastWidth = 0;
-    var lastHeight = 0;
+  // Results from older servers or hosts that drop _meta: strings keyed by
+  // output id.
+  function renderFromStructured(structured) {
+    var outputs = {};
+    each(keys(structured), function (id) {
+      var v = structured[id];
+      if (typeof v === "string" && findOutput(id)) outputs[id] = { kind: "text", value: v };
+    });
+    renderOutputs(outputs);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Outputs
+  // ---------------------------------------------------------------------------
+
+  function findOutput(id) {
+    var el = document.querySelector('[data-shinymcp-output="' + cssEscape(id) + '"]');
+    return el || byId(id);
+  }
+
+  function allOutputs() {
+    return document.querySelectorAll(
+      "[data-shinymcp-output], .shiny-text-output[id], .shiny-html-output[id], .shiny-plot-output[id], .shiny-image-output[id], .html-widget-output[id]"
+    );
+  }
+
+  function markRecalculating(ids, on) {
+    each(ids || [], function (id) {
+      var el = findOutput(id);
+      if (el) el.classList.toggle("recalculating", !!on);
+    });
+  }
+
+  function renderOutputs(outputs) {
+    each(keys(outputs), function (id) {
+      var payload = outputs[id] || {};
+      var el = findOutput(payload.dom || id);
+      if (!el) return;
+      renderInto(el, payload, id);
+    });
+  }
+
+  function renderSingle(payload) {
+    var outputs = allOutputs();
+    if (outputs.length === 1) renderInto(outputs[0], payload, outputs[0].id);
+  }
+
+  function clearOutputError(el) {
+    el.classList.remove("shiny-output-error", "shiny-output-error-validation", "recalculating");
+  }
+
+  function renderInto(el, payload, id) {
+    var kind = payload.kind || "text";
+    if (kind === "keep") return;
+    loadDeps(payload.deps);
+    clearOutputError(el);
+    var declared = el.getAttribute("data-shinymcp-output-type");
+
+    switch (kind) {
+      case "clear":
+        el.innerHTML = "";
+        break;
+      case "error":
+        el.textContent = payload.value || "";
+        el.classList.add("shiny-output-error");
+        if (payload.validation) el.classList.add("shiny-output-error-validation");
+        break;
+      case "text":
+        if (declared === "html" || declared === "table") el.innerHTML = payload.value;
+        else if (declared === "plot") renderImage(el, { src: "data:image/png;base64," + payload.value });
+        else el.textContent = payload.value === null || payload.value === undefined ? "" : payload.value;
+        break;
+      case "html":
+      case "table":
+        setHtml(el, payload.value);
+        break;
+      case "plot":
+      case "image":
+        renderImage(el, typeof payload.value === "string" ? { src: payload.value } : payload.value);
+        break;
+      case "widget":
+        if (typeof payload.value === "string" && payload.value.charAt(0) === "{") {
+          renderWidget(el, payload.value);
+        } else {
+          setHtml(el, payload.value);
+        }
+        break;
+      case "download":
+        renderDownload(el, payload, id);
+        break;
+      default:
+        el.textContent = String(payload.value);
+    }
+  }
+
+  function renderImage(el, img) {
+    if (!img || !img.src) {
+      el.innerHTML = "";
+      return;
+    }
+    var existing = el.querySelector("img[data-shinymcp-img]");
+    var image = existing || document.createElement("img");
+    image.setAttribute("data-shinymcp-img", "");
+    image.src = img.src;
+    image.alt = img.alt || "";
+    if (img.width) image.setAttribute("data-shinymcp-width", img.width);
+    if (img.style) image.setAttribute("style", img.style);
+    if (!existing) {
+      el.innerHTML = "";
+      el.appendChild(image);
+    }
+  }
+
+  function renderDownload(el, payload, id) {
+    var value = payload.value || {};
+    if (value.data) {
+      // A file returned by a tool (mcp_result_pdf()).
+      el.innerHTML = "";
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn btn-default btn-outline-secondary shinymcp-download";
+      button.textContent = value.label || "Download " + (value.filename || "file");
+      button.addEventListener("click", function () { saveFile(value); });
+      el.appendChild(button);
+      return;
+    }
+    // A Shiny downloadButton(): enable it and fetch the file on click.
+    el.classList.remove("disabled");
+    el.removeAttribute("aria-disabled");
+    el.removeAttribute("tabindex");
+    if (!el.__shinymcpDownload) {
+      el.__shinymcpDownload = true;
+      el.addEventListener("click", function (e) {
+        e.preventDefault();
+        download(id);
+      });
+    }
+  }
+
+  // Insert HTML the way Shiny does: run inline scripts, render widgets, and
+  // pick up new inputs and outputs.
+  function setHtml(el, html) {
+    el.innerHTML = html === null || html === undefined ? "" : html;
+    runScripts(el);
+    afterDomChange(el);
+  }
+
+  function runScripts(root) {
+    each(root.querySelectorAll("script"), function (old) {
+      var type = (old.getAttribute("type") || "").toLowerCase();
+      if (type && type !== "text/javascript" && type !== "module" && type !== "application/javascript") return;
+      var script = document.createElement("script");
+      each(old.attributes, function (attr) { script.setAttribute(attr.name, attr.value); });
+      script.textContent = old.textContent;
+      old.parentNode.replaceChild(script, old);
+    });
+  }
+
+  function afterDomChange(root) {
+    if (window.HTMLWidgets && root.querySelector && root.querySelector(".html-widget")) {
+      try {
+        window.HTMLWidgets.staticRender();
+      } catch (e) {
+        logWarn("widget render failed", e);
+      }
+    }
+    if (MODE === "shiny") scanInputs(root);
+  }
+
+  // Render an htmlwidget output from the JSON a Shiny render function sends.
+  function renderWidget(el, json) {
+    var data;
+    try {
+      data = JSON.parse(json);
+    } catch (e) {
+      logWarn("bad widget data", e);
+      return;
+    }
+    var bindings = (window.HTMLWidgets && window.HTMLWidgets.widgets) || [];
+    var binding = null;
+    each(bindings, function (b) { if (!binding && hasClass(el, b.name)) binding = b; });
+    if (!binding) {
+      el.textContent = "This widget's JavaScript isn't loaded.";
+      return;
+    }
+    if (!el.__shinymcpWidget) {
+      el.__shinymcpWidget = {
+        instance: binding.initialize ? binding.initialize(el, el.offsetWidth, el.offsetHeight) : null
+      };
+      if (binding.resize && typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(function () {
+          binding.resize(el, el.offsetWidth, el.offsetHeight, el.__shinymcpWidget.instance);
+        }).observe(el);
+      }
+    }
+    var instance = el.__shinymcpWidget.instance;
+    if (data.evals && window.HTMLWidgets.evaluateStringMember) {
+      each(Array.isArray(data.evals) ? data.evals : [data.evals], function (member) {
+        window.HTMLWidgets.evaluateStringMember(data.x, member);
+      });
+    }
+    binding.renderValue(el, data.x, instance);
+    var hooks = data.jsHooks && data.jsHooks.render;
+    each(hooks || [], function (hook) {
+      try {
+        var code = typeof hook === "object" ? hook.code : hook;
+        var extra = typeof hook === "object" ? [hook.data] : [];
+        var fn = (0, eval)("(" + code + ")");
+        fn.apply(instance, [el, data.x].concat(extra));
+      } catch (e) {
+        logWarn("widget hook failed", e);
+      }
+    });
+  }
+
+  // HTML dependencies arrive with outputs that need them; load each once.
+  function loadDeps(deps) {
+    each(deps || [], function (dep) {
+      var key = dep.name + "@" + dep.version;
+      if (state.loadedDeps[key] || state.loadedDeps[dep.name + "@"]) return;
+      state.loadedDeps[key] = true;
+      var holder = document.createElement("div");
+      holder.innerHTML = dep.head || "";
+      each(Array.prototype.slice.call(holder.childNodes), function (node) {
+        if (node.nodeType !== 1) return;
+        var tag = node.tagName.toLowerCase();
+        if (tag === "script") {
+          var script = document.createElement("script");
+          each(node.attributes, function (attr) { script.setAttribute(attr.name, attr.value); });
+          script.textContent = node.textContent;
+          document.head.appendChild(script);
+        } else {
+          document.head.appendChild(node);
+        }
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Messages from the R session (runtime mode)
+  // ---------------------------------------------------------------------------
+
+  function receiveInputMessage(id, message) {
+    var a = adapters[id];
+    if (!a || !a.receiveMessage) return;
+    applying = true;
+    try {
+      a.receiveMessage(message || {});
+    } finally {
+      applying = false;
+    }
+  }
+
+  var toastRoot = null;
+  var toasts = {};
+
+  function showToast(opts) {
+    if (!toastRoot) {
+      toastRoot = document.createElement("div");
+      toastRoot.id = "shinymcp-notifications";
+      toastRoot.setAttribute("role", "status");
+      document.body.appendChild(toastRoot);
+    }
+    var id = opts.id || "toast-" + nextId++;
+    removeToast(id);
+    var box = document.createElement("div");
+    box.className = "shinymcp-notification shinymcp-notification-" + (opts.type || "default");
+    var body = document.createElement("div");
+    body.innerHTML = opts.html || "";
+    box.appendChild(body);
+    if (opts.closeButton !== false) {
+      var close = document.createElement("button");
+      close.type = "button";
+      close.setAttribute("aria-label", "Close");
+      close.textContent = "×";
+      close.addEventListener("click", function () { removeToast(id); });
+      box.appendChild(close);
+    }
+    toastRoot.appendChild(box);
+    toasts[id] = box;
+    var duration = opts.duration === undefined ? 5000 : opts.duration;
+    if (duration) setTimeout(function () { removeToast(id); }, duration);
+  }
+
+  function removeToast(id) {
+    var box = toasts[id];
+    if (box && box.parentNode) box.parentNode.removeChild(box);
+    delete toasts[id];
+  }
+
+  function handleNotification(n) {
+    var msg = n.message || {};
+    loadDeps(msg.deps);
+    if (n.type === "remove") {
+      removeToast(msg.id || msg);
+      return;
+    }
+    showToast({
+      id: msg.id,
+      html: (msg.html || "") + (msg.action || ""),
+      type: msg.type,
+      duration: msg.duration === null ? 0 : msg.duration,
+      closeButton: msg.closeButton
+    });
+  }
+
+  var modalBackdrop = null;
+
+  function closeModal() {
+    if (modalBackdrop && modalBackdrop.parentNode) modalBackdrop.parentNode.removeChild(modalBackdrop);
+    modalBackdrop = null;
+  }
+
+  function handleModal(m) {
+    if (m.type === "remove") {
+      closeModal();
+      return;
+    }
+    var msg = m.message || {};
+    loadDeps(msg.deps);
+    closeModal();
+    modalBackdrop = document.createElement("div");
+    modalBackdrop.className = "shinymcp-modal-backdrop";
+    modalBackdrop.innerHTML = msg.html || "";
+    document.body.appendChild(modalBackdrop);
+    var modal = modalBackdrop.querySelector(".modal");
+    if (modal) {
+      modal.classList.add("show");
+      modal.style.display = "block";
+    }
+    var easyClose = modal && modal.getAttribute("data-bs-backdrop") !== "static" && modal.getAttribute("data-backdrop") !== "static";
+    modalBackdrop.addEventListener("click", function (e) {
+      var dismiss = e.target.closest ? e.target.closest('[data-dismiss="modal"], [data-bs-dismiss="modal"]') : null;
+      if (dismiss || (easyClose && e.target === modalBackdrop)) closeModal();
+    });
+    runScripts(modalBackdrop);
+    afterDomChange(modalBackdrop);
+  }
+
+  function handleUiChange(change) {
+    if (change.op === "remove") {
+      var targets = change.multiple
+        ? document.querySelectorAll(change.selector)
+        : [document.querySelector(change.selector)];
+      each(targets, function (el) {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+      });
+      return;
+    }
+    if (change.op !== "insert") return;
+    var content = change.content || {};
+    loadDeps(content.deps);
+    var where = { beforeBegin: "beforebegin", afterBegin: "afterbegin", beforeEnd: "beforeend", afterEnd: "afterend" }[change.where] || "beforeend";
+    var places = change.multiple
+      ? document.querySelectorAll(change.selector)
+      : [document.querySelector(change.selector)];
+    each(places, function (el) {
+      if (!el) return;
+      var holder = document.createElement("div");
+      holder.innerHTML = content.html || "";
+      var nodes = Array.prototype.slice.call(holder.childNodes);
+      var parent = where === "beforebegin" || where === "afterend" ? el.parentNode : el;
+      each(nodes, function (node) {
+        if (where === "beforebegin") parent.insertBefore(node, el);
+        else if (where === "afterbegin") parent.insertBefore(node, el.firstChild);
+        else if (where === "afterend") parent.insertBefore(node, el.nextSibling);
+        else parent.appendChild(node);
+        if (node.nodeType === 1) {
+          runScripts(node);
+          afterDomChange(node);
+        }
+      });
+    });
+  }
+
+  function dispatchCustomMessage(type, message) {
+    var handler = state.customHandlers[type];
+    if (handler) {
+      try {
+        handler(message);
+      } catch (e) {
+        logWarn("custom message handler failed for " + type, e);
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Model context
+  // ---------------------------------------------------------------------------
+
+  var MAX_CONTEXT_BYTES = 4000;
+  var contextTimer = null;
+
+  function publishModelContext(params) {
+    if (!params) return;
+    state.revision++;
+    if (params.structuredContent && typeof params.structuredContent === "object") {
+      params.structuredContent.revision = state.revision;
+    }
+    request("ui/update-model-context", params)["catch"](function (err) {
+      logWarn("the host did not accept a context update", err && err.message);
+    });
+  }
+
+  function describeValue(v) {
+    if (v === null || v === undefined) return "none";
+    if (Array.isArray(v)) return v.length ? v.join(", ") : "none";
+    var s = String(v);
+    return s.length > 200 ? s.slice(0, 200) + "..." : s;
+  }
+
+  // In "tools" mode the page itself tells the model what the user changed.
+  // In "shiny" mode the R session decides (mcp_model_context()).
+  function scheduleModelContext() {
+    if (MODE !== "tools" || config.modelContext === false) return;
+    if (contextTimer) clearTimeout(contextTimer);
+    contextTimer = setTimeout(function () {
+      contextTimer = null;
+      var inputs = {};
+      var parts = [];
+      each(keys(adapters), function (id) {
+        var a = adapters[id];
+        if (a.secret || a.unsupported || a.event) return;
+        var v = a.get();
+        inputs[id] = v;
+        var label = labelFor(a);
+        parts.push((label ? label.textContent.trim() : id) + " = " + describeValue(v));
+      });
+      var text = "In the " + (config.app || "app") + " app, the user set: " + parts.join("; ") + ".";
+      var structured = { app: config.app, inputs: inputs };
+      if (JSON.stringify(structured).length > MAX_CONTEXT_BYTES) {
+        structured = { app: config.app, note: "Input values too large to include." };
+      }
+      publishModelContext({ content: [{ type: "text", text: text }], structuredContent: structured });
+    }, Math.max(DEBOUNCE_MS, 400));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Busy state and errors
+  // ---------------------------------------------------------------------------
+
+  var busyTimer = null;
+  function setBusy(delta) {
+    state.busy = Math.max(0, state.busy + delta);
+    var root = document.documentElement;
+    if (state.busy > 0) {
+      if (!busyTimer && !root.classList.contains("shinymcp-busy")) {
+        busyTimer = setTimeout(function () {
+          busyTimer = null;
+          if (state.busy > 0) root.classList.add("shinymcp-busy");
+        }, 150);
+      }
+    } else {
+      if (busyTimer) {
+        clearTimeout(busyTimer);
+        busyTimer = null;
+      }
+      root.classList.remove("shinymcp-busy");
+    }
+  }
+
+  var errorBanner = null;
+  function showError(message) {
+    if (!document.body) return;
+    if (!errorBanner) {
+      errorBanner = document.createElement("div");
+      errorBanner.id = "shinymcp-error";
+      errorBanner.setAttribute("role", "alert");
+      var text = document.createElement("div");
+      text.className = "shinymcp-error-text";
+      var close = document.createElement("button");
+      close.type = "button";
+      close.setAttribute("aria-label", "Dismiss");
+      close.textContent = "×";
+      close.addEventListener("click", clearError);
+      errorBanner.appendChild(text);
+      errorBanner.appendChild(close);
+      document.body.insertBefore(errorBanner, document.body.firstChild);
+    }
+    errorBanner.querySelector(".shinymcp-error-text").textContent = message;
+    errorBanner.hidden = false;
+  }
+
+  function clearError() {
+    if (errorBanner) errorBanner.hidden = true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Host requests the page can make
+  // ---------------------------------------------------------------------------
+
+  function sendMessage(text) {
+    return request("ui/message", {
+      role: "user",
+      content: [{ type: "text", text: String(text) }]
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Size reporting (the SDK's approach: height at max-content, width of the
+  // viewport, sent only when it changes)
+  // ---------------------------------------------------------------------------
+
+  function setupAutoResize() {
+    var lastW = 0;
+    var lastH = 0;
     var scheduled = false;
-
-    function sendBodySizeChanged() {
+    function measure() {
       if (scheduled) return;
       scheduled = true;
       requestAnimationFrame(function () {
         scheduled = false;
         var html = document.documentElement;
-
-        // Measure actual content size
-        var origW = html.style.width;
-        var origH = html.style.height;
-        html.style.width = "fit-content";
-        html.style.height = "fit-content";
-        var rect = html.getBoundingClientRect();
-        html.style.width = origW;
-        html.style.height = origH;
-
-        var scrollbarWidth = window.innerWidth - html.clientWidth;
-        var width = Math.ceil(rect.width + scrollbarWidth);
-        var height = Math.ceil(rect.height);
-
-        if (width !== lastWidth || height !== lastHeight) {
-          lastWidth = width;
-          lastHeight = height;
-          sendNotification("ui/notifications/size-changed", {
-            width: width,
-            height: height,
-          });
+        var original = html.style.height;
+        html.style.height = "max-content";
+        var h = Math.ceil(html.getBoundingClientRect().height);
+        html.style.height = original;
+        var w = Math.ceil(window.innerWidth);
+        if (w !== lastW || h !== lastH) {
+          lastW = w;
+          lastH = h;
+          notify("ui/notifications/size-changed", { width: w, height: h });
         }
       });
     }
-
-    sendBodySizeChanged();
-
-    var observer = new ResizeObserver(sendBodySizeChanged);
-    observer.observe(document.documentElement);
-    observer.observe(document.body);
+    measure();
+    if (typeof ResizeObserver !== "undefined") {
+      var observer = new ResizeObserver(measure);
+      observer.observe(document.documentElement);
+      observer.observe(document.body);
+    }
   }
 
   // ---------------------------------------------------------------------------
-  // Start on DOMContentLoaded (or immediately if already loaded)
+  // Start-up
   // ---------------------------------------------------------------------------
-  if (
-    document.readyState === "complete" ||
-    document.readyState === "interactive"
-  ) {
-    init();
-  } else {
+
+  function setupSubmit() {
+    if (TRIGGER !== "submit") return;
+    submitButton = document.querySelector("[data-shinymcp-submit], button.shiny-submit-button, button[type='submit']");
+    if (!submitButton) {
+      var bar = document.createElement("div");
+      bar.className = "shinymcp-submit-bar";
+      submitButton = document.createElement("button");
+      submitButton.type = "button";
+      submitButton.className = "btn btn-primary";
+      submitButton.textContent = "Apply";
+      bar.appendChild(submitButton);
+      (document.querySelector(".shinymcp-app") || document.body).appendChild(bar);
+    }
+    submitButton.disabled = true;
+    submitButton.addEventListener("click", function (e) {
+      e.preventDefault();
+      runPending(true);
+    });
+  }
+
+  // The host normally sends the model's tool call (tool-input, then
+  // tool-result) right after start-up. A page opened any other way, or a
+  // host that sends neither, gets its first outputs by calling tools itself.
+  function selfInit() {
+    if (state.firstResult) return;
+    state.firstResult = true;
+    initialSnapshot = readInputs();
+    if (MODE === "shiny") {
+      viewUpdate([], { all: true }).then(observePlotSizes);
+    } else {
+      callTools(appTools().filter(function (t) { return t.readOnly !== false && t.destructive !== true; }));
+    }
+  }
+
+  function init() {
+    scanInputs(document);
+    setupSubmit();
+    window.addEventListener("message", onMessage);
+    each(document.querySelectorAll(".shiny-download-link[id]"), function (el) {
+      if (MODE === "shiny") renderDownload(el, {}, el.id);
+    });
+
+    if (!connected) {
+      logWarn("not inside an MCP host; the page will not call any tools");
+      return;
+    }
+
+    var availableModes = ["inline", "fullscreen"];
+    request("ui/initialize", {
+      protocolVersion: APPS_PROTOCOL_VERSION,
+      appInfo: { name: config.app || "shinymcp-app", version: config.version || "0.0.0" },
+      appCapabilities: { availableDisplayModes: availableModes }
+    }).then(
+      function (result) {
+        result = result || {};
+        state.initialized = true;
+        state.hostCapabilities = result.hostCapabilities || {};
+        state.hostInfo = result.hostInfo || {};
+        applyHostContext(result.hostContext || {});
+        notify("ui/notifications/initialized", {});
+        setupAutoResize();
+        // Give the host a moment to send the model's tool call.
+        setTimeout(function () {
+          if (!state.toolInputSeen && !state.toolResultSeen) selfInit();
+        }, 1200);
+      },
+      function (err) {
+        logWarn("ui/initialize failed", err && err.message);
+      }
+    );
+  }
+
+  function teardown() {
+    if (tornDown) return;
+    tornDown = true;
+    window.removeEventListener("message", onMessage);
+    if (timer) clearTimeout(timer);
+    if (contextTimer) clearTimeout(contextTimer);
+    each(keys(pending), function (id) {
+      pending[id].reject(new Error("The app has been closed."));
+    });
+    pending = {};
+  }
+
+  // ---------------------------------------------------------------------------
+  // Public API
+  // ---------------------------------------------------------------------------
+
+  window.shinymcp = {
+    __bridge: true,
+    version: config.version,
+    // Call one of the app's tools. Resolves with the MCP result.
+    callTool: function (name, args) {
+      return callTool(name, args || {});
+    },
+    // Read a resource the app declared (mcp_app(resources = )).
+    readResource: function (uri) {
+      return request("resources/read", { uri: uri });
+    },
+    // Replace what the model knows about this app.
+    updateModelContext: function (context) {
+      if (typeof context === "string") context = { content: [{ type: "text", text: context }] };
+      else if (context && !context.content && !context.structuredContent) context = { structuredContent: context };
+      return request("ui/update-model-context", context);
+    },
+    // Post a message to the chat as the user.
+    sendMessage: sendMessage,
+    openLink: function (url) {
+      return request("ui/open-link", { url: String(url) });
+    },
+    requestDisplayMode: function (mode) {
+      var available = state.hostContext.availableDisplayModes;
+      if (Array.isArray(available) && available.indexOf(mode) < 0) {
+        return Promise.resolve({ mode: state.hostContext.displayMode || "inline" });
+      }
+      return request("ui/request-display-mode", { mode: mode });
+    },
+    // Save a file: {filename, mimeType, data (base64) or text}.
+    downloadFile: function (file) {
+      if (file && typeof file.text === "string" && !file.data) {
+        return request("ui/download-file", {
+          contents: [{
+            type: "resource",
+            resource: {
+              uri: "file:///" + encodeURIComponent(file.filename || "download.txt"),
+              mimeType: file.mimeType || "text/plain",
+              text: file.text
+            }
+          }]
+        });
+      }
+      return saveFile(file || {});
+    },
+    log: function (level, data) {
+      notify("notifications/message", { level: level || "info", logger: config.app || "shinymcp", data: data });
+    },
+    getHostContext: function () {
+      return assign({}, state.hostContext);
+    },
+    onHostContextChanged: function (fn) {
+      if (typeof fn === "function") state.contextListeners.push(fn);
+    },
+    getInputs: function () {
+      return readInputs();
+    },
+    // Set an input from your own JavaScript, as Shiny.setInputValue() does.
+    setInputValue: function (id, value) {
+      if (adapters[id]) {
+        adapters[id].set(value);
+        onInputChanged(adapters[id]);
+        return;
+      }
+      adapters[id] = {
+        id: id,
+        kind: "unknown",
+        get: function () { return value; },
+        set: function (v) { value = v; },
+        listeners: []
+      };
+      onInputChanged(adapters[id]);
+    },
+    addCustomMessageHandler: function (type, fn) {
+      state.customHandlers[type] = fn;
+    },
+    // Run any changes waiting for the Apply button.
+    submit: function () {
+      runPending(true);
+    }
+  };
+
+  if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
   }
 })();

@@ -1,65 +1,56 @@
-# MCP-compatible output placeholder components
-#
-# These functions generate placeholder divs with data-shinymcp-* attributes
-# that the JS bridge populates with server-rendered content.
+# Output placeholders: elements the bridge draws tool results into
 
-#' Create an MCP plot output
+#' Output placeholders for tool results
 #'
-#' Generates a placeholder div for plot output with MCP data attributes.
+#' @description
+#' These make the elements a tool's results are drawn into, for apps built
+#' with [mcp_app()]. Each is matched to a tool result by `id`: a tool that
+#' returns `list(summary = ..., plot = ...)` fills `mcp_text("summary")` and
+#' `mcp_plot("plot")`.
 #'
-#' @param id Output ID
-#' @param width CSS width (default "100%")
-#' @param height CSS height (default "400px")
-#' @return An [htmltools::tagList] with a scoped style and the plot container
+#' * `mcp_text()` shows text in a monospaced block, as R prints it.
+#' * `mcp_plot()` shows an image, usually from [mcp_result_plot()].
+#' * `mcp_table()` shows a data frame as an HTML table.
+#' * `mcp_html()` shows HTML: tags, [mcp_result_html()], or an htmlwidget.
+#'
+#' Shiny's own output functions ([shiny::textOutput()],
+#' [shiny::plotOutput()], and the rest) work too; their ids are matched the
+#' same way.
+#'
+#' @param id Output id, matching a name in the tool's result.
+#' @param width,height CSS size of the plot area. With `height = NULL` the
+#'   plot keeps its own aspect ratio; with a height, it's scaled to fit.
+#' @return An htmltools tag.
+#' @family components
 #' @export
-mcp_plot <- function(id, width = "100%", height = "400px") {
-  htmltools::tagList(
-    htmltools::tags$style(htmltools::HTML(paste0(
-      "#",
-      id,
-      " img { max-width: 100%; height: auto; }"
-    ))),
-    htmltools::tags$div(
-      id = id,
-      class = "shinymcp-output",
-      `data-shinymcp-output` = id,
-      `data-shinymcp-output-type` = "plot",
-      style = paste0(
-        "width: ",
-        width,
-        "; height: ",
-        height,
-        "; overflow: hidden;"
-      )
-    )
+#' @examples
+#' htmltools::tagList(
+#'   mcp_text("summary"),
+#'   mcp_plot("histogram"),
+#'   mcp_table("rows")
+#' )
+mcp_plot <- function(id, width = "100%", height = NULL) {
+  htmltools::tags$div(
+    id = id,
+    class = if (is.null(height)) "shinymcp-output shinymcp-plot" else "shinymcp-output shinymcp-plot shinymcp-plot-fixed",
+    `data-shinymcp-output` = id,
+    `data-shinymcp-output-type` = "plot",
+    style = htmltools::css(width = width, height = height)
   )
 }
 
-#' Create an MCP text output
-#'
-#' Generates a placeholder element for text output with MCP data attributes.
-#' Uses a `<pre>` tag so R console/summary output renders with monospace
-#' font and preserved whitespace.
-#'
-#' @param id Output ID
-#' @return An [htmltools::tag] object
+#' @rdname mcp_plot
 #' @export
 mcp_text <- function(id) {
   htmltools::tags$pre(
     id = id,
-    class = "shinymcp-output",
+    class = "shinymcp-output shinymcp-text",
     `data-shinymcp-output` = id,
-    `data-shinymcp-output-type` = "text",
-    style = "white-space: pre; overflow-x: auto; margin: 0; font-size: 0.85em;"
+    `data-shinymcp-output-type` = "text"
   )
 }
 
-#' Create an MCP table output
-#'
-#' Generates a placeholder div for table output with MCP data attributes.
-#'
-#' @param id Output ID
-#' @return An [htmltools::tag] object
+#' @rdname mcp_plot
 #' @export
 mcp_table <- function(id) {
   htmltools::tags$div(
@@ -70,12 +61,7 @@ mcp_table <- function(id) {
   )
 }
 
-#' Create an MCP HTML output
-#'
-#' Generates a placeholder div for raw HTML output with MCP data attributes.
-#'
-#' @param id Output ID
-#' @return An [htmltools::tag] object
+#' @rdname mcp_plot
 #' @export
 mcp_html <- function(id) {
   htmltools::tags$div(

@@ -1,4 +1,11 @@
-# Shiny host integration for live embedded McpApp instances.
+# Embedding MCP Apps in Shiny
+#
+# A Shiny app can host MCP Apps the way a chat client does: the app's page
+# runs in a sandboxed iframe, and a small host script in the Shiny page
+# speaks the MCP Apps protocol to it. Requests the page sends to its server
+# (tools/call, resources/read) travel over the Shiny session to R, where an
+# in-process MCP server answers them, so the app behaves exactly as it does
+# in Claude or ChatGPT.
 
 #' @noRd
 shinymcp_host_dependency <- function() {
@@ -7,7 +14,8 @@ shinymcp_host_dependency <- function() {
     version = as.character(utils::packageVersion("shinymcp")),
     src = system_file("js"),
     script = "shinymcp-host.js",
-    stylesheet = "shinymcp-host.css"
+    stylesheet = "shinymcp-host.css",
+    all_files = FALSE
   )
 }
 
@@ -22,158 +30,172 @@ sanitize_dom_id <- function(x) {
 
 #' @noRd
 root_shiny_session <- function(session) {
-  if (inherits(session, "ShinySession")) {
-    return(session)
+  if (is.null(session)) {
+    return(NULL)
   }
-
-  root_scope <- tryCatch(
-    session$rootScope,
-    error = function(...) NULL
-  )
-  if (is.null(root_scope) && is.list(session)) {
-    root_scope <- tryCatch(
-      unclass(session)$rootScope,
-      error = function(...) NULL
-    )
-  }
-  if (is.function(root_scope)) {
-    root <- tryCatch(
-      root_scope(),
-      error = function(...) NULL
-    )
-    if (inherits(root, "ShinySession")) {
-      return(root)
-    }
-  }
-
-  session
+  root <- tryCatch(session$rootScope(), error = function(e) NULL)
+  root %||% session
 }
 
 #' @noRd
 active_shiny_session <- function() {
-  session <- tryCatch(
-    shiny::getDefaultReactiveDomain(),
-    error = function(...) NULL
-  )
-  session <- root_shiny_session(session)
-  if (inherits(session, "ShinySession")) session else NULL
+  if (!requireNamespace("shiny", quietly = TRUE)) {
+    return(NULL)
+  }
+  session <- root_shiny_session(shiny::getDefaultReactiveDomain())
+  if (inherits(session, c("ShinySession", "session_proxy"))) session else NULL
 }
 
+#' Host markup: a toolbar, an error area, and the iframe
 #' @noRd
-mcp_host_markup <- function(id, config = NULL, height = "auto") {
-  toolbar <- htmltools::tags$div(
-    class = "shinymcp-host-toolbar",
-    `data-shinymcp-host-toolbar` = "",
-    htmltools::tags$div(
-      class = "shinymcp-host-status",
-      `data-shinymcp-host-status` = "",
-      "connecting..."
-    ),
-    htmltools::tags$div(
-      class = "shinymcp-host-actions",
-      htmltools::tags$button(
-        type = "button",
-        class = "shinymcp-host-button",
-        `data-shinymcp-action` = "execute",
-        "Apply"
-      ),
-      htmltools::tags$button(
-        type = "button",
-        class = "shinymcp-host-button shinymcp-host-button-secondary",
-        `data-shinymcp-action` = "reset",
-        "Reset"
-      ),
-      htmltools::tags$button(
-        type = "button",
-        class = "shinymcp-host-button shinymcp-host-button-secondary",
-        `data-shinymcp-action` = "fullscreen",
-        `aria-pressed` = "false",
-        title = "Full screen",
-        "Full screen"
-      )
-    )
-  )
-
+mcp_host_markup <- function(id, config = NULL, height = "auto", toolbar = TRUE, title = NULL) {
   root <- htmltools::tags$div(
     id = id,
     class = "shinymcp-host",
     `data-shinymcp-host` = "",
     `data-shinymcp-height` = height,
-    toolbar,
+    `data-shinymcp-border` = if (isFALSE(config$prefersBorder)) "false",
+    if (toolbar) {
+      htmltools::tags$div(
+        class = "shinymcp-host-toolbar",
+        htmltools::tags$span(class = "shinymcp-host-title", title %||% config$title),
+        htmltools::tags$span(
+          class = "shinymcp-host-busy",
+          `data-shinymcp-host-busy` = "",
+          hidden = NA,
+          role = "status",
+          "Working"
+        ),
+        htmltools::tags$span(
+          class = "shinymcp-host-actions",
+          htmltools::tags$button(
+            type = "button",
+            class = "shinymcp-host-button",
+            `data-shinymcp-action` = "execute",
+            hidden = NA,
+            "Run"
+          ),
+          htmltools::tags$button(
+            type = "button",
+            class = "shinymcp-host-button",
+            `data-shinymcp-action` = "fullscreen",
+            `aria-pressed` = "false",
+            "Full screen"
+          )
+        )
+      )
+    },
     htmltools::tags$div(
       class = "shinymcp-host-error",
-      `data-shinymcp-host-error` = ""
+      `data-shinymcp-host-error` = "",
+      role = "alert",
+      hidden = NA
     ),
     htmltools::tags$iframe(
       class = "shinymcp-host-frame",
       `data-shinymcp-host-frame` = "",
-      sandbox = "allow-scripts allow-same-origin",
-      loading = "lazy",
-      title = "shinymcp embedded app"
+      title = title %||% config$title %||% "MCP App"
     ),
     if (!is.null(config)) {
       htmltools::tags$script(
         type = "application/json",
         class = "shinymcp-host-config",
-        htmltools::HTML(to_json(config))
+        htmltools::HTML(json_for_script(config))
       )
     }
   )
-
   htmltools::attachDependencies(root, shinymcp_host_dependency())
 }
 
+#' Register a live app instance with a Shiny session
+#'
+#' @return A list with the host `state` (an environment) and the `config`
+#'   the host script reads.
 #' @noRd
 register_shiny_host_instance <- function(
   session,
   app,
-  instance_id = unique_id("shinymcp-instance"),
+  instance_id = unique_id("host"),
+  tool = NULL,
+  arguments = NULL,
+  result = NULL,
   trigger = NULL,
   debounce_ms = NULL,
-  height = "auto",
-  initial_arguments = NULL,
-  debug = FALSE
+  height = "auto"
 ) {
   app <- as_mcp_app(app)
-  interaction <- resolve_host_interaction(app, trigger, debounce_ms)
-  trigger <- interaction$trigger
-  debounce_ms <- interaction$debounce_ms
-
   registry <- ensure_shiny_host_registry(session)
-  state <- new_mcp_host_state(
-    app = app,
-    instance_id = instance_id,
-    initial_arguments = initial_arguments,
-    trigger = trigger,
-    debounce_ms = debounce_ms,
-    height = height,
-    debug = debug
-  )
+  interaction <- resolve_host_interaction(app, trigger, debounce_ms)
+
+  state <- new_mcp_host_state(app, instance_id)
   registry$instances[[instance_id]] <- state
 
-  list(
-    state = state,
-    config = compact_list(list(
-      instanceId = instance_id,
-      trigger = trigger,
-      debounceMs = debounce_ms,
-      height = height,
-      debug = debug,
-      appHtml = state$app$html_resource(
-        bridge_config = mcp_host_bridge_config(state)
-      )
-    ))
-  )
+  entry <- tool %||% default_entry_tool(app)
+  if (!is.null(entry) && !app$has_tool(entry)) {
+    shinymcp_abort(
+      "App {.val {app$name}} has no tool called {.val {entry}}.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  ui_meta <- app$resource_meta()$ui
+  config <- compact_list(list(
+    instanceId = instance_id,
+    title = app$title %||% app$name,
+    version = as.character(utils::packageVersion("shinymcp")),
+    html = app$html_resource(config = compact_list(list(
+      trigger = interaction$trigger,
+      debounceMs = interaction$debounce_ms
+    ))),
+    csp = ui_meta$csp,
+    permissions = ui_meta$permissions,
+    prefersBorder = ui_meta$prefersBorder,
+    height = height,
+    trigger = interaction$trigger,
+    entryTool = entry,
+    tool = if (!is.null(entry)) tool_definition_for(app, entry),
+    appTools = I(names(app$tools("app"))),
+    initialArguments = arguments %||% json_object(),
+    initialResult = result
+  ))
+  list(state = state, config = config)
+}
+
+#' The wire definition of one of an app's tools
+#' @noRd
+tool_definition_for <- function(app, name) {
+  for (def in app$tool_definitions()) {
+    if (identical(def$name, name)) {
+      return(def)
+    }
+  }
+  NULL
 }
 
 #' @noRd
-ensure_shiny_host_registry <- function(session = active_shiny_session()) {
-  session <- root_shiny_session(session)
-  if (!inherits(session, "ShinySession")) {
-    cli::cli_abort("An active Shiny session is required for live host state.")
-  }
+default_entry_tool <- function(app) {
+  tools <- app$tools("model")
+  if (length(tools)) tools[[1]]$name
+}
 
-  registry <- session$userData$shinymcp_host_registry
+#' @noRd
+resolve_host_interaction <- function(app, trigger = NULL, debounce_ms = NULL) {
+  defaults <- app$interaction_defaults()
+  trigger <- if (is.null(trigger)) {
+    defaults$trigger %||% "debounce"
+  } else {
+    rlang::arg_match0(trigger, c("debounce", "change", "submit", "manual"))
+  }
+  list(trigger = trigger, debounce_ms = debounce_ms %||% defaults$debounce_ms %||% 250)
+}
+
+#' The per-session registry of hosted apps, and the observer that serves them
+#' @noRd
+ensure_shiny_host_registry <- function(session) {
+  session <- root_shiny_session(session)
+  if (is.null(session)) {
+    shinymcp_abort("A running Shiny session is required to host an MCP App.")
+  }
+  registry <- session$userData$.shinymcp_hosts
   if (!is.null(registry)) {
     return(registry)
   }
@@ -181,177 +203,144 @@ ensure_shiny_host_registry <- function(session = active_shiny_session()) {
   registry <- new.env(parent = emptyenv())
   registry$instances <- new.env(parent = emptyenv())
 
-  registry$observer <- shiny::observeEvent(
+  shiny::observeEvent(
     session$input$shinymcp_host_event,
     {
       event <- session$input$shinymcp_host_event
-      instance_id <- event$instanceId %||% ""
-
-      state <- registry$instances[[instance_id]]
-      if (is.null(state)) {
-        if (identical(event$method, "tools/call")) {
-          session$sendCustomMessage(
-            "shinymcp-host-response",
-            list(
-              instanceId = instance_id,
-              requestId = event$requestId,
-              result = list(
-                content = list(
-                  list(
-                    type = "text",
-                    text = paste(
-                      "Error: no active shinymcp host instance found for",
-                      instance_id
-                    )
-                  )
-                ),
-                isError = TRUE
-              )
-            )
-          )
-        }
-        if (identical(event$method, "resources/read")) {
-          session$sendCustomMessage(
-            "shinymcp-host-response",
-            list(
-              instanceId = instance_id,
-              requestId = event$requestId,
-              error = paste(
-                "No active shinymcp host instance found for",
-                instance_id
-              )
-            )
-          )
-        }
-        return()
-      }
-
-      method <- event$method %||% ""
-      params <- event$params %||% list()
-
-      if (identical(method, "tools/call")) {
-        tool_name <- params$name
-        arguments <- params$arguments %||% list()
-
-        result <- tryCatch(
-          mcp_host_call_tool(state, tool_name, arguments),
-          error = function(e) {
-            list(
-              content = list(
-                list(type = "text", text = paste("Error:", conditionMessage(e)))
-              ),
-              isError = TRUE
-            )
-          }
-        )
-
-        session$sendCustomMessage(
-          "shinymcp-host-response",
-          list(
-            instanceId = instance_id,
-            requestId = event$requestId,
-            result = result
-          )
-        )
-        return()
-      }
-
-      if (identical(method, "resources/read")) {
-        response <- tryCatch(
-          list(result = mcp_host_read_resource(state, params$uri)),
-          error = function(e) list(error = conditionMessage(e))
-        )
-        session$sendCustomMessage(
-          "shinymcp-host-response",
-          c(
-            list(instanceId = instance_id, requestId = event$requestId),
-            response
-          )
-        )
-        return()
-      }
-
-      if (identical(method, "ui/update-model-context")) {
-        mcp_host_update_model_context(
-          state,
-          params$structuredContent %||% params
-        )
-        return()
-      }
-
-      if (identical(method, "ui/notifications/size-changed")) {
-        mcp_host_notify_size(
-          state,
-          width = params$width,
-          height = params$height
-        )
-        return()
-      }
-
-      if (identical(method, "ui/resource-teardown")) {
-        mcp_host_dispose(state)
-        rm(list = instance_id, envir = registry$instances)
-      }
+      handle_host_event(session, registry, event)
     },
     ignoreNULL = TRUE
   )
 
   session$onSessionEnded(function() {
-    ids <- ls(registry$instances)
-    for (instance_id in ids) {
-      mcp_host_dispose(registry$instances[[instance_id]])
+    for (id in ls(registry$instances)) {
+      mcp_host_dispose(registry$instances[[id]])
     }
   })
 
-  session$userData$shinymcp_host_registry <- registry
+  session$userData$.shinymcp_hosts <- registry
   registry
 }
 
-#' Host shell UI for an embedded MCP app
+#' Answer one message from a hosted app
 #'
-#' Use `mcp_host_server()` on the server side to attach a live [McpApp]
-#' instance to this UI shell.
-#'
-#' @param id Shiny module id.
-#' @export
-mcp_host_ui <- function(id) {
-  rlang::check_installed("shiny", reason = "for `mcp_host_ui()`.")
-  ns <- shiny::NS(id)
-  mcp_host_markup(ns("host"))
+#' Requests run in a later() callback, outside Shiny's reactive flush: apps
+#' served from Shiny run their own reactive sessions, which can't flush in
+#' the middle of another flush.
+#' @noRd
+handle_host_event <- function(session, registry, event) {
+  instance_id <- event$instanceId %||% ""
+  state <- registry$instances[[instance_id]]
+  type <- event$type %||% "request"
+
+  if (identical(type, "notification")) {
+    if (!is.null(state)) {
+      mcp_host_notification(state, event$method, event$params %||% list())
+    }
+    return(invisible())
+  }
+  if (identical(type, "dispose")) {
+    if (!is.null(state)) {
+      mcp_host_dispose(state)
+      rm(list = instance_id, envir = registry$instances)
+    }
+    return(invisible())
+  }
+
+  message <- event$message
+  reply <- function(response) {
+    session$sendCustomMessage(
+      "shinymcp-host-response",
+      list(instanceId = instance_id, requestId = event$requestId, response = strip_http_status(response))
+    )
+  }
+  if (is.null(state)) {
+    reply(jsonrpc_error(message$id %||% NULL, RPC_INVALID_REQUEST, "This app is no longer running."))
+    return(invisible())
+  }
+
+  user <- tryCatch(session$user, error = function(e) NULL)
+  groups <- tryCatch(session$groups, error = function(e) NULL)
+  later::later(function() {
+    response <- tryCatch(
+      state$server$handle(
+        message,
+        list(transport = "in-process", session = state$session, user = user, groups = groups)
+      ),
+      error = function(e) {
+        jsonrpc_error(message$id %||% NULL, RPC_INTERNAL_ERROR, conditionMessage(e))
+      }
+    )
+    if (identical(message$method, "tools/call") && !is.null(response$result)) {
+      mcp_host_record_call(state, message$params$name, message$params$arguments, response$result)
+    }
+    reply(response)
+  })
+  invisible()
 }
 
-#' Host shell server for an embedded MCP app
+#' Host shell for an MCP App in a Shiny app
 #'
-#' @details
-#' The embedded app is rendered via `srcdoc` in an iframe with
-#' `sandbox="allow-scripts allow-same-origin"`, i.e. on the same origin as
-#' the hosting Shiny app. This is appropriate for embedding apps you wrote
-#' and trust; it is not a hardened boundary for running third-party HTML.
+#' @description
+#' `mcp_host_ui()` and `mcp_host_server()` show an [McpApp] inside a Shiny
+#' app, exactly as a chat client would: the app runs in a sandboxed iframe
+#' and its tool calls are answered in R. Use it to review an app, to build a
+#' dashboard around one, or to react in Shiny to what the user does in it.
 #'
-#' @param id Shiny module id.
-#' @param app An [McpApp] object.
-#' @param trigger Interaction mode: `"change"`, `"debounce"`, `"submit"`, or
-#'   `"manual"`. Defaults to the app's own declaration
-#'   (`mcp_app(trigger = )`), falling back to `"debounce"`.
-#' @param debounce_ms Debounce interval in milliseconds. Defaults to the
-#'   app's own declaration, falling back to 250.
-#' @param height Preferred initial height for the host shell.
-#' @param initial_arguments Optional named list of initial tool arguments.
-#' @param debug Whether to enable debug affordances in the host shell.
-#' @return A list with reactive `instance_id` (call as `host$instance_id()`),
-#'   imperative functions `execute()`, `reset()`, `dispose()`, and read-only
-#'   reactives `model_context`, `last_result`, `last_raw_result`,
-#'   `last_tool_call`, and `last_size`. All reactives must be called as
-#'   functions.
+#' `mcp_embed()` does both halves at once for UI created on the server, such
+#' as inside [shiny::renderUI()].
+#'
+#' When the app opens, the host calls its first tool (or `tool`) with
+#' `arguments`, as if the model had, and passes the result to the app.
+#'
+#' @param id Module id.
+#' @param app An [McpApp], or anything [as_mcp_app()] accepts.
+#' @param tool The tool to call when the app opens. Defaults to the app's
+#'   first tool the model can call.
+#' @param arguments Named list of arguments for that call.
+#' @param trigger,debounce_ms Override the app's own `trigger` and
+#'   `debounce_ms`. `trigger = "manual"` shows a Run button and calls tools
+#'   only when it's pressed or when `execute()` is called.
+#' @param height `"auto"` to follow the app's size, or a CSS height.
+#' @return `mcp_host_ui()` and `mcp_embed()` return UI. `mcp_host_server()`
+#'   returns a list of reactives and functions:
+#'
+#'   * `model_context()`: the latest context the app published for the
+#'     model.
+#'   * `last_tool_call()`: the latest tool call, a list with `name`,
+#'     `arguments`, and `result` (the MCP result).
+#'   * `last_result()`: the MCP result of the latest tool call.
+#'   * `messages()`: messages the app asked to post to the chat.
+#'   * `execute(arguments = NULL)`: call the app's tools now, optionally
+#'     with new input values.
+#'   * `dispose()`: shut the app down.
+#' @family hosting
+#' @export
+#' @examples
+#' \dontrun{
+#' library(shiny)
+#' ui <- bslib::page_fillable(mcp_host_ui("explorer"))
+#' server <- function(input, output, session) {
+#'   host <- mcp_host_server("explorer", app, arguments = list(species = "Gentoo"))
+#'   observe(print(host$model_context()))
+#' }
+#' shinyApp(ui, server)
+#' }
+mcp_host_ui <- function(id, height = "auto") {
+  rlang::check_installed("shiny", reason = "for `mcp_host_ui()`.")
+  mcp_host_markup(shiny::NS(id)("host"), height = height)
+}
+
+#' @rdname mcp_host_ui
 #' @export
 mcp_host_server <- function(
   id,
   app,
+  tool = NULL,
+  arguments = NULL,
   trigger = NULL,
   debounce_ms = NULL,
-  height = "auto",
-  initial_arguments = NULL,
-  debug = FALSE
+  height = "auto"
 ) {
   rlang::check_installed("shiny", reason = "for `mcp_host_server()`.")
   shiny::moduleServer(id, function(input, output, session) {
@@ -359,31 +348,15 @@ mcp_host_server <- function(
     registered <- register_shiny_host_instance(
       session = session,
       app = app,
-      instance_id = unique_id(paste0("mcp-", app$name)),
+      instance_id = unique_id(paste0("host-", sanitize_name(app$name))),
+      tool = tool,
+      arguments = arguments,
       trigger = trigger,
       debounce_ms = debounce_ms,
-      height = height,
-      initial_arguments = initial_arguments,
-      debug = debug
+      height = height
     )
-
-    model_context <- shiny::reactiveVal(registered$state$model_context)
-    last_result <- shiny::reactiveVal(registered$state$last_result)
-    last_raw_result <- shiny::reactiveVal(registered$state$last_raw_result)
-    last_tool_call <- shiny::reactiveVal(registered$state$last_tool_call)
-    last_size <- shiny::reactiveVal(registered$state$last_size)
-
-    registered$state$on_model_context <- function(value, state) {
-      model_context(value)
-    }
-    registered$state$on_tool_call <- function(value, state) {
-      last_tool_call(value)
-      last_raw_result(value$raw_result)
-      last_result(value$result)
-    }
-    registered$state$on_size <- function(value, state) {
-      last_size(value)
-    }
+    state <- registered$state
+    reactive_state <- host_reactives(state)
 
     session$onFlushed(
       function() {
@@ -395,64 +368,41 @@ mcp_host_server <- function(
       once = TRUE
     )
 
-    list(
-      instance_id = shiny::reactive(registered$state$instance_id),
-      model_context = shiny::reactive(model_context()),
-      last_result = shiny::reactive(last_result()),
-      last_raw_result = shiny::reactive(last_raw_result()),
-      last_tool_call = shiny::reactive(last_tool_call()),
-      last_size = shiny::reactive(last_size()),
-      execute = function(arguments = NULL) {
-        session$sendCustomMessage(
-          "shinymcp-host-command",
-          compact_list(list(
-            instanceId = registered$state$instance_id,
-            command = "execute",
-            arguments = arguments
-          ))
-        )
-      },
-      reset = function() {
-        session$sendCustomMessage(
-          "shinymcp-host-command",
-          list(
-            instanceId = registered$state$instance_id,
-            command = "reset"
+    c(
+      reactive_state,
+      list(
+        instance_id = shiny::reactive(state$instance_id),
+        execute = function(arguments = NULL) {
+          session$sendCustomMessage(
+            "shinymcp-host-command",
+            compact_list(list(instanceId = state$instance_id, command = "execute", arguments = arguments))
           )
-        )
-      },
-      dispose = function() {
-        session$sendCustomMessage(
-          "shinymcp-host-command",
-          list(
-            instanceId = registered$state$instance_id,
-            command = "dispose"
+        },
+        reset = function() {
+          session$sendCustomMessage(
+            "shinymcp-host-command",
+            list(instanceId = state$instance_id, command = "reset")
           )
-        )
-        mcp_host_dispose(registered$state)
-      }
+        },
+        dispose = function() {
+          session$sendCustomMessage(
+            "shinymcp-host-command",
+            list(instanceId = state$instance_id, command = "dispose")
+          )
+          mcp_host_dispose(state)
+        }
+      )
     )
   })
 }
 
-#' Embed an MCP app inside a live Shiny session
-#'
-#' When called inside a Shiny server context, this helper auto-registers a live
-#' host instance and returns ready-to-render UI. Outside a live session, provide
-#' an `id` and pair the result with `mcp_host_server()`.
-#'
-#' @param app An [McpApp] object.
-#' @param id Optional DOM or module id.
-#' @param trigger Interaction mode: `"debounce"`, `"change"`, `"submit"`, or
-#'   `"manual"`. Defaults to the app's own declaration
-#'   (`mcp_app(trigger = )`), falling back to `"debounce"`.
-#' @param debounce_ms Debounce interval in milliseconds. Defaults to the
-#'   app's own declaration, falling back to 250.
-#' @param height Preferred initial height.
+#' @rdname mcp_host_ui
 #' @export
 mcp_embed <- function(
   app,
   id = NULL,
+  tool = NULL,
+  arguments = NULL,
   trigger = NULL,
   debounce_ms = NULL,
   height = "auto"
@@ -460,25 +410,41 @@ mcp_embed <- function(
   rlang::check_installed("shiny", reason = "for `mcp_embed()`.")
   app <- as_mcp_app(app)
   session <- active_shiny_session()
-
-  if (!is.null(session)) {
-    dom_id <- sanitize_dom_id(id %||% unique_id(paste0("mcp-host-", app$name)))
-    registered <- register_shiny_host_instance(
-      session = session,
-      app = app,
-      instance_id = unique_id(paste0("mcp-", app$name)),
-      trigger = trigger,
-      debounce_ms = debounce_ms,
-      height = height
-    )
-    return(mcp_host_markup(dom_id, config = registered$config, height = height))
+  if (is.null(session)) {
+    if (is.null(id)) {
+      shinymcp_abort(
+        "Call {.fn mcp_embed} inside a running Shiny session, or use {.fn mcp_host_ui} and {.fn mcp_host_server}."
+      )
+    }
+    return(mcp_host_ui(id, height = height))
   }
+  registered <- register_shiny_host_instance(
+    session = session,
+    app = app,
+    instance_id = unique_id(paste0("host-", sanitize_name(app$name))),
+    tool = tool,
+    arguments = arguments,
+    trigger = trigger,
+    debounce_ms = debounce_ms,
+    height = height
+  )
+  dom_id <- sanitize_dom_id(id %||% registered$state$instance_id)
+  mcp_host_markup(dom_id, config = registered$config, height = height)
+}
 
-  if (is.null(id)) {
-    cli::cli_abort(
-      "Provide {.arg id} when calling {.fn mcp_embed} outside a live Shiny session, or use {.fn mcp_host_ui} / {.fn mcp_host_server}."
-    )
-  }
-
-  mcp_host_ui(id)
+#' Reactive views of a host instance's state
+#' @noRd
+host_reactives <- function(state) {
+  model_context <- shiny::reactiveVal(NULL)
+  last_tool_call <- shiny::reactiveVal(NULL)
+  messages <- shiny::reactiveVal(list())
+  state$on_model_context <- function(value) model_context(value)
+  state$on_tool_call <- function(value) last_tool_call(value)
+  state$on_message <- function(value) messages(c(shiny::isolate(messages()), list(value)))
+  list(
+    model_context = shiny::reactive(model_context()),
+    last_tool_call = shiny::reactive(last_tool_call()),
+    last_result = shiny::reactive(last_tool_call()$result),
+    messages = shiny::reactive(messages())
+  )
 }

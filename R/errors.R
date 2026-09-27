@@ -1,73 +1,87 @@
-# Custom error classes for shinymcp
+# Error helpers
+#
+# Every error shinymcp raises inherits from `shinymcp_error`, plus a more
+# specific class, so callers can catch them precisely:
+#
+#   tryCatch(serve(app), shinymcp_error_validation = function(e) ...)
 
-#' Create a parse error
-#' @param message Error message
-#' @param path Path to the Shiny app that failed to parse
-#' @param call The calling environment
+#' Signal a shinymcp error
+#'
+#' `message` is a cli-formatted string (or character vector of bullets),
+#' evaluated in the caller's environment.
+#' @noRd
+shinymcp_abort <- function(
+  message,
+  class = NULL,
+  ...,
+  call = rlang::caller_env(),
+  .envir = parent.frame()
+) {
+  cli::cli_abort(
+    message,
+    class = c(class, "shinymcp_error"),
+    ...,
+    call = call,
+    .envir = .envir
+  )
+}
+
 #' @noRd
 shinymcp_error_parse <- function(
   message,
   path = NULL,
   call = rlang::caller_env()
 ) {
-  rlang::abort(
+  shinymcp_abort(
     message,
     class = "shinymcp_error_parse",
     path = path,
-    call = call
+    call = call,
+    .envir = parent.frame()
   )
 }
 
-#' Create an analysis error
-#' @param message Error message
-#' @param call The calling environment
 #' @noRd
 shinymcp_error_analysis <- function(message, call = rlang::caller_env()) {
-  rlang::abort(
+  shinymcp_abort(
     message,
     class = "shinymcp_error_analysis",
-    call = call
+    call = call,
+    .envir = parent.frame()
   )
 }
 
-#' Create a generation error
-#' @param message Error message
-#' @param call The calling environment
 #' @noRd
 shinymcp_error_generation <- function(message, call = rlang::caller_env()) {
-  rlang::abort(
+  shinymcp_abort(
     message,
     class = "shinymcp_error_generation",
-    call = call
+    call = call,
+    .envir = parent.frame()
   )
 }
 
-#' Create a resource error
-#' @param message Error message
-#' @param uri The resource URI that caused the error
-#' @param call The calling environment
 #' @noRd
 shinymcp_error_resource <- function(
   message,
   uri = NULL,
   call = rlang::caller_env()
 ) {
-  rlang::abort(
+  shinymcp_abort(
     message,
     class = "shinymcp_error_resource",
     uri = uri,
-    call = call
+    call = call,
+    .envir = parent.frame()
   )
 }
 
-#' Create a serve error
-#' @param message Error message
-#' @param call The calling environment
 #' @noRd
-shinymcp_error_serve <- function(message, call = rlang::caller_env()) {
-  rlang::abort(
+shinymcp_error_validation <- function(message, call = rlang::caller_env()) {
+  shinymcp_abort(
     message,
-    class = "shinymcp_error_serve",
-    call = call
+    class = "shinymcp_error_validation",
+    call = call,
+    .envir = parent.frame()
   )
 }
