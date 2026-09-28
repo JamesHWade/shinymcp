@@ -1,29 +1,54 @@
 # shinymcp examples
 
-An ordered tour. Each rung adds one idea on top of the last. The narrated version,
-with code and explanation, is the [shinymcp by example](https://jameshwade.github.io/shinymcp/articles/shinymcp-by-example.html) article.
-
-Preview an MCP App locally:
+Each folder is a runnable app. Open one in the preview host:
 
 ```r
-shinymcp::preview_app(system.file("examples", "penguins", package = "shinymcp"))
+shinymcp::preview_app(system.file("examples", "hello", "app.R", package = "shinymcp"))
 ```
 
-| # | Example | What it adds |
-|---|---------|--------------|
-| 1 | [`hello-mcp-minimal`](hello-mcp-minimal) | The smallest MCP App: one input, one tool, one output |
-| 2 | [`hello-mcp`](hello-mcp) | Rich outputs (a plot and text) and a bslib theme |
-| 3 | [`penguins`](penguins) | Native bslib/shiny inputs, auto-detected by arg-name == element id |
-| 4 | [`bslib-inputs`](bslib-inputs) | The auto-detection rules, plus `mcp_input()`/`mcp_output()` escape hatches |
-| 5 | [`bind-mcp-demo`](bind-mcp-demo) | `bindMcp()`: expose only chosen parts of an existing app; some inputs stay private |
-| 6 | [`multi-tool`](multi-tool) | Several tools and chained reactives in one app |
-| 7 | [`module-tool`](module-tool) | `mcp_tool_module()`: reuse a Shiny module as a tool |
-| 8 | [`converted-dashboard`](converted-dashboard) | Output of `convert_app()`: a plain Shiny app turned into an MCP App |
-| 9 | [`serve-to-client`](serve-to-client) | Reach a real MCP client (Claude Desktop, then VS Code) over stdio |
-| 10 | [`shinychat-card`](shinychat-card) | Surface a card as a shinychat tool result with `as_shinychat_tool()` |
-| 11 | [`embed-in-shiny`](embed-in-shiny) | `mcp_host_server()`/`mcp_host_ui()`: Shiny as the review surface |
-| 12 | [`data-explorer`](data-explorer) | Build inputs programmatically from a data frame |
-| 13 | [`rpharma-hangout`](rpharma-hangout) | Capstone: multi-skill clinical app, contract inspector, `model_value` handoff |
+`preview_app()` shows the app the way a chat client does, next to what the
+model receives from each call.
 
-For tuning the prompts behind these tools, see [`{dsprrr}`](https://jameshwade.github.io/dsprrr/);
-for letting an agent call them, see [`{deputy}`](https://jameshwade.github.io/deputy/).
+## Start here
+
+| Example | What it shows |
+|---|---|
+| [`hello`](hello) | The smallest app built from a tool: one input, one tool, one output. |
+| [`sample-size`](sample-size) | A tool first, with a UI on top. One result carries text for the model, structured data, and outputs for the app. |
+| [`rewritten-dashboard`](rewritten-dashboard) | A Shiny app (`original-app.R`) rewritten as a tool, with its UI unchanged. |
+
+## Connecting to clients
+
+| Example | What it shows |
+|---|---|
+| [`local-clients`](local-clients) | Claude Desktop, Claude Code, and VS Code, over stdio. |
+| [`posit-connect`](posit-connect) | One deployment on Posit Connect: a Shiny app for people, and an MCP App on the same UI for chat clients, with `mcp_endpoint(apps = )`. |
+
+## Hosting apps in Shiny
+
+| Example | What it shows |
+|---|---|
+| [`shinychat`](shinychat) | Apps in a shinychat conversation, with `mcp_chat_host()`: the model opens them, and what the person does in them reaches the model. |
+| [`shiny-host`](shiny-host) | An app inside a Shiny app, with the context it gives the model shown alongside. |
+| [`remote-host`](remote-host) | An app from another MCP server, such as one deployed on Posit Connect, in a Shiny app, with `mcp_client()`. |
+
+## Larger examples
+
+| Example | What it shows |
+|---|---|
+| [`ggplot-builder`](ggplot-builder) | A plot builder over ggplot2 4.0 features, built from one tool. |
+| [`feature-tour`](feature-tour) | The page's JavaScript API: an app-only tool, a resource read on demand, messages to the chat, links, and full screen. |
+| [`rpharma-hangout`](rpharma-hangout) | The R/Pharma 2026 demo: two apps reached from an MCP client, a Shiny host, and shinychat. |
+
+## Serving a Shiny app as it is
+
+These serve Shiny apps live with `as_mcp_app()`, which shinymcp will stop
+doing once Shiny's own MCP support is released; see
+`vignette("shiny-apps", package = "shinymcp")`.
+
+| Example | What it shows |
+|---|---|
+| [`faithful`](faithful) | An unchanged Shiny app, served live. |
+| [`fuel-economy`](fuel-economy) | A bslib dashboard. `bindMcp()` chooses what the model sees, `mcp_model_context()` tells it what the user did, `mcp_host_context()` follows the chat's theme, and the download button works. |
+| [`shiny-packages`](shiny-packages) | A Shiny app built on shinyWidgets and DT, with a file upload. The model reads the table's rows and hears which ones the person selected. |
+| [`shiny-module`](shiny-module) | A Shiny module served with `mcp_tool_module()`. |

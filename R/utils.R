@@ -1,450 +1,283 @@
-# Internal utilities for shinymcp
+# Internal utilities
 
-#' Read a package file from inst/
-#' @param ... Path components relative to inst/
+#' Path to a file installed with the package
 #' @noRd
 system_file <- function(...) {
   system.file(..., package = "shinymcp", mustWork = TRUE)
 }
 
-#' Generate a unique ID
-#' @param prefix Optional prefix
+#' Read a text file installed with the package
 #' @noRd
-unique_id <- function(prefix = "shinymcp") {
-  paste0(
-    prefix,
-    "-",
-    format(Sys.time(), "%Y%m%d%H%M%S"),
-    "-",
-    sample(1000:9999, 1)
+read_package_file <- function(...) {
+  paste(
+    readLines(system_file(...), warn = FALSE, encoding = "UTF-8"),
+    collapse = "\n"
   )
 }
 
-#' Convert an R object to JSON
-#' @param x Object to convert
-#' @param pretty Whether to pretty-print
+#' A hard-to-guess identifier
+#'
+#' Instance ids let a client drive a live session, so they come from the
+#' operating system's random source rather than R's RNG (which a user's
+#' `set.seed()` would make repeatable). Where there is no `/dev/urandom`
+#' the id is a hash of the clock, the process id, and a counter.
+#' @noRd
+unique_id <- function(prefix = "shinymcp", n = 16) {
+  the$id_counter <- (the$id_counter %||% 0) + 1
+  bytes <- tryCatch(
+    readBin("/dev/urandom", "raw", n = 16),
+    error = function(e) NULL,
+    warning = function(w) NULL
+  )
+  id <- if (length(bytes) == 16) {
+    paste(as.character(bytes), collapse = "")
+  } else {
+    rlang::hash(list(
+      as.numeric(Sys.time()),
+      proc.time()[[3]],
+      Sys.getpid(),
+      the$id_counter
+    ))
+  }
+  id <- substr(id, 1, n)
+  if (nzchar(prefix)) paste0(prefix, "-", id) else id
+}
+
+#' Serialize to JSON the way MCP expects
 #' @noRd
 to_json <- function(x, pretty = FALSE) {
-  jsonlite::toJSON(x, auto_unbox = TRUE, pretty = pretty, null = "null")
+  jsonlite::toJSON(
+    x,
+    auto_unbox = TRUE,
+    pretty = pretty,
+    null = "null",
+    na = "null",
+    digits = NA,
+    force = TRUE
+  )
 }
 
-#' Parse JSON string
-#' @param x JSON string
+#' A field of a parsed JSON object, matched exactly
+#'
+#' `$` matches a prefix (`x$name` finds `nameExtra`), which messages from
+#' outside mustn't be able to use. `NULL` for anything but a list.
+#' @noRd
+json_field <- function(x, name) {
+  if (is.list(x)) x[[name]]
+}
+
+#' Parse JSON text without simplifying arrays
+#'
+#' jsonlite::parse_json() only ever reads its argument as JSON.
+#' jsonlite::fromJSON() would read a string that names a file, or fetch one
+#' that is a URL, which a request body must never be able to do.
 #' @noRd
 from_json <- function(x) {
-  jsonlite::fromJSON(x, simplifyVector = FALSE)
-}
-
-#' Encode content as base64
-#' @param raw_content Raw bytes to encode
-#' @noRd
-base64_encode <- function(raw_content) {
-  rlang::check_installed("base64enc", reason = "for base64 encoding")
-  base64enc::base64encode(raw_content)
-}
-
-#' Check if an object is an ellmer ToolDef (S7)
-#' @param x Object to check
-#' @noRd
-is_ellmer_tool <- function(x) {
-  inherits(x, "ellmer::ToolDef")
-}
-
-#' Get the name of a tool (ellmer S7 or plain list)
-#' @param tool A tool object
-#' @noRd
-tool_name <- function(tool) {
-  if (is_ellmer_tool(tool)) {
-    tool@name %||% "unnamed"
-  } else if (is.list(tool)) {
-    tool$name %||% "unnamed"
-  } else {
-    "unnamed"
-  }
-}
-
-#' Extract a tool's annotations as a plain list
-#'
-#' Works for ellmer ToolDef objects (`tool@annotations`) and plain-list tools
-#' (`tool$annotations`). Returns `NULL` when none are present.
-#' @param tool A tool object.
-#' @noRd
-tool_annotations_of <- function(tool) {
-  ann <- if (is_ellmer_tool(tool)) {
-    tool@annotations
-  } else if (is.list(tool)) {
-    tool$annotations
-  } else {
-    NULL
-  }
-  if (length(ann) == 0) NULL else as.list(ann)
-}
-
-# MCP tool annotation hints use camelCase; ellmer's tool_annotations() uses
-# snake_case. Map the known hints and pass through any already-camelCase keys.
-SHINYMCP_ANNOTATION_KEYS <- c(
-  title = "title",
-  read_only_hint = "readOnlyHint",
-  destructive_hint = "destructiveHint",
-  idempotent_hint = "idempotentHint",
-  open_world_hint = "openWorldHint"
-)
-
-#' Normalize tool annotations to the MCP camelCase shape
-#'
-#' @param annotations A named list of annotation hints (snake_case or camelCase).
-#' @return A named list with MCP hint keys, or `NULL` if empty.
-#' @noRd
-normalize_tool_annotations <- function(annotations) {
-  if (length(annotations) == 0) {
-    return(NULL)
-  }
-  camel <- unname(SHINYMCP_ANNOTATION_KEYS)
-  out <- list()
-  for (nm in names(annotations)) {
-    value <- annotations[[nm]]
-    if (is.null(value)) {
-      next
-    }
-    key <- if (nm %in% names(SHINYMCP_ANNOTATION_KEYS)) {
-      SHINYMCP_ANNOTATION_KEYS[[nm]]
-    } else if (nm %in% camel) {
-      nm
-    } else {
-      next
-    }
-    out[[key]] <- value
-  }
-  if (length(out) == 0) NULL else out
-}
-
-#' Build a JSON-ready input schema from an ellmer TypeObject
-#' @param arguments An ellmer TypeObject (tool@@arguments)
-#' @noRd
-type_object_to_schema <- function(arguments) {
-  props <- arguments@properties
-  schema <- list(
-    type = "object",
-    properties = lapply(props, function(p) {
-      compact_list(list(
-        type = p@type,
-        description = if (nzchar(p@description %||% "")) p@description
-      ))
-    })
-  )
-  required <- names(props)[vapply(
-    props,
-    function(p) isTRUE(p@required),
-    logical(1)
-  )]
-  if (length(required) > 0) {
-    schema$required <- as.list(required)
-  }
-  schema
+  jsonlite::parse_json(x, simplifyVector = FALSE)
 }
 
 #' Remove NULL entries from a list
-#' @param x A list
 #' @noRd
 compact_list <- function(x) {
   x[!vapply(x, is.null, logical(1))]
 }
 
-#' Core MCP protocol versions supported by the server transport, newest first
+#' Base64-encode a file
 #' @noRd
-SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS <- c(
-  "2025-11-25",
-  "2025-06-18",
-  "2025-03-26",
-  "2024-11-05"
-)
-
-#' Latest core MCP protocol version supported by shinymcp
-#' @noRd
-SHINYMCP_PROTOCOL_VERSION <- SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS[[1]]
-
-#' MCP Apps extension spec version implemented by the JS bridge and hosts
-#' @noRd
-SHINYMCP_APPS_PROTOCOL_VERSION <- "2026-01-26"
-
-#' Extension identifier clients use to advertise MCP Apps support
-#' @noRd
-SHINYMCP_UI_EXTENSION_ID <- "io.modelcontextprotocol/ui"
-
-#' Required MIME type for ui:// resources per the MCP Apps spec
-#' @noRd
-SHINYMCP_UI_MIME_TYPE <- "text/html;profile=mcp-app"
-
-SHINYMCP_SINGLE_RESULT_KEY <- "__shinymcp_result__"
-
-# Schema-free side channel carrying per-output render types for multi-output
-# results. Kept separate from the string-valued structuredContent so the
-# declared outputSchema (every property `type: "string"`) still validates.
-SHINYMCP_TYPES_KEY <- "__shinymcp_types__"
-
-#' Negotiate the core MCP protocol version with a client
-#'
-#' Per the MCP spec: if the client requests a version the server supports,
-#' echo it back; otherwise respond with the server's latest supported version.
-#'
-#' @param requested The client's requested protocol version (or NULL).
-#' @noRd
-negotiate_protocol_version <- function(requested) {
-  if (
-    is.character(requested) &&
-      length(requested) == 1 &&
-      requested %in% SHINYMCP_SUPPORTED_PROTOCOL_VERSIONS
-  ) {
-    return(requested)
+base64_file <- function(path) {
+  size <- file.info(path)$size
+  if (is.na(size)) {
+    shinymcp_abort("Can't read {.file {path}}.")
   }
-  SHINYMCP_PROTOCOL_VERSION
+  base64_raw(readBin(path, "raw", n = size))
 }
 
-#' Check whether an initialize request advertises MCP Apps support
-#'
-#' Per the MCP Apps spec (2026-01-26), clients advertise support via
-#' `capabilities.extensions["io.modelcontextprotocol/ui"]` with a `mimeTypes`
-#' array. A missing `mimeTypes` field is treated leniently as supporting the
-#' default HTML profile.
-#'
-#' @param params The `params` of an `initialize` request.
-#' @return `TRUE` if the client supports MCP Apps UI rendering.
+#' Base64-encode a raw vector
 #' @noRd
-client_supports_mcp_apps <- function(params) {
-  ui_cap <- params$capabilities$extensions[[SHINYMCP_UI_EXTENSION_ID]]
-  if (is.null(ui_cap)) {
-    return(FALSE)
-  }
-  mime_types <- unlist(ui_cap$mimeTypes, use.names = FALSE)
-  if (is.null(mime_types)) {
-    return(TRUE)
-  }
-  SHINYMCP_UI_MIME_TYPE %in% mime_types
+base64_raw <- function(x) {
+  # jsonlite wraps lines; MCP hosts expect plain base64.
+  gsub("\n", "", as.character(jsonlite::base64_enc(x)), fixed = TRUE)
 }
 
-#' Convert user-facing CSP declarations to spec _meta.ui.csp keys
-#'
-#' Accepts snake_case keys (`connect_domains`, `resource_domains`,
-#' `frame_domains`, `base_uri_domains`) or the spec's camelCase keys
-#' directly. Values are coerced to character vectors and always serialized
-#' as JSON arrays.
-#'
-#' @param csp A named list of CSP domain declarations, or NULL.
+#' MIME type from a file extension
 #' @noRd
-csp_to_meta <- function(csp) {
-  if (is.null(csp)) {
-    return(NULL)
-  }
-  if (!is.list(csp) || is.null(names(csp)) || any(!nzchar(names(csp)))) {
-    rlang::abort(
-      "`csp` must be a fully named list of domain declarations.",
-      class = "shinymcp_error_validation"
-    )
-  }
-  key_map <- c(
-    connect_domains = "connectDomains",
-    resource_domains = "resourceDomains",
-    frame_domains = "frameDomains",
-    base_uri_domains = "baseUriDomains"
+mime_type_for <- function(path, default = "application/octet-stream") {
+  ext <- tolower(tools::file_ext(path))
+  types <- c(
+    png = "image/png",
+    jpg = "image/jpeg",
+    jpeg = "image/jpeg",
+    gif = "image/gif",
+    webp = "image/webp",
+    svg = "image/svg+xml",
+    pdf = "application/pdf",
+    csv = "text/csv",
+    tsv = "text/tab-separated-values",
+    txt = "text/plain",
+    md = "text/markdown",
+    html = "text/html",
+    json = "application/json",
+    xml = "application/xml",
+    zip = "application/zip",
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    xls = "application/vnd.ms-excel",
+    docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    pptx = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    rds = "application/octet-stream",
+    parquet = "application/vnd.apache.parquet"
   )
-  allowed <- unique(c(names(key_map), unname(key_map)))
-  out <- list()
-  for (nm in names(csp)) {
-    if (!nm %in% allowed) {
-      rlang::abort(
-        cli::format_inline(
-          "Unknown {.arg csp} field {.val {nm}}. Allowed: {.val {allowed}}."
-        ),
-        class = "shinymcp_error_validation"
-      )
-    }
-    key <- if (nm %in% names(key_map)) key_map[[nm]] else nm
-    out[[key]] <- I(as.character(csp[[nm]]))
-  }
-  out
+  if (ext %in% names(types)) types[[ext]] else default
 }
 
-#' Normalize user-supplied extra resources for an McpApp
+#' Inline an HTML dependency as `<style>` and `<script>` tags
 #'
-#' Accepts a named list (URI -> spec) where each spec is a string (static
-#' content), a function returning a string, or a list with `content`,
-#' `mime_type`, `name`, `description`, and `meta` fields. Returns a named
-#' list of normalized specs with `uri`, `name`, `description`, `mime_type`,
-#' `content_fn`, and `meta`.
-#'
-#' @param resources Named list of resource specs, or NULL.
+#' MCP hosts block external scripts and stylesheets unless the app declares
+#' their domains, so dependencies are embedded in the page. A dependency that
+#' only has an `href` is linked instead (and needs a `csp` declaration).
 #' @noRd
-normalize_extra_resources <- function(resources) {
-  if (is.null(resources)) {
-    return(list())
-  }
-  if (
-    !is.list(resources) ||
-      is.null(names(resources)) ||
-      any(!nzchar(names(resources)))
-  ) {
-    rlang::abort(
-      "`resources` must be a fully named list (URI -> content).",
-      class = "shinymcp_error_validation"
-    )
-  }
+inline_dependency <- function(dep) {
+  parts <- character()
+  base <- dep$src$file
+  label <- paste0(dep$name, " ", dep$version)
 
-  out <- list()
-  for (uri in names(resources)) {
-    spec <- resources[[uri]]
-
-    if (is.function(spec)) {
-      spec <- list(content = spec)
-    } else if (is.character(spec) && length(spec) == 1) {
-      spec <- list(content = spec)
-    } else if (!is.list(spec)) {
-      rlang::abort(
-        cli::format_inline(
-          "Resource {.val {uri}} must be a string, a function, or a list with a {.field content} field."
-        ),
-        class = "shinymcp_error_validation"
-      )
-    }
-
-    content <- spec$content
-    content_fn <- if (is.function(content)) {
-      content
-    } else if (is.character(content) && length(content) == 1) {
-      local({
-        static <- content
-        function() static
-      })
-    } else {
-      rlang::abort(
-        cli::format_inline(
-          "Resource {.val {uri}} needs {.field content} as a single string or a function returning one."
-        ),
-        class = "shinymcp_error_validation"
-      )
-    }
-
-    out[[uri]] <- list(
-      uri = uri,
-      name = spec$name %||% uri,
-      description = spec$description %||% "",
-      mime_type = spec$mime_type %||% "text/plain",
-      content_fn = content_fn,
-      meta = spec$meta
-    )
-  }
-  out
-}
-
-#' Coerce resource content to a plain character scalar
-#'
-#' Content functions commonly return `jsonlite::toJSON()` output, which is a
-#' `json`-classed object that downstream serializers (jsonlite, Shiny's
-#' custom messages) inline as raw JSON instead of a string - breaking
-#' `JSON.parse(contents[0].text)` in the app. Strip classes and collapse
-#' multi-line character vectors so `text` is always a single string.
-#'
-#' @param content The value returned by a resource content function.
-#' @noRd
-coerce_resource_text <- function(content) {
-  content <- as.character(content)
-  if (length(content) != 1) {
-    content <- paste(content, collapse = "\n")
-  }
-  content
-}
-
-#' Build an outputSchema from declared output ids and scanned UI types
-#'
-#' All shinymcp structured outputs travel as strings (text, HTML fragments,
-#' base64 PNGs), so every property is `type: "string"` with a description
-#' derived from the output's UI type.
-#'
-#' @param output_ids Character vector of output ids the tool returns.
-#' @param ui_output_types Named character vector mapping output id -> UI type
-#'   (`"text"`, `"plot"`, `"table"`, `"html"`), as scanned from the UI.
-#' @noRd
-build_output_schema <- function(output_ids, ui_output_types = character(0)) {
-  if (length(output_ids) == 0) {
-    return(NULL)
-  }
-  descriptions <- c(
-    text = "Text content for output '%s'",
-    plot = "Base64-encoded PNG image for output '%s'",
-    table = "HTML table markup for output '%s'",
-    html = "HTML markup for output '%s'"
-  )
-  properties <- list()
-  for (id in output_ids) {
-    type <- if (id %in% names(ui_output_types)) {
-      ui_output_types[[id]]
-    } else {
-      NA_character_
-    }
-    template <- if (!is.na(type) && type %in% names(descriptions)) {
-      descriptions[[type]]
-    } else {
-      "Value for output '%s'"
-    }
-    properties[[id]] <- list(
-      type = "string",
-      description = sprintf(template, id)
-    )
-  }
-  list(
-    type = "object",
-    properties = properties,
-    required = as.list(output_ids)
-  )
-}
-
-#' Format an R tool result into the MCP tool-result shape
-#'
-#' Used by both the MCP server (`serve.R`) and the preview host (`preview.R`)
-#' to produce a consistent response structure.
-#'
-#' @param result The raw result from `McpApp$call_tool()`.
-#' @return A list with `content` and optionally `structuredContent`.
-#' @noRd
-format_tool_result <- function(result) {
-  if (is_mcp_result(result)) {
-    content <- list(list(
-      type = "text",
-      text = mcp_result_text_fallback(result)
-    ))
-    content <- c(content, mcp_result_image_content(result))
-    return(list(
-      content = content,
-      structuredContent = setNames(
-        list(mcp_result_wire_payload(result)),
-        SHINYMCP_SINGLE_RESULT_KEY
-      )
-    ))
-  }
-
-  if (is.list(result) && !is.null(names(result))) {
-    text_summary <- mcp_result_text_fallback(result)
-    content <- list(list(type = "text", text = text_summary))
-    # Append native image blocks so text-only and model-only hosts can see
-    # generated plots instead of a "[plot]" placeholder.
-    for (id in names(result)) {
-      content <- c(content, mcp_result_image_content(result[[id]]))
-    }
-    payload <- list(content = content)
-    structured <- mcp_result_structured_content(result)
-    if (!is.null(structured)) {
-      # Carry render types alongside the string values so plots/tables render
-      # correctly even on output elements that lack a data-shinymcp-output-type
-      # attribute (native or hand-authored outputs).
-      types <- mcp_result_structured_types(result)
-      if (length(types) > 0) {
-        structured[[SHINYMCP_TYPES_KEY]] <- types
+  if (!is.null(base) && nzchar(base)) {
+    for (css in dep$stylesheet) {
+      path <- file.path(base, css)
+      if (file.exists(path)) {
+        parts <- c(
+          parts,
+          paste0(
+            "<style data-shinymcp-dep=\"",
+            htmltools::htmlEscape(label, TRUE),
+            "\">\n",
+            escape_inline_close(
+              inline_css(read_text_file(path), dirname(path)),
+              "style"
+            ),
+            "\n</style>"
+          )
+        )
       }
-      payload$structuredContent <- structured
     }
-    return(payload)
+    for (js in dep$script) {
+      file <- if (is.list(js)) js$src else js
+      path <- file.path(base, file)
+      if (!file.exists(path)) {
+        next
+      }
+      type <- if (is.list(js) && !is.null(js$type)) {
+        paste0(" type=\"", js$type, "\"")
+      } else {
+        ""
+      }
+      parts <- c(
+        parts,
+        paste0(
+          "<script",
+          type,
+          " data-shinymcp-dep=\"",
+          htmltools::htmlEscape(label, TRUE),
+          "\">\n",
+          escape_inline_close(read_text_file(path), "script"),
+          "\n</script>"
+        )
+      )
+    }
+    if (identical(dep$name, "leaflet")) {
+      parts <- c(parts, leaflet_icon_patch(base))
+    }
+  } else if (!is.null(dep$src$href)) {
+    href <- dep$src$href
+    for (css in dep$stylesheet) {
+      parts <- c(
+        parts,
+        sprintf("<link rel=\"stylesheet\" href=\"%s/%s\">", href, css)
+      )
+    }
+    for (js in dep$script) {
+      file <- if (is.list(js)) js$src else js
+      parts <- c(parts, sprintf("<script src=\"%s/%s\"></script>", href, file))
+    }
   }
+  if (length(dep$head)) {
+    parts <- c(parts, paste(dep$head, collapse = "\n"))
+  }
+  paste(parts, collapse = "\n")
+}
 
-  list(
-    content = list(list(type = "text", text = as.character(result)))
+#' Leaflet's default marker, from the images the library ships
+#'
+#' The leaflet package points Leaflet's default marker icons at unpkg.com,
+#' which hosts block, so markers would be missing. This script, run after
+#' Leaflet loads, hands out the library's own images as data URIs instead.
+#' @noRd
+leaflet_icon_patch <- function(base) {
+  images <- file.path(
+    base,
+    "images",
+    c("marker-icon.png", "marker-icon-2x.png", "marker-shadow.png")
   )
+  if (!all(file.exists(images))) {
+    return(character())
+  }
+  uris <- vapply(images, function(path) data_uri(path) %||% "", character(1))
+  if (!all(nzchar(uris))) {
+    return(character())
+  }
+  paste0(
+    "<script data-shinymcp-dep=\"leaflet icons\">\n",
+    "(function () {\n",
+    "  if (!window.L || !L.Icon || !L.Icon.Default) return;\n",
+    "  var icon = \"",
+    uris[[1]],
+    "\";\n",
+    "  var retina = \"",
+    uris[[2]],
+    "\";\n",
+    "  var shadow = \"",
+    uris[[3]],
+    "\";\n",
+    "  L.Icon.Default.prototype._getIconUrl = function (name) {\n",
+    "    if (name === \"shadow\") return shadow;\n",
+    "    return L.Browser.retina ? retina : icon;\n",
+    "  };\n",
+    "})();\n",
+    "</script>"
+  )
+}
+
+#' @noRd
+read_text_file <- function(path) {
+  paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+}
+
+#' Keep inlined code from closing its own tag early
+#'
+#' A literal `</script>` inside inlined JavaScript would end the element.
+#' @noRd
+escape_inline_close <- function(text, tag) {
+  gsub(
+    paste0("</(", tag, ")"),
+    "<\\\\/\\1",
+    text,
+    ignore.case = TRUE,
+    perl = TRUE
+  )
+}
+
+#' Is a value a single non-empty string?
+#' @noRd
+is_string <- function(x) {
+  is.character(x) && length(x) == 1 && !is.na(x) && nzchar(x)
+}
+
+#' Tool and resource names must be safe for MCP clients
+#'
+#' MCP recommends 1-128 characters from `A-Za-z0-9_.-`; several clients also
+#' reject dots, so shinymcp derives names from letters, digits, `_` and `-`.
+#' @noRd
+sanitize_name <- function(x) {
+  x <- gsub("[^A-Za-z0-9_-]+", "_", x)
+  x <- gsub("^_+|_+$", "", x)
+  if (!nzchar(x)) "app" else substr(x, 1, 64)
 }

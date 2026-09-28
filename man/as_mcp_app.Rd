@@ -4,15 +4,19 @@
 \alias{as_mcp_app}
 \alias{as_mcp_app.shiny.appobj}
 \alias{as_mcp_app.McpApp}
+\alias{as_mcp_app.character}
 \alias{as_mcp_app.default}
-\title{Convert an object to an MCP App}
+\title{Serve a Shiny app as an MCP App}
 \usage{
 as_mcp_app(x, ...)
 
 \method{as_mcp_app}{shiny.appobj}(
   x,
   name = NULL,
+  title = NULL,
+  description = NULL,
   tools = NULL,
+  tool_name = NULL,
   selective = NULL,
   version = "0.1.0",
   ...
@@ -20,56 +24,149 @@ as_mcp_app(x, ...)
 
 \method{as_mcp_app}{McpApp}(x, ...)
 
+\method{as_mcp_app}{character}(x, name = NULL, ...)
+
 \method{as_mcp_app}{default}(x, ...)
 }
 \arguments{
-\item{x}{An object to convert. Currently supports:
-\itemize{
-\item \code{shiny.appobj} (from \code{\link[shiny:shinyApp]{shiny::shinyApp()}})
-\item \code{McpApp} (returned as-is)
-\item A character path to a directory containing \code{app.R}, or a direct path
-to an app file
-}}
+\item{x}{A Shiny app (from \code{\link[shiny:shinyApp]{shiny::shinyApp()}} or \code{\link[shiny:shinyAppDir]{shiny::shinyAppDir()}}),
+a path to an app directory (with \code{app.R}, or \code{ui.R} and \code{server.R}), or
+an \link{McpApp} (returned unchanged). An \code{app.R} may build an \link{McpApp}
+instead of a Shiny app; its tools run, and its page is built, in the
+app's directory.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Passed on to \code{\link[=mcp_app]{mcp_app()}}, for example \code{csp},
+\code{prefers_border}, \code{images}, or \code{www} (which defaults to the app
+directory's \verb{www/} folder).}
 
-\item{name}{App name (used in resource URIs). Defaults to \code{"shinymcp-app"}.}
+\item{name}{App name, used for the \verb{ui://<name>} resource and the tool
+name. Defaults to the directory name for a path, otherwise
+\code{"shiny-app"}.}
 
-\item{tools}{Optional list of explicit \code{\link[ellmer:tool]{ellmer::tool()}} definitions. If
-provided, these are used instead of auto-generating tools from the
-reactive graph.}
+\item{title}{Human-readable title.}
 
-\item{selective}{Logical. If \code{TRUE} (default when \code{bindMcp()} annotations
-are present), only annotated elements are exposed. If \code{FALSE}, all
-detected inputs/outputs are exposed.}
+\item{description}{What the app does, for the model. By default shinymcp
+writes one from the inputs and outputs; a sentence about what the app
+is \emph{for} helps the model decide when to open it.}
 
-\item{version}{App version string. Defaults to \code{"0.1.0"}.}
+\item{tools}{More tools for the model, such as \code{\link[ellmer:tool]{ellmer::tool()}} objects,
+served next to the one that opens the app: a computation the model
+should be able to run without opening it, say.}
+
+\item{tool_name}{Name of the tool that opens the app. Defaults to \code{name}
+with anything other than letters, digits, \code{-} and \verb{_} replaced.}
+
+\item{selective}{Whether only inputs and outputs marked with \code{\link[=bindMcp]{bindMcp()}}
+are exposed to the model. Defaults to \code{TRUE} if anything is marked.}
+
+\item{version}{App version string.}
 }
 \value{
-An \link{McpApp} object.
+An \link{McpApp}.
 }
 \description{
-S3 generic that converts various Shiny-related objects into an \link{McpApp}.
-The primary method converts \code{shiny.appobj} (from \code{\link[shiny:shinyApp]{shiny::shinyApp()}}) by
-parsing its UI and server to build tool definitions automatically.
+\code{as_mcp_app()} turns an existing Shiny app into an MCP App without
+rewriting it. The app's UI becomes the page the chat client shows, and
+its server function keeps running in R: each time the app opens in the
+conversation, shinymcp starts a session for it, and the user's changes
+flow to that session the way they would from a browser. Reactive
+expressions, observers, \code{updateSelectInput()} and friends,
+\code{validate()}/\code{req()}, notifications, modals, and downloads all work.
+
+The model gets one tool, named after the app. Its arguments are the app's
+inputs, so the model can open the app already set up ("show the penguins
+explorer for Gentoo"). The result tells the model what the app shows:
+text outputs as text, tables (DT's included) as their rows, plots as
+images.
+
+Choose what the model sees with \code{\link[=bindMcp]{bindMcp()}}. Once any input or output is
+marked, only marked inputs become tool arguments and only marked outputs
+are reported; the user still sees the whole app. Buttons are never
+pressed by the model unless you mark them, and password and file inputs
+are never the model's to set.
 }
+\section{What runs where}{
+
+The page is the app's UI rendered once to HTML, with shinymcp's bridge in
+place of Shiny's JavaScript. The bridge draws Shiny's built-in inputs
+itself (select, slider, date, checkbox group, and so on), and puts
+outputs sent back from R on the page: text, HTML, tables, plots,
+\code{renderUI()}, and htmlwidgets such as plotly, DT, and leaflet.
+Conditional panels show and hide, and clicks and brushes on plots reach
+the server as they would from a browser, for \code{\link[shiny:nearPoints]{shiny::nearPoints()}} and
+\code{\link[shiny:brushedPoints]{shiny::brushedPoints()}}.
+
+Packages written for Shiny's JavaScript API work too. The page provides
+\code{window.Shiny} with the parts packages use: input bindings they register
+(shinyWidgets, for example), \code{Shiny.setInputValue()} (DT row selection,
+plotly's \code{event_data()}, leaflet clicks), custom message handlers
+(shinyjs), and the \code{shiny:value} family of events (shinycssloaders).
+File inputs upload to the session, within \code{shiny.maxRequestSize}.
+\code{invalidateLater()} and \code{reactivePoll()} run while the app is open.
+
+The app starts as \code{\link[shiny:runApp]{shiny::runApp()}} would start it: its \code{onStart}
+(for a directory, \code{global.R} and the files in \verb{R/}) runs once, before
+the UI is built, and its code runs in the app's directory. Scripts, stylesheets, and images the
+UI loads from \verb{www/} or from \code{\link[shiny:addResourcePath]{shiny::addResourcePath()}} paths are
+written into the page. \code{onStop} runs when the server stops.
+}
+
+\section{Sessions}{
+
+Sessions live in the R process that serves the app, up to 50 at a time
+(the \code{shinymcp.max_views} option), each closing after an hour without
+use (\code{shinymcp.view_timeout}, in seconds). If a request reaches a
+process that doesn't have the view's session (after a restart, or on a
+server running several processes), a new session starts from the inputs
+on the page. Anything the server function kept outside its inputs (a
+\code{reactiveVal()} that counts clicks, say) starts over.
+}
+
+\section{Shiny's own MCP support}{
+
+Shiny is gaining MCP support of its own
+(\url{https://github.com/rstudio/shiny/pull/4407}). Once it is released, it
+will be the way to put a live Shiny app in a chat, and shinymcp will stop
+serving live apps. \code{\link[=as_mcp_app]{as_mcp_app()}}, \code{\link[=mcp_endpoint]{mcp_endpoint()}}, and
+\code{\link[=mcp_tool_module]{mcp_tool_module()}} will take only apps built from tools, and \code{\link[=bindMcp]{bindMcp()}}
+and the helpers for server functions (\code{\link[=mcp_model_context]{mcp_model_context()}},
+\code{\link[=mcp_host_context]{mcp_host_context()}}, and the rest) will be removed. For something the
+model should be able to use on its own, rewrite that part of the app as
+tools with \code{\link[=mcp_app]{mcp_app()}}; see \code{vignette("rewriting-as-tools")}.
+}
+
 \examples{
 \dontrun{
 library(shiny)
 
 ui <- fluidPage(
-  selectInput("dataset", "Choose", c("mtcars", "iris")) |> bindMcp(),
-  plotOutput("plot") |> bindMcp(),
-  textOutput("summary") |> bindMcp()
+  selectInput("cyl", "Cylinders", c(4, 6, 8)),
+  plotOutput("scatter"),
+  textOutput("count")
 )
-
 server <- function(input, output, session) {
-  output$plot <- renderPlot(plot(get(input$dataset)))
-  output$summary <- renderText(paste("Rows:", nrow(get(input$dataset))))
+  cars <- reactive(mtcars[mtcars$cyl == input$cyl, ])
+  output$scatter <- renderPlot(plot(cars()$wt, cars()$mpg))
+  output$count <- renderText(paste(nrow(cars()), "cars"))
 }
 
-# Convert and serve
-shinyApp(ui, server) |> as_mcp_app(name = "explorer") |> serve()
-}
+app <- as_mcp_app(
+  shinyApp(ui, server),
+  name = "cars",
+  description = "Explore fuel economy in mtcars by number of cylinders."
+)
+preview_app(app)
+serve(app)
 
+# Or straight from a directory:
+serve("path/to/my-app")
 }
+}
+\seealso{
+Other apps:
+\code{\link{McpApp}},
+\code{\link[=bindMcp]{bindMcp()}},
+\code{\link[=mcp_app]{mcp_app()}},
+\code{\link[=mcp_tool_module]{mcp_tool_module()}}
+}
+\concept{apps}

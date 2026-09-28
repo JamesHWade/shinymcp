@@ -1,247 +1,917 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{APP_NAME}} — shinymcp preview</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} · shinymcp preview</title>
 <style>
-*, *::before, *::after { box-sizing: border-box; }
 :root {
-  --bg: #f7f7f8;
+  color-scheme: light;
+  --bg: #f4f4f2;
   --surface: #ffffff;
-  --border: #e0e0e4;
-  --text: #1a1a1a;
-  --muted: #6b6b76;
-  --accent: #0066cc;
+  --surface-2: #f8f8f6;
+  --border: #dddcd6;
+  --text: #1f1f1e;
+  --muted: #6b6a65;
+  --accent: #2563eb;
+  --danger: #b42318;
+  --danger-bg: #fef3f2;
+  --ok: #067647;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1a19;
+  --surface: #232322;
+  --surface-2: #2a2a28;
+  --border: #3b3b38;
+  --text: #ecebe7;
+  --muted: #a3a29c;
+  --accent: #7aa2f7;
+  --danger: #f97066;
+  --danger-bg: #3a1d1b;
+  --ok: #47cd89;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
 body {
-  margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.45;
   background: var(--bg);
   color: var(--text);
-}
-header {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 20px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  font-size: 14px;
+  flex-direction: column;
 }
-header .title {
-  font-weight: 600;
-}
-header .badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  background: #e8f0fe;
-  color: var(--accent);
-  border-radius: 10px;
-  font-weight: 500;
-}
-header .spacer { flex: 1; }
-header .status {
-  font-size: 12px;
-  color: var(--muted);
-}
-header .status .dot {
-  display: inline-block;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #ccc;
-  margin-right: 4px;
-  vertical-align: middle;
-}
-header .status .dot.connected { background: #22c55e; }
-header .status .dot.error { background: #ef4444; }
-
-.frame-container {
-  display: flex;
-  justify-content: center;
-  padding: 24px 20px;
-}
-iframe {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  width: 100%;
-  max-width: 900px;
-  min-height: 200px;
-  transition: height 0.15s ease;
-}
-
-.log-toggle {
-  position: fixed;
-  bottom: 16px;
-  right: 16px;
+button, select, input, textarea { font: inherit; color: inherit; }
+button {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
+  padding: 4px 10px;
   cursor: pointer;
-  color: var(--muted);
-  z-index: 10;
 }
-.log-toggle:hover { color: var(--text); }
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+select {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+}
+code, pre { font-family: var(--mono); font-size: 12.5px; }
 
-.log-panel {
-  display: none;
-  position: fixed;
-  bottom: 48px;
-  right: 16px;
-  width: 480px;
-  max-height: 320px;
-  background: #1e1e2e;
-  color: #cdd6f4;
-  border-radius: 8px;
-  overflow: auto;
-  font-family: ui-monospace, "SF Mono", monospace;
-  font-size: 11px;
-  line-height: 1.5;
-  padding: 12px;
-  z-index: 10;
-  border: 1px solid #45475a;
+header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  padding: 8px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
-.log-panel.visible { display: block; }
-.log-entry { padding: 2px 0; border-bottom: 1px solid #313244; }
-.log-entry .dir { font-weight: 600; }
-.log-entry .dir.in { color: #89b4fa; }
-.log-entry .dir.out { color: #a6e3a1; }
-.log-entry .method { color: #f9e2af; }
-.log-entry .detail { color: #6c7086; margin-left: 8px; }
+header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+header .sub { color: var(--muted); font-size: 12.5px; }
+header .spacer { flex: 1; }
+header label { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+
+main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 440px);
+}
+@media (max-width: 900px) {
+  main { grid-template-columns: 1fr; }
+  #inspector { border-left: 0; border-top: 1px solid var(--border); min-height: 50vh; }
+}
+
+#conversation { overflow: auto; padding: 20px 16px 48px; }
+.column { margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+.column[data-width="narrow"] { max-width: 420px; }
+.column[data-width="chat"] { max-width: 720px; }
+.column[data-width="wide"] { max-width: 1000px; }
+.column[data-width="full"] { max-width: none; }
+
+.call {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.call-head { display: flex; align-items: center; gap: 8px; }
+.call-head .name { font-family: var(--mono); font-weight: 600; }
+.call-head .state { color: var(--muted); font-size: 12.5px; flex: 1; }
+.call-head .state.error { color: var(--danger); }
+.call textarea {
+  width: 100%;
+  min-height: 72px;
+  margin-top: 8px;
+  padding: 8px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+.call .args-error { color: var(--danger); font-size: 12.5px; margin-top: 4px; }
+.call .schema { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+
+.app-card {
+  position: relative;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.app-card[data-border="false"] { border-color: transparent; background: transparent; }
+.app-card iframe { display: block; width: 100%; height: 120px; border: 0; }
+.app-card:fullscreen, .app-card[data-shinymcp-fullscreen] { border-radius: 0; display: flex; }
+.app-card[data-shinymcp-fullscreen] { position: fixed; inset: 0; z-index: 100; }
+.app-card:fullscreen iframe, .app-card[data-shinymcp-fullscreen] iframe { flex: 1; height: auto !important; }
+.notice {
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 16px;
+}
+.notice.error { color: var(--danger); border-color: var(--danger); background: var(--danger-bg); white-space: pre-wrap; }
+
+#inspector {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+.tabs { display: flex; gap: 2px; padding: 6px 8px 0; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tabs button {
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+.tabs button[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); }
+.tabs .count { font-size: 11px; margin-left: 4px; color: var(--muted); }
+.panel { flex: 1; overflow: auto; padding: 12px; }
+.panel[hidden] { display: none; }
+.panel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin: 16px 0 6px; font-weight: 600; }
+.panel h2:first-child { margin-top: 0; }
+.panel p.hint { color: var(--muted); margin: 0 0 10px; font-size: 12.5px; }
+.panel .empty { color: var(--muted); font-style: italic; }
+.block {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  margin: 0 0 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-x: auto;
+}
+.block img { max-width: 100%; display: block; border-radius: 4px; }
+.meta-line { color: var(--muted); font-size: 12px; margin: 0 0 8px; }
+.tag { display: inline-block; font-size: 11px; border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; margin-left: 4px; color: var(--muted); }
+.tag.error { color: var(--danger); border-color: var(--danger); }
+
+.entries { list-style: none; margin: 0; padding: 0; }
+.entries li { border-bottom: 1px solid var(--border); }
+.entries details > summary {
+  list-style: none;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 58px 22px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: baseline;
+  padding: 5px 2px;
+  font-size: 12.5px;
+}
+.entries details > summary::-webkit-details-marker { display: none; }
+.entries .time { color: var(--muted); font-family: var(--mono); font-size: 11.5px; }
+.entries .dir { color: var(--muted); text-align: center; }
+.entries .what { font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entries .note { color: var(--muted); font-size: 11.5px; }
+.entries .note.error { color: var(--danger); }
+.entries pre { margin: 0 0 8px; }
+.toolbar { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; font-size: 12.5px; color: var(--muted); }
+table.tools { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+table.tools th, table.tools td { text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); vertical-align: top; }
+table.tools th { color: var(--muted); font-weight: 600; }
 </style>
 </head>
 <body>
-
 <header>
-  <span class="title">{{APP_NAME}}</span>
-  <span class="badge">shinymcp preview</span>
+  <div>
+    <h1 id="title">{{TITLE}}</h1>
+    <div class="sub">shinymcp preview</div>
+  </div>
   <span class="spacer"></span>
-  <span class="status" id="status">
-    <span class="dot" id="statusDot"></span>
-    <span id="statusText">connecting&hellip;</span>
-  </span>
+  <label>Tool <select id="tool-select"></select></label>
+  <label>Theme
+    <select id="theme-select">
+      <option value="system">System</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
+  </label>
+  <label>Width
+    <select id="width-select">
+      <option value="narrow">Narrow</option>
+      <option value="chat" selected>Chat</option>
+      <option value="wide">Wide</option>
+      <option value="full">Full</option>
+    </select>
+  </label>
+  <label title="Send the host's style variables to the app, as most chat clients do"><input type="checkbox" id="styles-toggle" checked> Host styles</label>
 </header>
+<main>
+  <section id="conversation" aria-label="Conversation">
+    <div class="column" id="column" data-width="chat">
+      <div class="call" id="call" hidden>
+        <div class="call-head">
+          <span class="name" id="call-name"></span>
+          <span class="state" id="call-state"></span>
+          <button type="button" class="primary" id="call-button">Call</button>
+        </div>
+        <textarea id="call-args" spellcheck="false" aria-label="Tool arguments (JSON)"></textarea>
+        <div class="args-error" id="args-error" hidden></div>
+        <div class="schema" id="call-schema"></div>
+      </div>
+      <div id="stage"></div>
+    </div>
+  </section>
+  <section id="inspector" aria-label="Inspector">
+    <div class="tabs" role="tablist">
+      <button type="button" role="tab" data-tab="model" aria-selected="true">Model</button>
+      <button type="button" role="tab" data-tab="context">Context<span class="count" id="count-context"></span></button>
+      <button type="button" role="tab" data-tab="calls">Calls<span class="count" id="count-calls"></span></button>
+      <button type="button" role="tab" data-tab="log">Messages<span class="count" id="count-log"></span></button>
+      <button type="button" role="tab" data-tab="server">Server</button>
+    </div>
+    <div class="panel" id="panel-model" role="tabpanel">
+      <p class="hint">What a model receives from the latest call: the result's content and structured content. The data the app draws from travels in <code>_meta</code> and is not sent to the model.</p>
+      <div id="model-out"><p class="empty">No call yet.</p></div>
+    </div>
+    <div class="panel" id="panel-context" role="tabpanel" hidden>
+      <p class="hint">What the app has told the model since it opened (<code>ui/update-model-context</code>, where each update replaces the last), and messages it asked to post to the chat (<code>ui/message</code>).</p>
+      <div id="context-out"><p class="empty">Nothing yet. Change an input in the app.</p></div>
+    </div>
+    <div class="panel" id="panel-calls" role="tabpanel" hidden>
+      <p class="hint">Every tool call, from the model (this page) and from the app.</p>
+      <ul class="entries" id="calls-out"></ul>
+    </div>
+    <div class="panel" id="panel-log" role="tabpanel" hidden>
+      <div class="toolbar">
+        <label><input type="checkbox" id="log-sizes"> Show size changes</label>
+        <button type="button" id="log-clear">Clear</button>
+      </div>
+      <ul class="entries" id="log-out"></ul>
+    </div>
+    <div class="panel" id="panel-server" role="tabpanel" hidden>
+      <div id="server-out"><p class="empty">Connecting…</p></div>
+    </div>
+  </section>
+</main>
 
-<div class="frame-container">
-  <iframe id="appFrame" src="/app.html" sandbox="allow-scripts allow-same-origin"></iframe>
-</div>
-
-<button class="log-toggle" id="logToggle">protocol log</button>
-<div class="log-panel" id="logPanel"></div>
-
-<script>
-{{HOST_JS}}
-</script>
+<script type="application/json" id="preview-config">{{CONFIG}}</script>
+<script>{{HOST_JS}}</script>
 <script>
 (function () {
   "use strict";
 
-  var iframe = document.getElementById("appFrame");
-  var statusDot = document.getElementById("statusDot");
-  var statusText = document.getElementById("statusText");
-  var logPanel = document.getElementById("logPanel");
-  var logToggle = document.getElementById("logToggle");
+  var config = JSON.parse(document.getElementById("preview-config").textContent);
+  var ENDPOINT = config.endpoint || "mcp";
+  var PROTOCOL = config.protocolVersion;
+  var CLIENT_INFO = { name: "shinymcp-preview", version: config.version };
+  var UI_EXTENSION = "io.modelcontextprotocol/ui";
+  var UI_MIME = "text/html;profile=mcp-app";
+  var MAX_LOG = 400;
 
-  logToggle.addEventListener("click", function () {
-    logPanel.classList.toggle("visible");
-  });
+  var $ = function (id) { return document.getElementById(id); };
+  var els = {
+    toolSelect: $("tool-select"),
+    theme: $("theme-select"),
+    width: $("width-select"),
+    styles: $("styles-toggle"),
+    column: $("column"),
+    call: $("call"),
+    callName: $("call-name"),
+    callState: $("call-state"),
+    callArgs: $("call-args"),
+    callButton: $("call-button"),
+    argsError: $("args-error"),
+    callSchema: $("call-schema"),
+    stage: $("stage"),
+    modelOut: $("model-out"),
+    contextOut: $("context-out"),
+    callsOut: $("calls-out"),
+    logOut: $("log-out"),
+    logSizes: $("log-sizes"),
+    serverOut: $("server-out")
+  };
 
-  function escapeHtml(s) {
-    var div = document.createElement("div");
-    div.textContent = s;
-    return div.innerHTML;
+  var state = {
+    tools: [],
+    toolsByName: {},
+    resources: {},
+    host: null,
+    view: 0,
+    contextUpdates: 0,
+    messages: [],
+    calls: 0,
+    logCount: 0
+  };
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === "text") node.textContent = attrs[k];
+      else if (k === "className") node.className = attrs[k];
+      else if (attrs[k] !== null && attrs[k] !== undefined) node.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) {
+      if (c === null || c === undefined) return;
+      node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    });
+    return node;
   }
 
-  function log(direction, method, detail) {
-    var entry = document.createElement("div");
-    entry.className = "log-entry";
-    var dirClass = direction === "in" ? "in" : "out";
-    var arrow = direction === "in" ? "\u2190" : "\u2192";
-    entry.innerHTML =
-      '<span class="dir ' + dirClass + '">' + arrow + "</span> " +
-      '<span class="method">' + escapeHtml(method) + "</span>" +
-      (detail ? '<span class="detail">' + escapeHtml(detail) + "</span>" : "");
-    logPanel.appendChild(entry);
-    logPanel.scrollTop = logPanel.scrollHeight;
+  function clear(node) {
+    while (node.firstChild) node.removeChild(node.firstChild);
   }
 
-  function setStatus(state, text) {
-    statusDot.className = "dot " + state;
-    statusText.textContent = text;
+  function formatBytes(n) {
+    if (n < 1024) return n + " B";
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+    return (n / 1024 / 1024).toFixed(1) + " MB";
   }
 
-  window.shinymcpHost.createHost({
-    container: document.body,
-    iframe: iframe,
-    config: { instanceId: "preview", height: "auto", trigger: "debounce" },
-    appSrc: "/app.html",
-    initialize: function () {
-      return {
-        protocolVersion: "2026-01-26",
-        hostInfo: {
-          name: "shinymcp-preview",
-          version: "0.1.0"
-        },
-        hostCapabilities: {},
-        hostContext: {
-          theme: window.matchMedia &&
-            window.matchMedia("(prefers-color-scheme: dark)").matches
-            ? "dark"
-            : "light",
-          displayMode: "inline"
-        }
-      };
-    },
-    setStatus: function (state, text) {
-      setStatus(state, text);
-    },
-    callTool: function (request) {
-      log("in", "tools/call", request.name);
-      return fetch("/tool", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: request.name,
-          arguments: request.arguments || {}
-        })
-      }).then(function (res) {
-        return res.json();
-      }).then(function (result) {
-        log("out", "ui/notifications/tool-result", request.name);
-        return result;
-      });
-    },
-    readResource: function (request) {
-      log("in", "resources/read", request.uri);
-      return fetch("/resource", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ uri: request.uri })
-      }).then(function (res) {
-        return res.json();
-      }).then(function (result) {
-        if (result && result.error) {
-          throw new Error(result.error);
-        }
-        log("out", "resources/read", request.uri);
-        return result;
-      });
-    },
-    onNotification: function (method, params) {
-      log("in", method, "notification");
-      if (
-        method === "ui/notifications/size-changed" &&
-        params &&
-        typeof params.height === "number"
-      ) {
-        iframe.style.height = Math.min(params.height + 2, 2000) + "px";
-      }
+  function byteLength(value) {
+    try {
+      return new Blob([typeof value === "string" ? value : JSON.stringify(value)]).size;
+    } catch (e) {
+      return 0;
     }
+  }
+
+  // Long strings (base64 images, page HTML) shortened for display.
+  function shorten(value, limit) {
+    limit = limit || 400;
+    if (typeof value === "string") {
+      return value.length > limit ? value.slice(0, 80) + "… (" + formatBytes(byteLength(value)) + ")" : value;
+    }
+    if (Array.isArray(value)) return value.map(function (v) { return shorten(v, limit); });
+    if (value && typeof value === "object") {
+      var out = {};
+      Object.keys(value).forEach(function (k) { out[k] = shorten(value[k], limit); });
+      return out;
+    }
+    return value;
+  }
+
+  function jsonBlock(value, limit) {
+    return el("pre", { className: "block", text: JSON.stringify(shorten(value, limit), null, 2) });
+  }
+
+  function clock() {
+    var d = new Date();
+    function p(n) { return (n < 10 ? "0" : "") + n; }
+    return p(d.getHours()) + ":" + p(d.getMinutes()) + ":" + p(d.getSeconds());
+  }
+
+  function setCount(id, n) {
+    $(id).textContent = n ? String(n) : "";
+  }
+
+  function isAppTool(tool) {
+    var vis = tool && tool._meta && tool._meta.ui && tool._meta.ui.visibility;
+    return !Array.isArray(vis) || vis.indexOf("app") >= 0;
+  }
+
+  function isModelTool(tool) {
+    var vis = tool && tool._meta && tool._meta.ui && tool._meta.ui.visibility;
+    return !Array.isArray(vis) || vis.indexOf("model") >= 0;
+  }
+
+  function resourceUri(tool) {
+    var meta = (tool && tool._meta) || {};
+    return (meta.ui && meta.ui.resourceUri) || meta["ui/resourceUri"] || null;
+  }
+
+  // ---------------------------------------------------------------------------
+  // MCP client: the stateless protocol revision over HTTP
+  // ---------------------------------------------------------------------------
+
+  var seq = 0;
+
+  function headerValue(value) {
+    value = String(value);
+    if (/^[\x21-\x7e](?:[\x20-\x7e]*[\x21-\x7e])?$/.test(value)) return value;
+    var bytes = unescape(encodeURIComponent(value));
+    return "=?base64?" + btoa(bytes) + "?=";
+  }
+
+  function mcp(method, params) {
+    params = params || {};
+    var meta = {};
+    Object.keys(params._meta || {}).forEach(function (k) { meta[k] = params._meta[k]; });
+    meta["io.modelcontextprotocol/protocolVersion"] = PROTOCOL;
+    meta["io.modelcontextprotocol/clientInfo"] = CLIENT_INFO;
+    meta["io.modelcontextprotocol/clientCapabilities"] = {
+      extensions: (function () { var x = {}; x[UI_EXTENSION] = { mimeTypes: [UI_MIME] }; return x; })()
+    };
+    var body = { jsonrpc: "2.0", id: "preview-" + ++seq, method: method, params: {} };
+    Object.keys(params).forEach(function (k) { body.params[k] = params[k]; });
+    body.params._meta = meta;
+    var headers = {
+      "Content-Type": "application/json",
+      "Accept": "application/json, text/event-stream",
+      "MCP-Protocol-Version": PROTOCOL,
+      "Mcp-Method": method
+    };
+    if (method === "tools/call") headers["Mcp-Name"] = headerValue(params.name);
+    if (method === "resources/read") headers["Mcp-Name"] = headerValue(params.uri);
+    return fetch(ENDPOINT, { method: "POST", headers: headers, body: JSON.stringify(body) })
+      .then(function (res) {
+        return res.text().then(function (text) {
+          var data;
+          try {
+            data = JSON.parse(text);
+          } catch (e) {
+            throw new Error("The server answered " + res.status + " with something other than JSON: " + text.slice(0, 200));
+          }
+          return data;
+        });
+      });
+  }
+
+  // Resolve with the result, or reject with the JSON-RPC error.
+  function mcpResult(method, params) {
+    return mcp(method, params).then(function (response) {
+      if (response.error) {
+        var err = new Error(response.error.message);
+        err.code = response.error.code;
+        throw err;
+      }
+      return response.result;
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Inspector: log, calls, context, model view, server
+  // ---------------------------------------------------------------------------
+
+  function describeMessage(msg) {
+    if (msg.method) return msg.method + (msg.id !== undefined ? "" : "");
+    if (msg.error) return "error for #" + msg.id;
+    return "result for #" + msg.id;
+  }
+
+  function logMessage(direction, msg) {
+    var isSize = msg.method === "ui/notifications/size-changed";
+    var arrow = direction === "in" ? "←" : "→";
+    var who = direction === "in" ? "from the app" : "to the app";
+    var item = el("li", { "data-size": isSize ? "true" : null, hidden: isSize && !els.logSizes.checked ? "" : null }, [
+      el("details", {}, [
+        el("summary", {}, [
+          el("span", { className: "time", text: clock() }),
+          el("span", { className: "dir", title: who, text: arrow }),
+          el("span", { className: "what", text: describeMessage(msg) }),
+          el("span", { className: "note" + (msg.error ? " error" : ""), text: msg.id !== undefined && msg.id !== null ? "#" + msg.id : "" })
+        ]),
+        jsonBlock(msg)
+      ])
+    ]);
+    els.logOut.insertBefore(item, els.logOut.firstChild);
+    while (els.logOut.children.length > MAX_LOG) els.logOut.removeChild(els.logOut.lastChild);
+    state.logCount++;
+    setCount("count-log", state.logCount);
+  }
+
+  function logCall(entry) {
+    state.calls++;
+    setCount("count-calls", state.calls);
+    var result = entry.result;
+    var status = entry.error ? "error" : result && result.isError ? "tool error" : "";
+    var size = result ? formatBytes(byteLength(result)) : "";
+    var item = el("li", {}, [
+      el("details", {}, [
+        el("summary", {}, [
+          el("span", { className: "time", text: clock() }),
+          el("span", { className: "dir", title: entry.caller === "model" ? "called by the model" : "called by the app", text: entry.caller === "model" ? "M" : "A" }),
+          el("span", { className: "what", text: entry.name }),
+          el("span", { className: "note" + (status ? " error" : ""), text: status || [entry.ms !== undefined ? entry.ms + " ms" : "", size].filter(Boolean).join(" · ") })
+        ]),
+        el("div", {}, [
+          el("div", { className: "meta-line", text: "Arguments" }),
+          jsonBlock(entry.arguments || {}),
+          el("div", { className: "meta-line", text: entry.error ? "Error" : "Result" }),
+          jsonBlock(entry.error || result || {})
+        ])
+      ])
+    ]);
+    els.callsOut.insertBefore(item, els.callsOut.firstChild);
+    while (els.callsOut.children.length > MAX_LOG) els.callsOut.removeChild(els.callsOut.lastChild);
+  }
+
+  function contentBlocks(content) {
+    var out = [];
+    (content || []).forEach(function (block) {
+      if (!block) return;
+      if (block.type === "text") {
+        out.push(el("div", { className: "block", text: block.text || "" }));
+      } else if (block.type === "image") {
+        out.push(el("div", { className: "block" }, [
+          el("img", { src: "data:" + block.mimeType + ";base64," + block.data, alt: "Image content block" }),
+          el("div", { className: "meta-line", text: block.mimeType + ", " + formatBytes(Math.round(String(block.data || "").length * 3 / 4)) })
+        ]));
+      } else {
+        out.push(jsonBlock(block));
+      }
+    });
+    return out;
+  }
+
+  function showModelView(name, args, result, error) {
+    clear(els.modelOut);
+    if (error) {
+      els.modelOut.appendChild(el("div", { className: "notice error", text: "The call failed: " + error.message }));
+      return;
+    }
+    var forModel = { content: result.content || [] };
+    if (result.structuredContent !== undefined) forModel.structuredContent = result.structuredContent;
+    var viewBytes = result._meta ? byteLength(result._meta) : 0;
+    els.modelOut.appendChild(el("p", { className: "meta-line" }, [
+      el("code", { text: name }),
+      " · about " + formatBytes(byteLength(forModel)) + " for the model",
+      viewBytes ? ", " + formatBytes(viewBytes) + " of view data in _meta" : "",
+      result.isError ? el("span", { className: "tag error", text: "isError" }) : null
+    ]));
+    els.modelOut.appendChild(el("h2", { text: "Content" }));
+    var blocks = contentBlocks(result.content);
+    if (!blocks.length) blocks.push(el("p", { className: "empty", text: "No content blocks." }));
+    blocks.forEach(function (b) { els.modelOut.appendChild(b); });
+    els.modelOut.appendChild(el("h2", { text: "Structured content" }));
+    els.modelOut.appendChild(
+      result.structuredContent === undefined
+        ? el("p", { className: "empty", text: "None." })
+        : jsonBlock(result.structuredContent, 2000)
+    );
+  }
+
+  function showContext(params) {
+    state.contextUpdates++;
+    setCount("count-context", state.contextUpdates + state.messages.length);
+    renderContext(params);
+  }
+
+  function renderContext(latest) {
+    clear(els.contextOut);
+    if (latest) {
+      els.contextOut.appendChild(el("h2", { text: "Model context" }));
+      els.contextOut.appendChild(el("p", { className: "meta-line", text: "Update " + state.contextUpdates + ", " + clock() + ", " + formatBytes(byteLength(latest)) }));
+      contentBlocks(latest.content).forEach(function (b) { els.contextOut.appendChild(b); });
+      if (latest.structuredContent !== undefined) els.contextOut.appendChild(jsonBlock(latest.structuredContent, 2000));
+    }
+    if (state.messages.length) {
+      els.contextOut.appendChild(el("h2", { text: "Messages for the chat" }));
+      state.messages.slice().reverse().forEach(function (m) {
+        els.contextOut.appendChild(el("p", { className: "meta-line", text: m.time + ", as " + (m.params.role || "user") }));
+        contentBlocks(m.params.content).forEach(function (b) { els.contextOut.appendChild(b); });
+      });
+    }
+    if (!latest && !state.messages.length) {
+      els.contextOut.appendChild(el("p", { className: "empty", text: "Nothing yet. Change an input in the app." }));
+    }
+  }
+
+  function showServer(discover) {
+    clear(els.serverOut);
+    var info = (discover._meta && discover._meta["io.modelcontextprotocol/serverInfo"]) || {};
+    els.serverOut.appendChild(el("h2", { text: "Server" }));
+    els.serverOut.appendChild(el("p", {}, [
+      el("strong", { text: info.name || "unknown" }), " " + (info.version || ""),
+      el("br"),
+      el("span", { className: "meta-line", text: "Protocol versions: " + (discover.supportedVersions || []).join(", ") })
+    ]));
+    if (discover.instructions) {
+      els.serverOut.appendChild(el("h2", { text: "Instructions" }));
+      els.serverOut.appendChild(el("div", { className: "block", text: discover.instructions }));
+    }
+    els.serverOut.appendChild(el("h2", { text: "Tools" }));
+    var table = el("table", { className: "tools" }, [
+      el("thead", {}, [el("tr", {}, [el("th", { text: "Name" }), el("th", { text: "Callable by" }), el("th", { text: "Arguments" })])])
+    ]);
+    var body = el("tbody");
+    state.tools.forEach(function (t) {
+      var who = [isModelTool(t) ? "model" : null, isAppTool(t) ? "app" : null].filter(Boolean).join(", ");
+      var props = (t.inputSchema && t.inputSchema.properties) || {};
+      var args = Object.keys(props).join(", ") || "none";
+      var annotations = t.annotations || {};
+      body.appendChild(el("tr", {}, [
+        el("td", {}, [el("code", { text: t.name }), annotations.readOnlyHint ? el("span", { className: "tag", text: "read-only" }) : null, annotations.destructiveHint ? el("span", { className: "tag error", text: "destructive" }) : null]),
+        el("td", { text: who }),
+        el("td", { text: args })
+      ]));
+    });
+    table.appendChild(body);
+    els.serverOut.appendChild(table);
+    els.serverOut.appendChild(el("h2", { text: "UI resources" }));
+    var uris = {};
+    state.tools.forEach(function (t) { var u = resourceUri(t); if (u) uris[u] = true; });
+    var list = Object.keys(uris);
+    if (!list.length) els.serverOut.appendChild(el("p", { className: "empty", text: "None." }));
+    list.forEach(function (uri) {
+      var res = state.resources[uri];
+      els.serverOut.appendChild(el("p", {}, [
+        el("code", { text: uri }),
+        res ? el("span", { className: "meta-line", text: " " + formatBytes(byteLength(res.text || "")) }) : null
+      ]));
+      if (res && res.meta && res.meta.csp) {
+        els.serverOut.appendChild(el("div", { className: "meta-line", text: "Content Security Policy" }));
+        els.serverOut.appendChild(jsonBlock(res.meta.csp));
+      }
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Theme, width, and host styles
+  // ---------------------------------------------------------------------------
+
+  var HOST_STYLES = {
+    "--color-background-primary": "light-dark(#ffffff, #232322)",
+    "--color-background-secondary": "light-dark(#f8f8f6, #2a2a28)",
+    "--color-background-tertiary": "light-dark(#f0efeb, #31312e)",
+    "--color-background-danger": "light-dark(#fef3f2, #3a1d1b)",
+    "--color-text-primary": "light-dark(#1f1f1e, #ecebe7)",
+    "--color-text-secondary": "light-dark(#6b6a65, #a3a29c)",
+    "--color-text-danger": "light-dark(#b42318, #f97066)",
+    "--color-border-primary": "light-dark(#dddcd6, #3b3b38)",
+    "--color-border-danger": "light-dark(#fda29b, #7a271a)",
+    "--color-ring-primary": "light-dark(#2563eb, #7aa2f7)",
+    "--font-sans": "system-ui, -apple-system, \"Segoe UI\", Roboto, sans-serif",
+    "--font-mono": "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    "--font-text-sm-size": "14px",
+    "--font-text-sm-line-height": "1.45",
+    "--border-radius-sm": "4px",
+    "--border-radius-md": "6px",
+    "--border-radius-lg": "10px"
+  };
+
+  function currentTheme() {
+    var choice = els.theme.value;
+    if (choice === "light" || choice === "dark") return choice;
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  function applyTheme() {
+    document.documentElement.setAttribute("data-theme", currentTheme());
+    if (state.host) state.host.refreshContext();
+  }
+
+  els.theme.addEventListener("change", applyTheme);
+  if (window.matchMedia) {
+    var mq = window.matchMedia("(prefers-color-scheme: dark)");
+    if (mq.addEventListener) mq.addEventListener("change", applyTheme);
+  }
+  els.width.addEventListener("change", function () {
+    els.column.setAttribute("data-width", els.width.value);
   });
+  els.styles.addEventListener("change", function () {
+    if (state.host) state.host.refreshContext();
+  });
+  els.logSizes.addEventListener("change", function () {
+    Array.prototype.forEach.call(els.logOut.querySelectorAll("li[data-size]"), function (li) {
+      li.hidden = !els.logSizes.checked;
+    });
+  });
+  $("log-clear").addEventListener("click", function () {
+    clear(els.logOut);
+    state.logCount = 0;
+    setCount("count-log", 0);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function (tab) {
+    tab.addEventListener("click", function () {
+      Array.prototype.forEach.call(document.querySelectorAll(".tabs button"), function (t) {
+        t.setAttribute("aria-selected", t === tab ? "true" : "false");
+      });
+      Array.prototype.forEach.call(document.querySelectorAll(".panel"), function (p) {
+        p.hidden = p.id !== "panel-" + tab.getAttribute("data-tab");
+      });
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Calling a tool as the model does, and showing the app
+  // ---------------------------------------------------------------------------
+
+  function selectTool(name) {
+    var tool = state.toolsByName[name];
+    if (!tool) return;
+    els.toolSelect.value = name;
+    els.call.hidden = false;
+    els.callName.textContent = name;
+    var props = (tool.inputSchema && tool.inputSchema.properties) || {};
+    var required = (tool.inputSchema && tool.inputSchema.required) || [];
+    var parts = Object.keys(props).map(function (k) {
+      var p = props[k] || {};
+      var type = p.type || (p["enum"] ? "enum" : "any");
+      if (Array.isArray(type)) type = type.join(" | ");
+      return k + (required.indexOf(k) >= 0 ? "" : "?") + ": " + type + (p["enum"] ? " (" + p["enum"].join(", ") + ")" : "");
+    });
+    els.callSchema.textContent = parts.length ? "Arguments: " + parts.join("; ") : "This tool takes no arguments.";
+  }
+
+  function readArguments() {
+    var text = els.callArgs.value.trim();
+    els.argsError.hidden = true;
+    if (!text) return {};
+    try {
+      var parsed = JSON.parse(text);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Arguments must be a JSON object.");
+      return parsed;
+    } catch (e) {
+      els.argsError.textContent = e.message;
+      els.argsError.hidden = false;
+      return null;
+    }
+  }
+
+  function readResource(uri) {
+    if (state.resources[uri]) return Promise.resolve(state.resources[uri]);
+    return mcpResult("resources/read", { uri: uri }).then(function (result) {
+      var content = (result.contents || [])[0] || {};
+      var res = { text: content.text || "", mimeType: content.mimeType, meta: (content._meta && content._meta.ui) || {} };
+      state.resources[uri] = res;
+      return res;
+    });
+  }
+
+  function callAsModel(name, args) {
+    var tool = state.toolsByName[name];
+    if (!tool) return;
+    var uri = resourceUri(tool);
+    var started = Date.now();
+    els.callState.textContent = "Running…";
+    els.callState.className = "state";
+    els.callButton.disabled = true;
+
+    var call = mcp("tools/call", { name: name, arguments: args }).then(function (response) {
+      var ms = Date.now() - started;
+      logCall({ caller: "model", name: name, arguments: args, result: response.result, error: response.error, ms: ms });
+      if (response.error) {
+        var err = new Error(response.error.message);
+        err.code = response.error.code;
+        throw err;
+      }
+      showModelView(name, args, response.result);
+      els.callState.textContent = (response.result.isError ? "Returned an error" : "Done") + " in " + ms + " ms";
+      if (response.result.isError) els.callState.className = "state error";
+      return response.result;
+    });
+    call.then(null, function (err) {
+      showModelView(name, args, null, err);
+      els.callState.textContent = "Failed";
+      els.callState.className = "state error";
+    }).then(function () {
+      els.callButton.disabled = false;
+    });
+
+    closeView().then(function () {
+      if (!uri) {
+        clear(els.stage);
+        els.stage.appendChild(el("div", { className: "notice", text: "This tool has no UI. A chat client shows its text result, as in the Model tab." }));
+        return;
+      }
+      return readResource(uri).then(function (res) {
+        openView(tool, args, call, res);
+      }, function (err) {
+        clear(els.stage);
+        els.stage.appendChild(el("div", { className: "notice error", text: "Couldn't read " + uri + ": " + err.message }));
+      });
+    });
+  }
+
+  function closeView() {
+    var host = state.host;
+    state.host = null;
+    if (!host) return Promise.resolve();
+    return host.teardown("A new tool call replaced this view.").then(function () {
+      clear(els.stage);
+    });
+  }
+
+  function openView(tool, args, call, res) {
+    clear(els.stage);
+    state.contextUpdates = 0;
+    state.messages = [];
+    renderContext(null);
+    setCount("count-context", 0);
+    var card = el("div", { className: "app-card", "data-border": res.meta.prefersBorder === false ? "false" : null });
+    var iframe = el("iframe", { title: tool.title || tool.name });
+    card.appendChild(iframe);
+    els.stage.appendChild(card);
+    var view = ++state.view;
+    state.host = window.shinymcpHost.create({
+      container: card,
+      iframe: iframe,
+      html: res.text,
+      csp: res.meta.csp,
+      permissions: res.meta.permissions,
+      height: "auto",
+      tool: tool,
+      toolInput: args,
+      toolResult: call,
+      hostInfo: { name: "shinymcp-preview", version: config.version },
+      theme: currentTheme,
+      styles: function () {
+        return els.styles.checked ? { variables: HOST_STYLES } : undefined;
+      },
+      canCallTool: function (name) {
+        var t = state.toolsByName[name];
+        return !!t && isAppTool(t);
+      },
+      send: function (message) {
+        var started = Date.now();
+        return mcp(message.method, message.params).then(function (response) {
+          if (view !== state.view) return response;
+          if (message.method === "tools/call") {
+            logCall({
+              caller: "app",
+              name: message.params.name,
+              arguments: message.params.arguments,
+              result: response.result,
+              error: response.error,
+              ms: Date.now() - started
+            });
+          }
+          return response;
+        });
+      },
+      onTraffic: function (direction, msg) {
+        if (view === state.view) logMessage(direction, msg);
+      },
+      onEvent: function (type, detail) {
+        if (view !== state.view) return;
+        if (type === "model-context") showContext(detail);
+        if (type === "message") {
+          state.messages.push({ time: clock(), params: detail });
+          setCount("count-context", state.contextUpdates + state.messages.length);
+          renderContext(state.host && state.host.modelContext());
+        }
+      }
+    });
+  }
+
+  els.callButton.addEventListener("click", function () {
+    var args = readArguments();
+    if (args) callAsModel(els.toolSelect.value, args);
+  });
+  els.toolSelect.addEventListener("change", function () {
+    selectTool(els.toolSelect.value);
+    els.callArgs.value = "{}";
+  });
+
+  // ---------------------------------------------------------------------------
+  // Start
+  // ---------------------------------------------------------------------------
+
+  applyTheme();
+  Promise.all([mcpResult("server/discover", {}), mcpResult("tools/list", {})]).then(
+    function (results) {
+      state.tools = results[1].tools || [];
+      state.tools.forEach(function (t) { state.toolsByName[t.name] = t; });
+      var modelTools = state.tools.filter(isModelTool);
+      clear(els.toolSelect);
+      modelTools.forEach(function (t) {
+        els.toolSelect.appendChild(el("option", { value: t.name, text: t.title ? t.title + " (" + t.name + ")" : t.name }));
+      });
+      showServer(results[0]);
+      if (!modelTools.length) {
+        els.stage.appendChild(el("div", { className: "notice", text: "The server has no tools a model can call." }));
+        return;
+      }
+      var entry = state.toolsByName[config.entryTool] ? config.entryTool : modelTools[0].name;
+      selectTool(entry);
+      var args = config.arguments && typeof config.arguments === "object" ? config.arguments : {};
+      els.callArgs.value = JSON.stringify(args, null, 2);
+      callAsModel(entry, args);
+    },
+    function (err) {
+      clear(els.serverOut);
+      els.stage.appendChild(el("div", { className: "notice error", text: "Couldn't reach the MCP server at " + ENDPOINT + ": " + err.message }));
+    }
+  );
 })();
 </script>
 </body>

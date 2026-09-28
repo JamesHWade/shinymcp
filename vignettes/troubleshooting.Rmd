@@ -1,0 +1,151 @@
+---
+title: "Troubleshooting"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Troubleshooting}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+Most problems are easier to see in `preview_app()` than in a chat client.
+It shows the app as clients do, under the same Content Security Policy, and
+next to it what the model received, every tool call with its result, the
+protocol messages, and the server's tools. The browser's developer console
+shows the page's own errors; the preview's page is in an iframe, so choose
+it in the console's context menu.
+
+In R, `app$run_tool("name", list(...))` returns exactly what a client would
+receive, and `app$call_tool()` the tool's R value.
+
+## The client doesn't list the app's tools
+
+The client couldn't start the server, or the server stopped.
+
+* Run the command the client runs, `Rscript /full/path/to/app.R`, in a
+  terminal. It should wait for input without printing anything (Ctrl+C
+  stops it). An error here is the one the client hit.
+* Use full paths in the client's settings. Desktop clients don't start in
+  your home directory, and on macOS they don't see your shell's `PATH`, so
+  `Rscript` may need its full path too (`which Rscript`).
+* The packages the app uses must be installed in the library that
+  `Rscript` uses. With renv, point the client at the project's library or
+  activate it in the script.
+* Nothing may print to standard output before `serve()` starts: the
+  protocol runs over it. Messages and warnings go to standard error and are
+  fine.
+* Check the client's log. Claude Desktop keeps one for each server, on
+  macOS in `~/Library/Logs/Claude/`.
+
+## The tools work but the app doesn't show
+
+The client doesn't support MCP Apps, or not in this context. Terminal
+clients such as Claude Code show text only. shinymcp gives those clients
+the same tools, with text results.
+
+## Something on the page is missing or blank
+
+Chat clients block anything the app doesn't carry itself.
+
+* Content from another site (map tiles, a script from a CDN, a web font)
+  needs a `csp` declaration: `csp = list(resource_domains = "https://tiles.example.com")`
+  for images, scripts, and stylesheets, `connect_domains` for `fetch()`.
+  The preview's console lists each blocked request.
+* Files the UI loads by relative path must be in the app's `www/` folder
+  or under a path added with `shiny::addResourcePath()`.
+* Fonts don't load from the app itself, so icon fonts such as Font
+  Awesome show nothing. Use SVG icons (the bsicons package, for example).
+
+## An input doesn't reach the tool
+
+* A tool argument takes the value of the input with the same id.
+  `mcp_input(tag, id = "argument")` connects an input whose id differs.
+* An input from a package works if the package registers a Shiny input
+  binding for it. If it uses JavaScript without one, call
+  `Shiny.setInputValue("id", value)` from that JavaScript.
+* Inputs in HTML that a tool returns aren't connected to tools. Put them
+  in the UI from the start.
+* In a live Shiny app with anything marked by `bindMcp()`, the model can
+  only set marked inputs. The person can still change all of them.
+
+## A conditional panel doesn't show or hide
+
+shinymcp reads a `conditionalPanel()`'s condition itself, since chat
+clients forbid running it as JavaScript. A condition it can't read shows
+its panel and logs a warning in the browser's console. Conditions built
+from comparisons, `&&`, `||`, `!`, `input.x`, `output.x`, and methods such
+as `indexOf()` work; functions defined elsewhere on the page don't.
+
+## An output doesn't update
+
+* The names of the list a tool returns must match output ids.
+  `mcp_output(tag, id = "name")` connects an output whose id differs.
+* In a live Shiny app, `req()` that fails clears an output, as in Shiny;
+  `validate()` shows its message in it. An error in a render function
+  shows in the output, and in the text the model receives.
+
+## A live Shiny app stops with an error
+
+An error in an observer ends a Shiny session, in a browser too. shinymcp
+reports it: a tool call from the model returns it as an error, and the page
+shows it above the app. The R console (or the client's log, for a stdio
+server) has the stack trace. The page's next change starts a new session.
+
+## A live Shiny app forgets what the person did
+
+Each view keeps its session in the R process that opened it, for up to an
+hour without use, and a process keeps at most 50 views (the
+`shinymcp.view_timeout` and `shinymcp.max_views` options). When a view's
+session is gone, the page starts a new one from its inputs: what the server
+function kept outside its inputs starts over. On Posit Connect, this also
+happens when requests reach another process; set **Max processes** to 1 for
+apps that keep such state.
+
+## An upload is refused
+
+Uploads work in live Shiny apps; a tool can't take a file from the page.
+They are limited by Shiny's `shiny.maxRequestSize` option, 5 MB unless
+the app sets it higher:
+
+```{r}
+options(shiny.maxRequestSize = 30 * 1024^2)
+```
+
+## The model doesn't know what the person did
+
+The page tells the model through the client, which must support
+`ui/update-model-context`. The preview's Context tab shows what the app
+sent. `mcp_app(model_context = FALSE)` turns it off; in a live Shiny app,
+`mcp_model_context()` replaces the default summary.
+
+In a shinychat conversation, `mcp_chat_host()` passes it on before each
+message the person sends, as a message of its own; `as_shinychat_tool()`
+alone doesn't. Some providers, such as AWS Bedrock, refuse two user
+messages in a row. For those, set `context = FALSE` and put `host$context()`
+in the person's message yourself.
+
+## An app in a Shiny app doesn't show
+
+A card or pane that can't show its app says why, above where the app would
+be:
+
+* *Couldn't reach the app's server*, or *Couldn't load the app*: the URL
+  given to `mcp_client()` is wrong, the server isn't running, or it wants
+  credentials in `headers`. `client$tools()` in the console fails with the
+  same error, in more detail.
+* *This app isn't available any more*: a card restored with a saved
+  conversation, whose server this session doesn't host, or which no longer
+  has the card's tool. Give `mcp_chat_host()` the same sources in every
+  session, with the same names. A client is named after its URL unless you
+  give it a `name`.
+* *... has no tool called ...*, or *The tool ... doesn't show an app*: a
+  pane names a tool its server doesn't have, or one that declares no page.
+  For an app in the same R process, `mcp_host_server()` stops with this
+  error instead.
+
+An app that holds requests open while it waits for changes, as a Shiny app
+served with Shiny's own MCP support can, needs a client `timeout` longer
+than that wait.

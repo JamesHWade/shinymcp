@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "shinymcp-demo": {
-      "command": "Rscript",
-      "args": ["/ABSOLUTE/PATH/TO/serve-to-client/serve.R"]
-    }
-  }
-}

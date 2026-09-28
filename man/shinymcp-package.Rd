@@ -4,11 +4,11 @@
 \name{shinymcp-package}
 \alias{shinymcp}
 \alias{shinymcp-package}
-\title{shinymcp: Convert Shiny Apps to MCP Apps}
+\title{shinymcp: Build MCP Apps from R Functions and 'shiny' UI}
 \description{
 \if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
 
-Converts existing Shiny applications into MCP (Model Context Protocol) Apps that render inside AI chat interfaces. Provides a parse-analyze-generate pipeline for automatic conversion, MCP-compatible UI components, a JavaScript bridge for the MCP Apps postMessage protocol, and a runtime framework for serving MCP Apps with tools and ui:// resources.
+Builds MCP Apps, the Model Context Protocol extension that lets AI chat clients show interactive pages in the conversation. The tools are R functions the model can call on their own, and the page, written with 'shiny' UI functions, calls the same tools as the person uses it. Includes an MCP server over standard input and output or HTTP, an endpoint for deploying apps to Posit Connect, a preview in the browser, and hosts that show apps from any MCP server in 'shiny' apps and 'shinychat' conversations. Until 'shiny' serves apps to MCP clients itself, an existing 'shiny' app can also be served as it is.
 }
 \seealso{
 Useful links:
@@ -21,6 +21,11 @@ Useful links:
 }
 \author{
 \strong{Maintainer}: James Wade \email{github@jameshwade.com}
+
+Authors:
+\itemize{
+  \item James Wade \email{github@jameshwade.com}
+}
 
 }
 \keyword{internal}

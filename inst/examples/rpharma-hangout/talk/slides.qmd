@@ -1097,7 +1097,7 @@ app <- mcp_app(ui = ui, tools = list(tool), name = "rpharma-safety-signal")
 
 # Embed live in a Shiny dashboard:
 mcp_host_ui("safety")
-mcp_host_server("safety", app = app, trigger = "submit",
+mcp_host_server("safety", app, trigger = "submit",
                 initial_arguments = list(cohort = "Lung", ae_term = "Neutropenia"))
 
 # Drop into a shinychat conversation:

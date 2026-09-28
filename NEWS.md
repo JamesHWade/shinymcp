@@ -1,126 +1,166 @@
 # shinymcp (development version)
 
-## MCP Apps spec 2026-01-26 alignment
+This version makes shinymcp about MCP Apps built from R functions and
+Shiny UI, and rewrites the protocol layer, the page's JavaScript, the
+hosts, and the documentation. Code written for earlier versions needs
+changes.
 
-shinymcp now targets the stable MCP Apps specification (2026-01-26,
-<https://github.com/modelcontextprotocol/ext-apps>):
+Serving an existing Shiny app live, with `as_mcp_app()`, still works, but
+it is transitional: Shiny is gaining MCP support of its own
+(rstudio/shiny#4407), and once that is released shinymcp will stop serving
+live apps. The reference pages it affects have a "Shiny's own MCP support"
+section.
 
-* The server now checks the client's
-  `capabilities.extensions["io.modelcontextprotocol/ui"]` extension
-  capability during `initialize`. Clients that don't advertise MCP Apps
-  support receive the same tools without `_meta.ui` annotations, so they
-  degrade gracefully to text-only operation.
-* Core protocol version negotiation now follows the MCP spec: the server
-  echoes a supported requested version (2024-11-05 through 2025-11-25) and
-  otherwise responds with its latest, instead of taking the string minimum.
-* The JS bridge handshake (`ui/initialize`) uses apps protocol version
-  `2026-01-26` and declares `availableDisplayModes`.
-* `ui/update-model-context` is now sent with request semantics per the
-  spec (previously a notification).
-* The server and bridge both answer `ping`.
+## Apps built from tools
 
-## New features
+* Tool arguments from the model are checked against declared schemas;
+  a missing or mistyped argument, including one value where the schema
+  asks for an array, goes back to the model as a tool error. Arguments
+  passed from R count as a client would send them: write an array of one
+  value as `list(x)`.
+* `mcp_tool_result()` sets a result's text and structured data.
+* A tool that takes a button's id runs when the button is pressed, not
+  whenever its other inputs change. The page doesn't run tools annotated
+  as changing something on its own, to fill in outputs or because an
+  input they take changed: they run when a button they take is pressed.
+* `mcp_submit_button()` places the apply button for
+  `mcp_app(trigger = "submit")`.
+* `mcp_app(www = )` writes a folder of scripts, stylesheets, and images
+  into the page. A relative `www` is read from the working directory the
+  app is made in.
+* An app built in an `app.R` and loaded from its directory (`serve()`,
+  `as_mcp_app()`, `mcp_endpoint()`) runs its tools and builds its page in
+  that directory, as a Shiny app's code runs in its own.
+* `mcp_app(theme = )` refuses a UI that is already a page, instead of
+  nesting two pages.
+* Plots are drawn at the size of their output. The page tells each tool
+  call how big its plot outputs are and how dense the screen is, and calls
+  again when an output changes size; an `mcp_plot()` without a height keeps
+  the plot's shape. `mcp_result_plot()`'s `width`, `height`, and `scale`
+  set a size and density of their own.
 
-* `mcp_app()` gains `resources`: declare extra resources (static strings or
-  lazily-evaluated functions) served alongside the app and readable from
-  the UI via the new `window.shinymcp.readResource(uri)` — the spec's
-  view-side `resources/read`. This enables lazy-loading large datasets
-  instead of inlining them into the app HTML. Supported by real chat
-  hosts, the bundled Shiny host, and `preview_app()`.
-* `mcp_app()` gains `tool_outputs`: declare which output ids each tool
-  returns and shinymcp generates a spec-compliant `outputSchema` per tool,
-  with property descriptions derived from the matching UI output types.
-  `convert_app()` scaffolds emit the suggested mapping (commented out
-  until the placeholder tool bodies are completed).
-* The HTTP transport now implements basic streamable-HTTP session
-  management: an `Mcp-Session-Id` is assigned on `initialize`, per-client
-  session state (protocol version, UI capability) is keyed by that header,
-  and `DELETE` terminates a session. Previously concurrent HTTP clients
-  shared one session and could clobber each other's capability
-  negotiation.
+## Protocol and serving
 
-* `mcp_app()` gains `csp`, `permissions`, and `prefers_border` arguments.
-  These publish `_meta.ui` metadata (CSP domain declarations, iframe
-  permissions, border hint) on the app's `ui://` resource in
-  `resources/list` and `resources/read`, so hosts can allow declared
-  external domains. Apps with fully inlined assets (the default) need none
-  of this.
-* `mcp_app()` gains `tool_visibility` to scope tools with
-  `_meta.ui.visibility`: `"app"`-only tools are hidden from the model,
-  `"model"`-only tools are hidden from the rendered UI. Plain-list tools
-  can also carry `visibility` and `outputSchema` fields directly.
-* `mcp_app()` gains `trigger` and `debounce_ms` so standalone apps (not
-  just Shiny-hosted ones) can control when input changes call tools.
-* The bridge now applies host context: the host's `theme` maps to
-  `data-bs-theme` (bslib UIs and the built-in component CSS follow the
-  chat client's light/dark mode automatically), `locale` sets the document
-  language, and `styles.variables` become CSS custom properties. Context
-  updates via `ui/notifications/host-context-changed` are merged and
-  re-applied; shinymcp's Shiny host propagates its page theme live.
-* New `window.shinymcp` JS API inside apps: `callTool()`,
-  `updateModelContext()`, `openLink()`, `sendMessage()`,
-  `requestDisplayMode()`, `log()`, and `getHostContext()`. The bundled
-  Shiny host implements `ui/open-link` and maps
-  `ui/request-display-mode` to its fullscreen toggle, notifying apps of
-  display-mode changes.
+* The server speaks MCP 2024-11-05 through 2025-11-25 and the stateless
+  2026-07-28 revision, and MCP Apps 2026-01-26. It was tested with the
+  official MCP TypeScript client and the MCP Apps host SDK.
+* New `mcp_endpoint()` turns apps into a Shiny app that answers MCP at
+  `/mcp`, for Posit Connect, Shiny Server, and shinyapps.io. Given a Shiny
+  app and `apps`, it serves the Shiny app to browsers and the apps to chat
+  clients, from one deployment; given a Shiny app alone, it serves that app
+  live to chat clients and as usual to browsers. On Posit Connect, tools
+  and server functions see the signed-in user.
+* The HTTP transport checks `Origin` and, on a local server, `Host`
+  (against DNS rebinding); `serve()` gains `allowed_origins` and
+  `allowed_hosts`.
+* Results leave out libraries the page already has, and results for the
+  model name large libraries instead of carrying them.
+* A client that doesn't show MCP Apps is neither told of nor allowed to
+  call tools that only an app may call.
 
-## Bug fixes
+## Hosts
 
-* The bridge now handles JSON-RPC *error* responses: failed `tools/call`
-  requests reject their Promise (and log to the console) instead of
-  leaving the UI silently stuck. (Previously error responses were dropped
-  and pending requests never settled.)
-* Clients that don't advertise the MCP Apps extension still receive the
-  deprecated flat `_meta["ui/resourceUri"]` key, so draft-era hosts keep
-  rendering the UI while the nested `_meta.ui` block remains gated on the
-  negotiated capability.
-* HTTP transport hardening: unknown `Mcp-Session-Id` values get a 404
-  instead of minting sessions, header-less clients keep their negotiated
-  capabilities via a `"__default__"` alias, and the session store is
-  capped with oldest-first eviction.
-* `ui/update-model-context` is debounced (one request per quiet period
-  instead of one per keystroke), and the bridge settles all pending
-  requests on teardown.
-* The `window.shinymcp` API always returns a Promise; without a host (or
-  after teardown) calls reject instead of returning `null`.
-* The bundled Shiny host answers unimplemented request methods with a
-  JSON-RPC `-32601` error instead of a fake `{}` success, so
-  `window.shinymcp.sendMessage()` and friends reject honestly where
-  unsupported.
-* `mcp_tools()` (the shinychat/mcptools path) now honors
-  `tool_visibility`: app-only tools are excluded from model registration,
-  and plain-list tools carry the same `_meta.ui` as `tools/list`.
-* `mcp_app(trigger = , debounce_ms = )` now takes effect in embedded
-  hosts: `mcp_host_server()`/`mcp_embed()` default to the app's
-  declaration instead of silently overriding it, and `serve()`/
-  `preview_app()` warn when an app declares the host-only
-  `"submit"`/`"manual"` modes.
-* Resource content is coerced to a plain string, so
-  `content = function() jsonlite::toJSON(...)` works as documented (the
-  `json` class previously leaked into the wire format and broke
-  `JSON.parse` in the app).
-* `tool_visibility`/`tool_outputs` entries naming a nonexistent tool now
-  warn instead of being silently ignored.
+* New `mcp_chat_host()` hosts apps in a shinychat conversation. The model
+  opens them with their tools; before each message the person sends, it is
+  told what each open app reports about what it shows; a message an app
+  suggests goes to the chat's input box; and a restored conversation shows
+  its apps again without calling their tools. Several chats in one session
+  each keep to their own apps.
+* New `mcp_client()` connects to any MCP server over HTTP, in either
+  protocol era, keeping the `_meta` MCP Apps rely on. Every host takes a
+  client where it takes an app, so a Shiny app can show apps deployed on
+  Posit Connect, Shiny apps served with Shiny's own MCP support, and apps
+  written in other languages. The connection and its credentials stay in
+  R.
+* `mcp_host_ui()` and `mcp_host_server()` host an app in a pane of any
+  Shiny app. The pane's tool is called in R, and `open()` calls it again
+  with other arguments. `as_shinychat_tool()` makes the cards on their own.
+  Panes and cards never hold up the session waiting on a remote server:
+  for a remote server, call `as_shinychat_tool()` where the app starts,
+  since in a session it takes the tools only from the list the client
+  already has. `McpClient$tools(wait = FALSE)` returns that list without
+  asking the server.
+* `mcp_host_server()`, `mcp_embed()`, `as_shinychat_tool()`, and
+  `mcp_content_result()` take a `source`, an app or an `mcp_client()`,
+  where they took `app`. A pane's `execute()` takes `inputs`, and
+  `value_fn`'s `raw_result` is there only for apps in the same process.
+  `mcp_content_result()` needs its `tool` named for a remote server, and in
+  a Shiny session it calls the tool first and returns a promise of the
+  card, so the card is saved with the app's result.
+* A host passes on only the requests an app's page may make: tools visible
+  to the app, resource reads, and `ping`.
+* A chat host passes the model's arguments on as it sent them, so an array
+  of one value reaches the app, or a remote server, as an array. `value_fn`
+  gets them as parsed JSON, with arrays as lists.
+* `preview_app()` shows the app as a chat client does, with panels for what
+  the model receives, the context the app sends, tool calls, protocol
+  messages, and the server's tools.
+
+## Rewriting apps as tools
+
+* `convert_app()`, `as_mcp_apps()`, and the functions behind them
+  (`parse_shiny_app()`, `analyze_reactive_graph()`, and
+  `generate_mcp_app()`) are removed. Their drafts guessed at an app's
+  structure from its code and still left every tool to be written.
+  `vignette("rewriting-as-tools")` and the bundled skill take a person or a
+  coding agent through the rewrite instead.
+* `mcp_tool_module()` serves a module's UI with its server function, or
+  with a `handler` function in its place.
+
+## Serving Shiny apps as they are
+
+* The model's tool takes the app's inputs as arguments, described from the
+  UI (select inputs as choices, sliders as bounded numbers, dates as
+  dates, tabsets as the tab to show). Its result reports what each output
+  shows, with tables (DT's included) as rows and plots as images. Passing
+  `view` changes a view that is already open. `bindMcp()` narrows what the
+  model sees.
+* New helpers for server functions: `mcp_model_context()` and
+  `mcp_send_message()` to reach the model, `mcp_host_context()` for the
+  client's theme and display mode, `mcp_request()` for the caller (and the
+  signed-in user on Posit Connect), and `is_mcp_session()`.
+* The app starts as `shiny::runApp()` would start it: `global.R`, the
+  files in `R/`, and `onStart` run before the UI is built, the app's code
+  runs in its directory, and `onStop` runs when the server stops. Files
+  the UI loads from `www/` or `addResourcePath()` paths are written into
+  the page.
+* Sessions are limited by the `shinymcp.max_views` and
+  `shinymcp.view_timeout` options (see `help("shinymcp-options")`). A view
+  whose session is gone starts a new one from the page's inputs, whether
+  the page was sending a change, downloading a file, or fetching a table's
+  rows, and the page then shows what the new session shows.
+* An error in an observer ends the view's session, as it ends a browser's.
+  The model, or the page, gets the error, and the page's next change
+  starts a new session.
+
+## What works on a live app's page
+
+* Packages written for Shiny's JavaScript work, because the page provides
+  `window.Shiny`: input bindings (shinyWidgets, bslib's sidebars,
+  accordions, switches, and task buttons), `Shiny.setInputValue()` (DT row
+  selection, `plotly::event_data()`, leaflet events), custom message
+  handlers (shinyjs), and the `shiny:*` events (shinycssloaders).
+* `conditionalPanel()` works. Chat clients forbid `eval()`, so shinymcp
+  reads conditions itself; it understands comparisons, logic, arithmetic,
+  `input.x`, `output.x`, `.length`, regular expressions, and common string
+  and array methods.
+* Clicks, double clicks, hovers, and brushes on plots send what Shiny's
+  client sends, so `nearPoints()` and `brushedPoints()` work.
+* `renderUI()`, `insertUI()`, modals, notifications, downloads, and
+  `insertTab()`, `removeTab()`, `hideTab()`, and `showTab()` reach the page.
+* `fileInput()` uploads work, within `shiny.maxRequestSize`.
+* `updateSelectizeInput(server = TRUE)` works: the page shows the first
+  1,000 choices, with a search box for the rest.
+* `invalidateLater()` and `reactivePoll()` run while the app is open, and
+  an `ExtendedTask`'s result appears when the task finishes.
+* `varSelectInput()` values arrive as symbols, and outputs set to a
+  `reactive()` work.
+* Leaflet's default markers show. The leaflet package loads their images
+  from a CDN, which chat clients block; the page carries them instead.
 
 ## Documentation
 
-* New `vignette("mcp-apps-protocol")`: a message-level walkthrough of the
-  protocol, a spec compliance table, documented deviations, and guidance
-  on CSP, theming, and tool visibility.
-* The examples are now organized as a ladder of gradually increasing
-  complexity (`vignette("use-cases")` is the guided tour), with a new
-  `feature-tour` example demonstrating app-only tools, lazy-loaded
-  resources, declared output schemas, theme syncing, and the
-  `window.shinymcp` host-interaction API in one annotated app. The
-  penguins, use-case gallery, and R/Pharma demo apps now declare
-  `tool_outputs` (and the R/Pharma contract inspector renders the
-  resulting `outputSchema`).
-* The R/Pharma genAI Day talk materials (slides, run-of-show, demo README)
-  now cover the model-context loop, capability negotiation and graceful
-  degradation, visibility/output-schema contract scoping, deny-by-default
-  CSP, and a complete build-one-this-week closing recipe.
-* README gains "Where MCP Apps run" (host support and graceful
-  degradation) and "External assets and CSP" sections.
-* `vignette("debugging-shinymcp")` covers the most common failure modes:
-  hosts without the apps extension, error responses, CSP blocks, and dark
-  mode styling.
+* New articles: building an app from tools, running an app, hosting MCP
+  Apps in Shiny, rewriting a Shiny app as tools, serving a Shiny app as it
+  is, how shinymcp works, and troubleshooting. The README and "Get
+  started" build an app from a tool.

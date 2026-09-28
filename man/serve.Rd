@@ -2,20 +2,84 @@
 % Please edit documentation in R/serve.R
 \name{serve}
 \alias{serve}
-\title{Serve an MCP App}
+\title{Serve MCP Apps to an MCP client}
 \usage{
-serve(app, type = c("stdio", "http"), port = 8080, ...)
+serve(
+  app,
+  type = c("stdio", "http"),
+  port = 8080,
+  host = "127.0.0.1",
+  path = "/mcp",
+  allowed_origins = NULL,
+  allowed_hosts = NULL,
+  ...
+)
 }
 \arguments{
-\item{app}{An McpApp object, or a path to a Shiny app (which will be
-auto-converted via \code{\link[=convert_app]{convert_app()}}).}
+\item{app}{An \link{McpApp}, a list of apps to serve from one server, a Shiny
+app object, or a path to a directory containing an \code{app.R} (or \code{ui.R}
+and \code{server.R}). Shiny apps run live; see \code{\link[=as_mcp_app]{as_mcp_app()}}.}
 
-\item{type}{Server transport type: \code{"stdio"} or \code{"http"}.}
+\item{type}{\code{"stdio"} or \code{"http"}.}
 
-\item{port}{Port for HTTP transport (default 8080).}
+\item{port, host}{Where the HTTP server listens. The default host only
+accepts connections from this machine; use \code{"0.0.0.0"} to listen on
+all interfaces, and put the server behind authentication.}
 
-\item{...}{Additional arguments (currently unused).}
+\item{path}{The HTTP endpoint path.}
+
+\item{allowed_origins}{Browser origins, besides the server's own and
+loopback ones for a local server, allowed to call the HTTP endpoint,
+for example \code{"https://chat.example.com"}. Use \code{"*"} to allow any.}
+
+\item{allowed_hosts}{For a server listening on this machine only, the
+host names it may be reached at besides \code{localhost} and IP addresses,
+such as the public name of a reverse proxy in front of it. Requests for
+any other host are refused, which protects a local server from web
+pages that point their own host name at it (DNS rebinding).}
+
+\item{...}{Unused; for future extensions.}
+}
+\value{
+Nothing; \code{serve()} runs until the connection closes.
 }
 \description{
-Starts an MCP server that serves the app's tools and ui:// resources.
+\code{serve()} starts an MCP server for an app and blocks until the client
+disconnects (stdio) or you interrupt it (HTTP).
+\itemize{
+\item \code{type = "stdio"}, the default, is for desktop clients such as Claude
+Desktop, VS Code, and Goose, which start the R process themselves and
+talk to it over standard input and output. Put \code{serve(app)} at the end
+of a script and register \code{Rscript /path/to/script.R} with the client.
+\item \code{type = "http"} runs a long-lived Streamable HTTP server at
+\verb{http://host:port/mcp}, for clients that connect to a URL. To deploy
+to Posit Connect, use \code{\link[=mcp_endpoint]{mcp_endpoint()}} instead.
 }
+
+The server speaks MCP protocol versions 2024-11-05 through 2025-11-25
+(with an \code{initialize} handshake) and 2026-07-28 (stateless, no
+handshake), and the MCP Apps extension (2026-01-26). Clients that don't
+support MCP Apps still get every tool; they see text results instead of
+the app.
+}
+\examples{
+\dontrun{
+# app.R, registered with Claude Desktop as `Rscript /path/to/app.R`
+library(shinymcp)
+app <- mcp_app(ui, tools, name = "explorer")
+serve(app)
+
+# An existing Shiny app, served live
+serve("path/to/shiny-app")
+
+# Over HTTP
+serve(app, type = "http", port = 8080)
+}
+}
+\seealso{
+Other serving:
+\code{\link[=mcp_endpoint]{mcp_endpoint()}},
+\code{\link[=preview_app]{preview_app()}},
+\code{\link{shinymcp-options}}
+}
+\concept{serving}

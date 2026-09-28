@@ -1,389 +1,457 @@
-# as_mcp_app() - convert various objects to McpApp
-#
-# S3 generic that converts Shiny app objects, file paths, or other
-# representations into McpApp instances for serving over MCP.
+# as_mcp_app(): serve a Shiny app as an MCP App
 
-#' Convert an object to an MCP App
+#' Serve a Shiny app as an MCP App
 #'
-#' S3 generic that converts various Shiny-related objects into an [McpApp].
-#' The primary method converts `shiny.appobj` (from [shiny::shinyApp()]) by
-#' parsing its UI and server to build tool definitions automatically.
+#' @description
+#' `as_mcp_app()` turns an existing Shiny app into an MCP App without
+#' rewriting it. The app's UI becomes the page the chat client shows, and
+#' its server function keeps running in R: each time the app opens in the
+#' conversation, shinymcp starts a session for it, and the user's changes
+#' flow to that session the way they would from a browser. Reactive
+#' expressions, observers, `updateSelectInput()` and friends,
+#' `validate()`/`req()`, notifications, modals, and downloads all work.
 #'
-#' @param x An object to convert. Currently supports:
-#'   - `shiny.appobj` (from [shiny::shinyApp()])
-#'   - `McpApp` (returned as-is)
-#'   - A character path to a directory containing `app.R`, or a direct path
-#'     to an app file
-#' @param ... Additional arguments passed to methods.
-#' @usage as_mcp_app(x, ...)
-#' @return An [McpApp] object.
+#' The model gets one tool, named after the app. Its arguments are the app's
+#' inputs, so the model can open the app already set up ("show the penguins
+#' explorer for Gentoo"). The result tells the model what the app shows:
+#' text outputs as text, tables (DT's included) as their rows, plots as
+#' images.
 #'
+#' Choose what the model sees with [bindMcp()]. Once any input or output is
+#' marked, only marked inputs become tool arguments and only marked outputs
+#' are reported; the user still sees the whole app. Buttons are never
+#' pressed by the model unless you mark them, and password and file inputs
+#' are never the model's to set.
+#'
+#' @section What runs where:
+#' The page is the app's UI rendered once to HTML, with shinymcp's bridge in
+#' place of Shiny's JavaScript. The bridge draws Shiny's built-in inputs
+#' itself (select, slider, date, checkbox group, and so on), and puts
+#' outputs sent back from R on the page: text, HTML, tables, plots,
+#' `renderUI()`, and htmlwidgets such as plotly, DT, and leaflet.
+#' Conditional panels show and hide, and clicks and brushes on plots reach
+#' the server as they would from a browser, for [shiny::nearPoints()] and
+#' [shiny::brushedPoints()].
+#'
+#' Packages written for Shiny's JavaScript API work too. The page provides
+#' `window.Shiny` with the parts packages use: input bindings they register
+#' (shinyWidgets, for example), `Shiny.setInputValue()` (DT row selection,
+#' plotly's `event_data()`, leaflet clicks), custom message handlers
+#' (shinyjs), and the `shiny:value` family of events (shinycssloaders).
+#' File inputs upload to the session, within `shiny.maxRequestSize`.
+#' `invalidateLater()` and `reactivePoll()` run while the app is open.
+#'
+#' The app starts as [shiny::runApp()] would start it: its `onStart`
+#' (for a directory, `global.R` and the files in `R/`) runs once, before
+#' the UI is built, and its code runs in the app's directory. Scripts, stylesheets, and images the
+#' UI loads from `www/` or from [shiny::addResourcePath()] paths are
+#' written into the page. `onStop` runs when the server stops.
+#'
+#' @section Sessions:
+#' Sessions live in the R process that serves the app, up to 50 at a time
+#' (the `shinymcp.max_views` option), each closing after an hour without
+#' use (`shinymcp.view_timeout`, in seconds). If a request reaches a
+#' process that doesn't have the view's session (after a restart, or on a
+#' server running several processes), a new session starts from the inputs
+#' on the page. Anything the server function kept outside its inputs (a
+#' `reactiveVal()` that counts clicks, say) starts over.
+#'
+#' @section Shiny's own MCP support:
+#' Shiny is gaining MCP support of its own
+#' (<https://github.com/rstudio/shiny/pull/4407>). Once it is released, it
+#' will be the way to put a live Shiny app in a chat, and shinymcp will stop
+#' serving live apps. [as_mcp_app()], [mcp_endpoint()], and
+#' [mcp_tool_module()] will take only apps built from tools, and [bindMcp()]
+#' and the helpers for server functions ([mcp_model_context()],
+#' [mcp_host_context()], and the rest) will be removed. For something the
+#' model should be able to use on its own, rewrite that part of the app as
+#' tools with [mcp_app()]; see `vignette("rewriting-as-tools")`.
+#'
+#' @param x A Shiny app (from [shiny::shinyApp()] or [shiny::shinyAppDir()]),
+#'   a path to an app directory (with `app.R`, or `ui.R` and `server.R`), or
+#'   an [McpApp] (returned unchanged). An `app.R` may build an [McpApp]
+#'   instead of a Shiny app; its tools run, and its page is built, in the
+#'   app's directory.
+#' @param name App name, used for the `ui://<name>` resource and the tool
+#'   name. Defaults to the directory name for a path, otherwise
+#'   `"shiny-app"`.
+#' @param title Human-readable title.
+#' @param description What the app does, for the model. By default shinymcp
+#'   writes one from the inputs and outputs; a sentence about what the app
+#'   is *for* helps the model decide when to open it.
+#' @param tools More tools for the model, such as [ellmer::tool()] objects,
+#'   served next to the one that opens the app: a computation the model
+#'   should be able to run without opening it, say.
+#' @param tool_name Name of the tool that opens the app. Defaults to `name`
+#'   with anything other than letters, digits, `-` and `_` replaced.
+#' @param selective Whether only inputs and outputs marked with [bindMcp()]
+#'   are exposed to the model. Defaults to `TRUE` if anything is marked.
+#' @param version App version string.
+#' @param ... Passed on to [mcp_app()], for example `csp`,
+#'   `prefers_border`, `images`, or `www` (which defaults to the app
+#'   directory's `www/` folder).
+#' @return An [McpApp].
+#' @family apps
+#' @export
 #' @examples
 #' \dontrun{
 #' library(shiny)
 #'
 #' ui <- fluidPage(
-#'   selectInput("dataset", "Choose", c("mtcars", "iris")) |> bindMcp(),
-#'   plotOutput("plot") |> bindMcp(),
-#'   textOutput("summary") |> bindMcp()
+#'   selectInput("cyl", "Cylinders", c(4, 6, 8)),
+#'   plotOutput("scatter"),
+#'   textOutput("count")
 #' )
-#'
 #' server <- function(input, output, session) {
-#'   output$plot <- renderPlot(plot(get(input$dataset)))
-#'   output$summary <- renderText(paste("Rows:", nrow(get(input$dataset))))
+#'   cars <- reactive(mtcars[mtcars$cyl == input$cyl, ])
+#'   output$scatter <- renderPlot(plot(cars()$wt, cars()$mpg))
+#'   output$count <- renderText(paste(nrow(cars()), "cars"))
 #' }
 #'
-#' # Convert and serve
-#' shinyApp(ui, server) |> as_mcp_app(name = "explorer") |> serve()
-#' }
+#' app <- as_mcp_app(
+#'   shinyApp(ui, server),
+#'   name = "cars",
+#'   description = "Explore fuel economy in mtcars by number of cylinders."
+#' )
+#' preview_app(app)
+#' serve(app)
 #'
-#' @export
+#' # Or straight from a directory:
+#' serve("path/to/my-app")
+#' }
 as_mcp_app <- function(x, ...) {
   UseMethod("as_mcp_app")
 }
 
 #' @rdname as_mcp_app
-#' @param name App name (used in resource URIs). Defaults to `"shinymcp-app"`.
-#' @param tools Optional list of explicit [ellmer::tool()] definitions. If
-#'   provided, these are used instead of auto-generating tools from the
-#'   reactive graph.
-#' @param selective Logical. If `TRUE` (default when `bindMcp()` annotations
-#'   are present), only annotated elements are exposed. If `FALSE`, all
-#'   detected inputs/outputs are exposed.
-#' @param version App version string. Defaults to `"0.1.0"`.
-#' @method as_mcp_app shiny.appobj
 #' @export
 as_mcp_app.shiny.appobj <- function(
   x,
   name = NULL,
+  title = NULL,
+  description = NULL,
   tools = NULL,
+  tool_name = NULL,
   selective = NULL,
   version = "0.1.0",
   ...
 ) {
-  rlang::check_installed("shiny", reason = "for converting Shiny apps")
+  # A Shiny app from mcp_endpoint() already carries its MCP App.
+  if (inherits(x$mcpServer, "McpServer") && length(x$mcpServer$apps) == 1) {
+    return(x$mcpServer$apps[[1]])
+  }
+  check_live_runtime()
+  name <- name %||% "shiny-app"
+  # Start the app as runApp() would before building its UI: a shinyAppDir()
+  # app's ui.R may use what its global.R defines.
+  lifecycle <- app_lifecycle(on_start = x$onStart, on_stop = x$onStop)
+  ui <- lifecycle$within(function() extract_shiny_ui(x))
 
-  ui <- extract_shiny_ui(x)
-  server_fn <- extract_shiny_server(x)
-
-  if (is.null(selective)) {
-    selective <- has_any_mcp_annotations(ui)
+  # A shinyAppDir() app serves its www folder; so does its page.
+  dots <- list(...)
+  app_dir <- lifecycle$dir()
+  if (
+    is.null(dots$www) &&
+      !is.null(app_dir) &&
+      dir.exists(file.path(app_dir, "www"))
+  ) {
+    dots$www <- file.path(app_dir, "www")
   }
 
-  if (!is.null(tools)) {
-    explicit_inputs <- extract_inputs_from_tags(ui, selective = selective)
-    # Explicit tools define the interaction contract, but the UI still needs all
-    # detected outputs annotated so returned fields can render in the browser.
-    explicit_outputs <- extract_outputs_from_tags(ui, selective = FALSE)
-    ui <- annotate_module_ui(ui, explicit_inputs, explicit_outputs)
-
-    return(mcp_app(
-      ui = ui,
-      tools = tools,
-      name = name %||% "shinymcp-app",
-      version = version
-    ))
-  }
-
-  # Parse UI tags + server body into IR
-  server_body <- if (!is.null(server_fn)) body(server_fn) else NULL
-  ir <- parse_shiny_app_object(ui, server_body, selective = selective)
-
-  if (length(ir$inputs) == 0 && length(ir$outputs) == 0) {
-    cli::cli_warn(c(
-      "No inputs or outputs detected in the app.",
-      i = "Use {.fn bindMcp} to annotate elements, or set {.code selective = FALSE}."
-    ))
-  }
-
-  analysis <- analyze_reactive_graph(ir)
-  generated_tools <- generate_tools_from_groups(analysis$tool_groups, ir)
-
-  if (length(analysis$warnings) > 0) {
-    for (w in analysis$warnings) {
-      cli::cli_warn(w)
-    }
-  }
-
-  # Annotate the UI so the JS bridge can discover inputs/outputs.
-  # Inputs are auto-detected by the bridge via DOM ID matching, but
-  # outputs need explicit data-shinymcp-output attributes.
-  ui <- annotate_module_ui(ui, ir$inputs, ir$outputs)
-
-  mcp_app(
+  runtime <- ShinyRuntime$new(
+    # serverFuncSource() returns the server function. Wrapped, because a
+    # shinyAppDir() app's takes `...`, which looks like a server function.
+    server = function() x$serverFuncSource(),
     ui = ui,
-    tools = generated_tools,
-    name = name %||% "shinymcp-app",
-    version = version
+    app_name = name,
+    tool_name = tool_name,
+    title = title,
+    description = description,
+    lifecycle = lifecycle,
+    selective = selective
+  )
+
+  do.call(
+    mcp_app,
+    c(
+      list(
+        ui = ui,
+        tools = c(runtime$tools(), tools %||% list()),
+        name = name,
+        title = title,
+        description = description,
+        version = version,
+        runtime = runtime
+      ),
+      dots
+    )
   )
 }
 
 #' @rdname as_mcp_app
-#' @method as_mcp_app McpApp
 #' @export
 as_mcp_app.McpApp <- function(x, ...) {
   x
 }
 
 #' @rdname as_mcp_app
-#' @method as_mcp_app default
+#' @export
+as_mcp_app.character <- function(x, name = NULL, ...) {
+  if (length(x) != 1) {
+    shinymcp_abort(
+      "{.arg x} must be a single path.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  path <- x
+  if (!file.exists(path)) {
+    shinymcp_abort(
+      "App not found: {.file {path}}.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  dir <- if (dir.exists(path)) path else dirname(path)
+  name <- name %||% sanitize_name(basename(normalizePath(dir)))
+  app_file <- if (dir.exists(path)) file.path(path, "app.R") else path
+
+  if (file.exists(app_file)) {
+    found <- source_app_file(app_file)
+    if (inherits(found, "McpApp")) {
+      return(found)
+    }
+    found <- start_in_dir(found, dir)
+    dots <- list(...)
+    if (is.null(dots$www) && dir.exists(file.path(dir, "www"))) {
+      dots$www <- file.path(dir, "www")
+    }
+    return(do.call(as_mcp_app, c(list(found, name = name), dots)))
+  }
+  if (file.exists(file.path(dir, "server.R"))) {
+    rlang::check_installed(
+      "shiny",
+      reason = "to serve a Shiny app as an MCP App."
+    )
+    return(as_mcp_app(shiny::shinyAppDir(dir), name = name, ...))
+  }
+  shinymcp_abort(
+    "No {.file app.R} or {.file server.R} in {.file {dir}}.",
+    class = "shinymcp_error_validation"
+  )
+}
+
+#' @rdname as_mcp_app
 #' @export
 as_mcp_app.default <- function(x, ...) {
-  if (is.character(x) && length(x) == 1) {
-    app_file <- if (dir.exists(x)) {
-      file.path(x, "app.R")
-    } else {
-      x
-    }
+  shinymcp_abort(
+    c(
+      "Can't make an MCP App from an object of class {.cls {class(x)}}.",
+      "i" = "Use a Shiny app, a path to one, or an {.cls McpApp}."
+    ),
+    class = "shinymcp_error_validation"
+  )
+}
 
-    if (!file.exists(app_file)) {
-      cli::cli_abort(
-        "App file not found: {.file {app_file}}",
-        class = "shinymcp_error_validation"
+#' Source an app.R and find the app it defines
+#'
+#' As shinyAppDir() does, the files in the app's R/ folder are sourced
+#' first, into an environment the app.R's own inherits from. `serve()` is
+#' stubbed out so a script that ends in `serve(app)` doesn't start a server
+#' while being loaded.
+#' @noRd
+source_app_file <- function(app_file) {
+  # Apps made while the app loads, in its R/ folder or its app.R, keep its
+  # directory, and run their tools and build their page there, as a Shiny
+  # app's code runs in its own.
+  outer_dir <- the$app_dir
+  the$app_dir <- normalizePath(dirname(app_file))
+  on.exit(the$app_dir <- outer_dir, add = TRUE)
+  env <- new.env(parent = app_support_env(dirname(app_file)))
+  env$serve <- function(...) invisible(NULL)
+  env$preview_app <- function(...) invisible(NULL)
+  sourced <- tryCatch(
+    source(app_file, local = env, chdir = TRUE),
+    error = function(e) {
+      shinymcp_abort(
+        c("Failed to load {.file {app_file}}.", "x" = "{conditionMessage(e)}"),
+        class = "shinymcp_error_validation",
+        parent = e
       )
     }
+  )
+  candidates <- c(
+    list(sourced$value),
+    mget(ls(env), envir = env, inherits = FALSE)
+  )
+  for (obj in candidates) {
+    if (inherits(obj, "McpApp")) {
+      return(obj)
+    }
+  }
+  for (obj in candidates) {
+    if (inherits(obj, "shiny.appobj")) {
+      return(obj)
+    }
+  }
+  shinymcp_abort(
+    "{.file {app_file}} doesn't define an {.cls McpApp} or a Shiny app.",
+    class = "shinymcp_error_validation"
+  )
+}
 
-    env <- new.env(parent = globalenv())
-    # Replace serve() with a no-op so sourcing doesn't block on stdio.
-    env$serve <- function(...) invisible(NULL)
-    sourced <- tryCatch(
-      source(app_file, local = env, chdir = TRUE),
+#' The environment an app.R is sourced in, with its R/ folder loaded
+#'
+#' Follows shinyAppDir(): the `shiny.autoload.r` option turns it off, and an
+#' `R/_disable_autoload.R` file is honoured by shiny::loadSupport().
+#' @noRd
+app_support_env <- function(dir) {
+  if (
+    !dir.exists(file.path(dir, "R")) ||
+      !isTRUE(getOption("shiny.autoload.r", TRUE))
+  ) {
+    return(globalenv())
+  }
+  env <- new.env(parent = globalenv())
+  if (shiny_installed()) {
+    shiny::loadSupport(normalizePath(dir), renv = env, globalrenv = NULL)
+  } else {
+    # Without Shiny the app.R can only build a tool app; its helpers load
+    # by the same rules.
+    load_app_support(dir, env)
+  }
+  env
+}
+
+#' @noRd
+shiny_installed <- function() {
+  rlang::is_installed("shiny")
+}
+
+#' Source an app's R/ files as shiny::loadSupport() does
+#'
+#' In C-locale order, in the app's directory, unless an
+#' `R/_disable_autoload.R` file says not to.
+#' @noRd
+load_app_support <- function(dir, env) {
+  helpers_dir <- file.path(dir, "R")
+  disabled <- list.files(
+    helpers_dir,
+    pattern = "^_disable_autoload\\.r$",
+    ignore.case = TRUE
+  )
+  if (length(disabled)) {
+    return(env)
+  }
+  helpers <- list.files(helpers_dir, pattern = "\\.[rR]$", full.names = TRUE)
+  helpers <- normalizePath(helpers[order(helpers, method = "radix")])
+  old <- setwd(dir)
+  on.exit(setwd(old), add = TRUE)
+  for (helper in helpers) {
+    source(helper, local = env, encoding = "UTF-8")
+  }
+  env
+}
+
+#' Run a Shiny app from an app.R in the app's directory
+#'
+#' shinyAppDir() changes into the app's directory when the app starts; a
+#' Shiny app sourced from its app.R needs the same, so that its server
+#' function reads files relative to it.
+#' @noRd
+start_in_dir <- function(app, dir) {
+  dir <- normalizePath(dir)
+  on_start <- app$onStart
+  app$onStart <- function() {
+    setwd(dir)
+    if (is.function(on_start)) on_start()
+  }
+  app
+}
+
+# ---- Shiny app object helpers ----
+
+#' Extract the UI from a shiny.appobj
+#' @noRd
+extract_shiny_ui <- function(app) {
+  ui <- app$ui
+  if (is.null(ui) && is.function(app$httpHandler)) {
+    ui <- ui_from_http_handler(app)
+  }
+  if (is.function(ui)) {
+    req <- fake_ui_request()
+    ui <- tryCatch(
+      if (length(formals(ui)) == 0) ui() else ui(req),
       error = function(e) {
-        cli::cli_abort(
-          c(
-            "Failed to source {.file {app_file}} for MCP conversion.",
-            x = e$message
-          ),
+        shinymcp_abort(
+          c("Couldn't build the app's UI.", "x" = "{conditionMessage(e)}"),
           class = "shinymcp_error_validation",
           parent = e
         )
       }
     )
-
-    candidates <- c(
-      list(sourced$value),
-      mget(ls(env), envir = env, inherits = FALSE)
-    )
-
-    for (obj in candidates) {
-      if (inherits(obj, "McpApp")) {
-        return(obj)
-      }
-    }
-
-    for (obj in candidates) {
-      if (inherits(obj, "shiny.appobj")) {
-        return(as_mcp_app(obj, ...))
-      }
-    }
-
-    cli::cli_abort(
-      "No {.cls McpApp} or {.cls shiny.appobj} object found in {.file {app_file}}.",
-      class = "shinymcp_error_validation"
-    )
-  }
-
-  cli::cli_abort(
-    "{.arg x} must be an {.cls McpApp} object or a path to an app directory.",
-    class = "shinymcp_error_validation"
-  )
-}
-
-
-# ---- Internal helpers ----
-
-#' Extract UI from a shiny.appobj
-#' @param app A shiny.appobj
-#' @return htmltools tag or tagList
-#' @noRd
-extract_shiny_ui <- function(app) {
-  ui <- app$ui
-
-  # Modern shiny.appobj stores UI in the httpHandler closure environment.
-  if (is.null(ui) && is.function(app$httpHandler)) {
-    handler_env <- environment(app$httpHandler)
-    if (
-      !is.null(handler_env) &&
-        exists("ui", envir = handler_env, inherits = FALSE)
-    ) {
-      ui <- get("ui", envir = handler_env, inherits = FALSE)
-    }
-  }
-
-  if (is.function(ui)) {
-    # UI can be a function(req) - try with NULL, then with no args
-    ui <- tryCatch(
-      ui(NULL),
-      error = function(e) {
-        tryCatch(
-          ui(),
-          error = function(e2) {
-            rlang::abort(
-              c(
-                cli::format_inline(
-                  "Could not extract UI from the {.cls shiny.appobj}."
-                ),
-                i = paste0("Calling ui(NULL) failed: ", e$message),
-                i = paste0("Calling ui() also failed: ", e2$message)
-              ),
-              class = "shinymcp_error_validation",
-              parent = e2
-            )
-          }
-        )
-      }
-    )
   }
   if (is.null(ui)) {
-    rlang::abort(
-      cli::format_inline("Could not extract UI from the {.cls shiny.appobj}."),
+    shinymcp_abort(
+      "Couldn't find the UI of this Shiny app.",
       class = "shinymcp_error_validation"
     )
+  }
+  if (inherits(ui, "html") || is.character(ui)) {
+    ui <- htmltools::HTML(paste(ui, collapse = "\n"))
   }
   ui
 }
 
-#' Extract server function from a shiny.appobj
-#' @param app A shiny.appobj
-#' @return A function, or NULL
+#' A minimal request for UI functions that take `req`
 #' @noRd
-extract_shiny_server <- function(app) {
-  if (is.function(app$serverFuncSource)) {
-    tryCatch(
-      app$serverFuncSource(),
-      error = function(e) {
-        cli::cli_warn(c(
-          "Failed to extract server function via {.fn serverFuncSource}: {e$message}",
-          i = "Reactive analysis will be limited. Tool handlers may need to be provided explicitly."
-        ))
-        # Fall back to the server field if available
-        if (is.function(app$server)) app$server else NULL
+fake_ui_request <- function() {
+  req <- new.env(parent = emptyenv())
+  req$PATH_INFO <- "/"
+  req$REQUEST_METHOD <- "GET"
+  req$QUERY_STRING <- ""
+  req$HTTP_HOST <- "shinymcp"
+  req$HTTP_MCP_APP <- "1"
+  req
+}
+
+#' Find the UI behind an app object's HTTP handler
+#'
+#' shinyApp() keeps `ui` in its handler's closure. shinyAppDir() hides it
+#' deeper: behind a list of joined handlers and a function that (re)sources
+#' ui.R. Follow those closures a few levels down.
+#' @noRd
+ui_from_http_handler <- function(app) {
+  search <- function(fn, depth) {
+    if (!is.function(fn) || depth > 4) {
+      return(NULL)
+    }
+    env <- environment(fn)
+    if (is.null(env)) {
+      return(NULL)
+    }
+    if (exists("uiHandlerSource", envir = env, inherits = FALSE)) {
+      handler <- tryCatch(
+        get("uiHandlerSource", envir = env)(),
+        error = function(e) NULL
+      )
+      found <- search(handler, depth + 1)
+      if (!is.null(found)) return(found)
+    }
+    if (exists("appObj", envir = env, inherits = FALSE)) {
+      inner <- tryCatch(get("appObj", envir = env)(), error = function(e) NULL)
+      if (inherits(inner, "shiny.appobj")) {
+        return(inner$ui %||% search(inner$httpHandler, depth + 1))
       }
-    )
-  } else if (is.function(app$server)) {
-    app$server
-  } else {
+    }
+    if (exists("ui", envir = env, inherits = FALSE)) {
+      return(get("ui", envir = env, inherits = FALSE))
+    }
+    if (exists("handlers", envir = env, inherits = FALSE)) {
+      for (h in get("handlers", envir = env, inherits = FALSE)) {
+        found <- search(h, depth + 1)
+        if (!is.null(found)) return(found)
+      }
+    }
     NULL
   }
-}
-
-#' Check if any tag in the tree has MCP annotations
-#' @param ui An htmltools tag or tagList
-#' @return Logical
-#' @noRd
-has_any_mcp_annotations <- function(ui) {
-  found <- FALSE
-  walk_tag_tree(ui, function(tag) {
-    if (found) {
-      return()
-    }
-    if (
-      !is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-input")) ||
-        !is.null(htmltools::tagGetAttribute(tag, "data-shinymcp-output"))
-    ) {
-      found <<- TRUE
-    }
-  })
-  found
-}
-
-#' Generate ellmer tool definitions from tool groups
-#'
-#' Creates tool objects from the analysis output. Currently, tool handler
-#' functions are stubs that describe their expected behavior. When headless
-#' Shiny session support is added, these handlers will be backed by a live
-#' session that executes the reactive graph.
-#'
-#' @param tool_groups List of tool groups from [analyze_reactive_graph()]
-#' @param ir The ShinyAppIR for metadata
-#' @return List of tool objects (plain lists with name, description, fun, inputSchema)
-#' @noRd
-generate_tools_from_groups <- function(tool_groups, ir) {
-  lapply(tool_groups, function(group) {
-    # Build input schema from input args
-    properties <- list()
-    for (inp in group$input_args) {
-      prop_type <- switch(
-        inp$type %||% "unknown",
-        numeric = "number",
-        slider = "number",
-        checkbox = "boolean",
-        "string"
-      )
-      properties[[inp$id]] <- list(
-        type = prop_type,
-        description = inp$label %||% inp$id
-      )
-    }
-
-    input_schema <- list(
-      type = "object",
-      properties = properties
-    )
-
-    # Build output target IDs for the tool result
-    output_ids <- vapply(
-      group$output_targets,
-      function(o) o$id,
-      character(1)
-    )
-
-    # Create tool handler stub
-    # The function accepts tool arguments and returns a named list
-    # matching output IDs
-    tool_fn <- make_stub_handler(group$input_args, group$output_targets)
-
-    list(
-      name = group$name,
-      description = group$description %||% "",
-      inputSchema = input_schema,
-      fun = tool_fn,
-      .output_ids = output_ids
-    )
-  })
-}
-
-#' Create a stub handler function for a tool group
-#'
-#' Builds a function whose formals match the input argument IDs and
-#' which returns a named list of output placeholders.
-#'
-#' @param input_args List of input definitions
-#' @param output_targets List of output definitions
-#' @return A function
-#' @noRd
-make_stub_handler <- function(input_args, output_targets) {
-  output_ids <- vapply(output_targets, function(o) o$id, character(1))
-
-  fn <- function(...) {
-    result <- setNames(
-      lapply(output_ids, function(id) {
-        paste0("[Output '", id, "' - provide a handler via `tools` argument]")
-      }),
-      output_ids
-    )
-    result
-  }
-
-  # Set proper formals from input metadata
-  if (length(input_args) > 0) {
-    input_formals <- lapply(input_args, function(inp) {
-      # Use a sensible default based on type
-      switch(
-        inp$type %||% "unknown",
-        numeric = 0,
-        slider = 0,
-        checkbox = FALSE,
-        ""
-      )
-    })
-    names(input_formals) <- vapply(
-      input_args,
-      function(inp) inp$id,
-      character(1)
-    )
-    formals(fn) <- input_formals
-  }
-
-  fn
+  search(app$httpHandler, 0)
 }

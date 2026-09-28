@@ -1,0 +1,235 @@
+---
+title: "Hosting MCP Apps in Shiny"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Hosting MCP Apps in Shiny}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+A Shiny app can show MCP Apps the way a chat client does: in a
+conversation built with [shinychat](https://posit-dev.github.io/shinychat/),
+where a model opens them, or in a pane anywhere in the app. shinymcp does
+the chat client's part. It connects to the app's server, shows the app's
+page in a sandboxed frame, and passes the page's requests to the server.
+
+The app can come from anywhere: built with shinymcp in the same R
+process, deployed to Posit Connect, a Shiny app served with Shiny's own
+MCP support, or an MCP server written in another language.
+
+The examples below host this app:
+
+```{r}
+library(shiny)
+library(shinymcp)
+
+show_cars <- ellmer::tool(
+  function(cyl = "4") {
+    cars <- mtcars[mtcars$cyl == as.numeric(cyl), ]
+    list(
+      scatter = mcp_result_plot(function() plot(cars$wt, cars$mpg)),
+      count = paste(nrow(cars), "cars")
+    )
+  },
+  name = "show_cars",
+  description = "Plot weight against fuel economy for the cars with a given number of cylinders.",
+  arguments = list(
+    cyl = ellmer::type_enum(c("4", "6", "8"), "Number of cylinders.", required = FALSE)
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
+)
+
+cars_app <- mcp_app(
+  fluidPage(
+    selectInput("cyl", "Cylinders", c(4, 6, 8)),
+    plotOutput("scatter"),
+    textOutput("count")
+  ),
+  tools = list(show_cars),
+  name = "cars",
+  title = "Cars by cylinders"
+)
+```
+
+## In a chat
+
+`mcp_chat_host()` gives the model in a shinychat conversation the apps'
+tools. When it calls one that shows an app, the app appears in the
+conversation, live:
+
+```{r}
+library(shinychat)
+
+ui <- bslib::page_fillable(chat_ui("chat"))
+
+server <- function(input, output, session) {
+  chat <- chat_server("chat", ellmer::chat("anthropic/claude-sonnet-5"))
+  mcp_chat_host(chat, cars_app)
+}
+
+shinyApp(ui, server)
+```
+
+The model gets each tool's structured result, or its text when there is
+none, as it would from any MCP client. Then the person uses the app, and
+the host keeps the model in step with it:
+
+* **What the person does reaches the model.** An app tells its host what
+  the model should know about it; an app built with shinymcp reports the
+  values the person has set in it. Before each message the person sends,
+  the model is told what every open app reports. It sees the apps as they
+  are now, not as they were a few messages ago, and the saved conversation
+  keeps only what the person and the model said.
+* **Apps can suggest a message.** When an app asks to post one (a button
+  such as "Ask about this"), it goes into the chat's input box for the
+  person to read and send. `messages = "submit"` sends it at once, for apps
+  you trust.
+* **Saved conversations come back live.** When shinychat restores a
+  conversation, its cards show their apps again, on the result the model
+  got, without calling the tools again.
+
+What an app reports comes from the app, so the model is told that, and
+each report is cut to 2,000 characters.
+
+The report reaches the model as a message of its own, just before the
+person's. A few providers, such as AWS Bedrock, refuse two user messages
+in a row. For those, pass `context = FALSE` and add `host$context()` to the
+person's message yourself:
+
+```{r}
+host <- mcp_chat_host(chat, cars_app, context = FALSE)
+host$context() # What the open apps report, or NULL
+```
+
+Other arguments set how the cards look: `title` and `icon`, `open` for
+whether a card starts expanded, `show_request` for whether it shows the
+call's arguments, and `full_screen`. `value_fn` changes what the model
+gets.
+
+### Cards alone
+
+`as_shinychat_tool()` is the part of `mcp_chat_host()` that makes the
+tools. Register its tools yourself when you want the cards without the
+rest:
+
+```{r}
+client <- ellmer::chat("anthropic/claude-sonnet-5")
+client$register_tool(as_shinychat_tool(cars_app))
+chat_server("chat", client)
+```
+
+For a remote server, make the tools where the app starts, outside the
+server function, and register them in each session. Listing a server's
+tools waits for it, so in a session `as_shinychat_tool()` uses only the
+list the client already has:
+
+```{r}
+sales_tools <- as_shinychat_tool(mcp_client("https://connect.example.com/sales/mcp"))
+
+server <- function(input, output, session) {
+  client <- ellmer::chat("anthropic/claude-sonnet-5")
+  client$register_tools(sales_tools)
+  chat_server("chat", client)
+}
+```
+
+To put an app in the conversation without a tool call, for example a form
+when the chat starts, build the card with `mcp_content_result()` and
+append it with `chat_append()`. In a Shiny session `mcp_content_result()`
+calls the app's tool and returns a promise, which `chat_append()` waits
+for, so the card is saved with what the tool returned and a restored
+conversation shows the app as it was.
+
+## In a pane
+
+`mcp_host_ui()` and `mcp_host_server()` host an app anywhere in a Shiny
+app, with no model. The host calls the app's tool when the pane opens, with
+the `arguments` you give, as a model would:
+
+```{r}
+ui <- bslib::page_sidebar(
+  sidebar = bslib::sidebar(verbatimTextOutput("context")),
+  mcp_host_ui("cars")
+)
+
+server <- function(input, output, session) {
+  host <- mcp_host_server("cars", cars_app, arguments = list(cyl = "6"))
+  output$context <- renderPrint(host$model_context())
+}
+```
+
+`mcp_host_server()` returns what happens in the app as reactives: the
+context it would give a model (`model_context()`), its latest tool call and
+result (`last_tool_call()`, `last_result()`), and the messages it asked to
+post (`messages()`). `open()` opens the app again with other arguments:
+
+```{r}
+observeEvent(input$cylinders, host$open(list(cyl = input$cylinders)))
+```
+
+That makes panes useful for reusing an app built for chat clients as part
+of a dashboard, for Shiny apps that react to what someone does in one, and
+for seeing exactly what a model would be told before you give an app to
+one.
+
+For UI created on the server, such as inside `renderUI()`, `mcp_embed()`
+does both halves at once.
+
+## Apps from other servers
+
+`mcp_client()` connects to an MCP server over HTTP. Anywhere the examples
+above take an app, they also take a client:
+
+```{r}
+server <- function(input, output, session) {
+  sales <- mcp_client(
+    "https://connect.example.com/sales/mcp",
+    headers = list(Authorization = paste("Key", Sys.getenv("CONNECT_API_KEY")))
+  )
+  chat <- chat_server("chat", ellmer::chat("anthropic/claude-sonnet-5"))
+  mcp_chat_host(chat, list(cars_app, sales))
+}
+```
+
+The connection and any credentials stay in R: the app's page never talks to
+its server itself, and the browser never sees the key. `headers` can also
+be a function, called before each request; create the client in the server
+function, as here, for each visitor's requests to carry their own
+credentials.
+
+Each source needs a name of its own, since saved conversations refer to
+their apps' servers by name. A client is named after its URL; set `name`
+to keep it stable if the URL changes.
+
+A Shiny app served with Shiny's own MCP support is a server like any other:
+point `mcp_client()` at its `/mcp` path. Shiny apps can hold a request open
+while they wait for the app to change, so give the client a `timeout`
+longer than that wait.
+
+The client also works on its own, to call a deployed server's tools from
+R:
+
+```{r}
+sales$tools()
+sales$call_tool("open_sales_app", list(region = "West"))
+```
+
+## What an app can do
+
+An app's page runs in a sandboxed frame. It can't reach the Shiny page, its
+cookies, or the Shiny session, and it can load only what the app declared
+(its `csp`); with nothing declared, it has no network access. It can call
+its own server's tools that are visible to apps, read its resources, ask to
+open links (web and email only), download files, and ask for full screen.
+Everything else it asks for is refused.
+
+The model can call only the tools of the sources you give it.
+
+The [`shinychat`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/shinychat),
+[`shiny-host`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/shiny-host),
+and [`remote-host`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/remote-host)
+examples are complete apps.

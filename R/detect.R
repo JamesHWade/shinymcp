@@ -2,7 +2,8 @@
 #
 # These functions inspect evaluated htmltools tag trees to determine
 # whether a tag represents a Shiny input or output, and extract its
-# ID and type. Used by bindMcp() and parse_shiny_ui_tags().
+# ID and type. Used by bindMcp(), mcp_app(), mcp_tool_module(), and the
+# live runtime.
 
 #' Detect the MCP role of a Shiny UI tag
 #'
@@ -49,6 +50,11 @@ detect_mcp_role <- function(tag) {
 
   if (grepl("shiny-image-output", classes, fixed = TRUE)) {
     return(list(role = "output", id = tag_id, type = "plot"))
+  }
+
+  # Other htmlwidgets (plotly, leaflet, ...).
+  if (grepl("html-widget-output", classes, fixed = TRUE)) {
+    return(list(role = "output", id = tag_id, type = "widget"))
   }
 
   # --- Input pattern ---
@@ -180,24 +186,108 @@ walk_tag_tree <- function(x, fn) {
   }
 }
 
-
-#' Extract label text from a Shiny input container
+#' The DOM id of an element marked as an input or output
 #'
-#' Looks for a `<label>` element inside the tag and returns its text content.
-#'
-#' @param tag An [htmltools::tag] with class "shiny-input-container"
-#' @return Character string label, or NULL
+#' @param tag An htmltools tag
+#' @param role Either "input" or "output"
+#' @return Character string DOM id, or NULL
 #' @noRd
-extract_label_from_tag <- function(tag) {
-  tq <- htmltools::tagQuery(tag)
-  labels <- tq$find("label")
-  if (labels$length() > 0) {
-    label_tag <- labels$selectedTags()[[1]]
-    # Extract text from children (skip child tags, get character nodes)
-    texts <- Filter(is.character, label_tag$children)
-    if (length(texts) > 0) {
-      return(trimws(paste(texts, collapse = " ")))
-    }
+infer_mcp_dom_id <- function(tag, role = c("input", "output")) {
+  role <- match.arg(role)
+  if (role == "output") {
+    return(htmltools::tagGetAttribute(tag, "id"))
   }
-  NULL
+  htmltools::tagGetAttribute(tag, "id") %||% find_form_element_id(tag)
+}
+
+#' The inputs in a UI, marked or recognized
+#'
+#' @param ui An htmltools tag or tagList
+#' @param selective If TRUE, only elements marked with data-shinymcp-input
+#' @return List of inputs, each with `id`, `dom_id`, and `type`
+#' @noRd
+extract_inputs_from_tags <- function(ui, selective = FALSE) {
+  inputs <- list()
+  seen_ids <- character()
+
+  walk_tag_tree(ui, function(tag) {
+    if (!inherits(tag, "shiny.tag")) {
+      return()
+    }
+
+    mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-input")
+    if (!is.null(mcp_id) && !(mcp_id %in% seen_ids)) {
+      mcp_type <- htmltools::tagGetAttribute(tag, "data-shinymcp-type")
+      seen_ids[length(seen_ids) + 1L] <<- mcp_id
+      inputs[[length(inputs) + 1L]] <<- list(
+        id = mcp_id,
+        dom_id = infer_mcp_dom_id(tag, "input"),
+        type = mcp_type %||% detect_input_type(tag)
+      )
+      return()
+    }
+
+    if (selective) {
+      return()
+    }
+
+    role <- detect_mcp_role(tag)
+    if (role$role == "input" && !is.null(role$id) && !(role$id %in% seen_ids)) {
+      seen_ids[length(seen_ids) + 1L] <<- role$id
+      inputs[[length(inputs) + 1L]] <<- list(
+        id = role$id,
+        dom_id = role$id,
+        type = role$type %||% "unknown"
+      )
+    }
+  })
+
+  inputs
+}
+
+#' The outputs in a UI, marked or recognized
+#'
+#' @param ui An htmltools tag or tagList
+#' @param selective If TRUE, only elements marked with data-shinymcp-output
+#' @return List of outputs, each with `id`, `dom_id`, and `type`
+#' @noRd
+extract_outputs_from_tags <- function(ui, selective = FALSE) {
+  outputs <- list()
+  seen_ids <- character()
+
+  walk_tag_tree(ui, function(tag) {
+    if (!inherits(tag, "shiny.tag")) {
+      return()
+    }
+
+    mcp_id <- htmltools::tagGetAttribute(tag, "data-shinymcp-output")
+    if (!is.null(mcp_id) && !(mcp_id %in% seen_ids)) {
+      mcp_type <- htmltools::tagGetAttribute(tag, "data-shinymcp-output-type")
+      seen_ids[length(seen_ids) + 1L] <<- mcp_id
+      outputs[[length(outputs) + 1L]] <<- list(
+        id = mcp_id,
+        dom_id = infer_mcp_dom_id(tag, "output"),
+        type = mcp_type %||% "html"
+      )
+      return()
+    }
+
+    if (selective) {
+      return()
+    }
+
+    role <- detect_mcp_role(tag)
+    if (
+      role$role == "output" && !is.null(role$id) && !(role$id %in% seen_ids)
+    ) {
+      seen_ids[length(seen_ids) + 1L] <<- role$id
+      outputs[[length(outputs) + 1L]] <<- list(
+        id = role$id,
+        dom_id = role$id,
+        type = role$type %||% "html"
+      )
+    }
+  })
+
+  outputs
 }

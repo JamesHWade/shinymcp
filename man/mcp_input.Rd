@@ -2,23 +2,36 @@
 % Please edit documentation in R/components-input.R
 \name{mcp_input}
 \alias{mcp_input}
-\title{Mark an element as an MCP input}
+\title{Mark an element as an input of an app's tools}
 \usage{
 mcp_input(tag, id = NULL)
 }
 \arguments{
-\item{tag}{An \link[htmltools:builder]{htmltools::tag} object (e.g., from \code{shiny::selectInput()}
-or \code{bslib::input_select()}).}
+\item{tag}{A tag or tag list. The mark goes on the tag if it is a form
+element or an input group (radio buttons, a date input), otherwise on
+the first one inside it.}
 
-\item{id}{The input ID to register. If \code{NULL} (the default), reads the
-element's existing \code{id} attribute.}
+\item{id}{The tool argument the element feeds. Defaults to the element's
+own id.}
 }
 \value{
-The modified \link[htmltools:builder]{htmltools::tag} with \code{data-shinymcp-input} stamped.
+\code{tag}, marked.
 }
 \description{
-Stamps \code{data-shinymcp-input} on a tag or its first form-element descendant.
-Use this as an escape hatch when auto-detection by tool argument name doesn't
-work (e.g., custom widgets or elements whose \code{id} doesn't match the tool
-argument name).
+In an app built with \code{\link[=mcp_app]{mcp_app()}}, a tool's argument takes its value from
+the input whose id matches the argument's name. Shiny's and bslib's
+inputs are found that way on their own. \code{mcp_input()} marks anything
+else: an element whose id differs from the argument name, or a form
+element shinymcp doesn't recognize.
 }
+\examples{
+mcp_input(htmltools::tags$input(id = "q", type = "search"), id = "query")
+}
+\seealso{
+Other components:
+\code{\link[=mcp_output]{mcp_output()}},
+\code{\link[=mcp_plot]{mcp_plot()}},
+\code{\link[=mcp_select]{mcp_select()}},
+\code{\link[=mcp_submit_button]{mcp_submit_button()}}
+}
+\concept{components}

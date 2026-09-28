@@ -5,7 +5,7 @@
 \alias{bindMcp.shiny.tag}
 \alias{bindMcp.shiny.tag.list}
 \alias{bindMcp.default}
-\title{Mark a Shiny UI element for MCP exposure}
+\title{Choose what the model sees of a Shiny app}
 \usage{
 bindMcp(tag, ...)
 
@@ -16,32 +16,69 @@ bindMcp(tag, ...)
 \method{bindMcp}{default}(tag, ...)
 }
 \arguments{
-\item{tag}{A \link[htmltools:builder]{shiny.tag} or \link[htmltools:tagList]{shiny.tag.list}
-produced by a Shiny input or output function.}
+\item{tag}{A tag or tag list from a Shiny input or output function.}
 
-\item{...}{Reserved for future use.}
+\item{...}{Unused.}
 
-\item{id}{Override the input/output ID. If \code{NULL} (default), the ID is
-auto-detected from the tag structure.}
+\item{id}{The id to use, when it isn't the element's own.}
 
-\item{type}{Override the output type (\code{"text"}, \code{"html"}, \code{"plot"}, or
-\code{"table"}). Only used for outputs. If \code{NULL}, auto-detected.}
+\item{type}{For outputs: \code{"text"}, \code{"html"}, \code{"plot"}, \code{"table"},
+\code{"image"}, or \code{"widget"}. Usually detected; required to mark an
+element shinymcp doesn't recognize.}
 }
 \value{
-The modified \link[htmltools:builder]{htmltools::tag} with MCP attributes stamped.
+\code{tag}, marked.
 }
 \description{
-Annotates a Shiny input or output tag with \verb{data-shinymcp-*} attributes
-so it can be discovered by the MCP JS bridge. Auto-detects whether the
-tag is an input or output by inspecting Shiny's class conventions.
-}
-\details{
-Use this as a pipe on standard Shiny UI elements:
+In a Shiny app served with \code{\link[=as_mcp_app]{as_mcp_app()}}, every input becomes an
+argument of the app's tool and every output is reported to the model.
+Mark some of them with \code{bindMcp()} and only the marked ones are: the
+model gets a smaller tool that is easier to use well. The person using
+the app still sees all of it.
 
-\if{html}{\out{<div class="sourceCode r">}}\preformatted{selectInput("x", "X", c("a", "b")) |> bindMcp()
-plotOutput("plot") |> bindMcp()
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{ui <- fluidPage(
+  selectInput("species", "Species", species) |> bindMcp(),
+  sliderInput("alpha", "Point opacity", 0, 1, 0.7),
+  plotOutput("scatter") |> bindMcp(),
+  verbatimTextOutput("debug")
+)
 }\if{html}{\out{</div>}}
 
-\code{bindMcp()} is idempotent: calling it on an element that already has
-\code{data-shinymcp-input} or \code{data-shinymcp-output} attributes is a no-op.
+Here the model can set the species and reads the plot; the opacity
+slider and the debug output stay between the app and its user.
+Action buttons are only pressed by the model when marked.
+
+In a UI for \code{\link[=mcp_app]{mcp_app()}}, \code{bindMcp()} marks an element as an input or an
+output of the app's tools when shinymcp can't tell on its own.
+
+\code{bindMcp()} recognizes Shiny's and bslib's inputs and outputs, and
+htmlwidget outputs. For anything else, give \code{type}. Marking an element
+twice does nothing.
 }
+\section{Shiny's own MCP support}{
+
+Shiny is gaining MCP support of its own
+(\url{https://github.com/rstudio/shiny/pull/4407}). Once it is released, it
+will be the way to put a live Shiny app in a chat, and shinymcp will stop
+serving live apps. \code{\link[=as_mcp_app]{as_mcp_app()}}, \code{\link[=mcp_endpoint]{mcp_endpoint()}}, and
+\code{\link[=mcp_tool_module]{mcp_tool_module()}} will take only apps built from tools, and \code{\link[=bindMcp]{bindMcp()}}
+and the helpers for server functions (\code{\link[=mcp_model_context]{mcp_model_context()}},
+\code{\link[=mcp_host_context]{mcp_host_context()}}, and the rest) will be removed. For something the
+model should be able to use on its own, rewrite that part of the app as
+tools with \code{\link[=mcp_app]{mcp_app()}}; see \code{vignette("rewriting-as-tools")}.
+}
+
+\examples{
+\dontshow{if (rlang::is_installed("shiny")) withAutoprint(\{ # examplesIf}
+shiny::selectInput("species", "Species", c("Adelie", "Gentoo")) |>
+  bindMcp()
+\dontshow{\}) # examplesIf}
+}
+\seealso{
+Other apps:
+\code{\link{McpApp}},
+\code{\link[=as_mcp_app]{as_mcp_app()}},
+\code{\link[=mcp_app]{mcp_app()}},
+\code{\link[=mcp_tool_module]{mcp_tool_module()}}
+}
+\concept{apps}

@@ -2,20 +2,58 @@
 % Please edit documentation in R/components-output.R
 \name{mcp_plot}
 \alias{mcp_plot}
-\title{Create an MCP plot output}
+\alias{mcp_text}
+\alias{mcp_table}
+\alias{mcp_html}
+\title{Output placeholders for tool results}
 \usage{
-mcp_plot(id, width = "100\%", height = "400px")
+mcp_plot(id, width = "100\%", height = NULL)
+
+mcp_text(id)
+
+mcp_table(id)
+
+mcp_html(id)
 }
 \arguments{
-\item{id}{Output ID}
+\item{id}{Output id, matching a name in the tool's result.}
 
-\item{width}{CSS width (default "100\%")}
-
-\item{height}{CSS height (default "400px")}
+\item{width, height}{CSS size of the plot area; numbers are pixels. A
+plot from \code{\link[=mcp_result_plot]{mcp_result_plot()}} without a size of its own is drawn to fill
+it: at this size, or with \code{height = NULL}, at its width and in the
+plot's own shape (800 by 500 unless it says otherwise).}
 }
 \value{
-An \link[htmltools:tagList]{htmltools::tagList} with a scoped style and the plot container
+An htmltools tag.
 }
 \description{
-Generates a placeholder div for plot output with MCP data attributes.
+These make the elements a tool's results are drawn into, for apps built
+with \code{\link[=mcp_app]{mcp_app()}}. Each is matched to a tool result by \code{id}: a tool that
+returns \code{list(summary = ..., plot = ...)} fills \code{mcp_text("summary")} and
+\code{mcp_plot("plot")}.
+\itemize{
+\item \code{mcp_text()} shows text in a monospaced block, as R prints it.
+\item \code{mcp_plot()} shows an image, usually from \code{\link[=mcp_result_plot]{mcp_result_plot()}}.
+\item \code{mcp_table()} shows a data frame as an HTML table.
+\item \code{mcp_html()} shows HTML: tags, \code{\link[=mcp_result_html]{mcp_result_html()}}, or an htmlwidget.
 }
+
+Shiny's own output functions (\code{\link[shiny:textOutput]{shiny::textOutput()}},
+\code{\link[shiny:plotOutput]{shiny::plotOutput()}}, and the rest) work too; their ids are matched the
+same way.
+}
+\examples{
+htmltools::tagList(
+  mcp_text("summary"),
+  mcp_plot("histogram"),
+  mcp_table("rows")
+)
+}
+\seealso{
+Other components:
+\code{\link[=mcp_input]{mcp_input()}},
+\code{\link[=mcp_output]{mcp_output()}},
+\code{\link[=mcp_select]{mcp_select()}},
+\code{\link[=mcp_submit_button]{mcp_submit_button()}}
+}
+\concept{components}

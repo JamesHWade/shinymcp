@@ -1,212 +1,182 @@
-# Shared host helpers for preview, Shiny embedding, and chat adapters.
+# State shared by shinymcp's hosts (panes, shinychat cards).
 
-#' Create host state for a live McpApp instance
+#' State for one hosted app instance
 #'
-#' @param app An McpApp object.
-#' @param instance_id Unique live instance identifier.
-#' @param initial_arguments Optional named list of initial tool arguments.
-#' @param trigger Trigger mode for the bridge.
-#' @param debounce_ms Debounce interval in milliseconds.
-#' @param height Preferred host height.
-#' @param debug Whether to enable verbose debugging features.
-#' @return A mutable environment.
+#' An instance is one app page in one card or pane: the source it comes
+#' from, the tool call that opened it, and what the page has said since.
+#' @param kind `"pane"` or `"card"`. Chat hosts pass the context and
+#'   messages of cards on to the model.
 #' @noRd
 new_mcp_host_state <- function(
-  app,
-  instance_id = unique_id(paste0("mcp-", app$name)),
-  initial_arguments = NULL,
-  trigger = "debounce",
-  debounce_ms = 250,
-  height = "auto",
-  debug = FALSE
+  source,
+  instance_id = unique_id("host"),
+  tool = NULL,
+  arguments = NULL,
+  result = NULL,
+  kind = "pane",
+  title = NULL,
+  config = NULL
 ) {
   state <- new.env(parent = emptyenv())
-  state$app <- as_mcp_app(app)
+  state$source <- as_host_source(source)
   state$instance_id <- instance_id
-  state$initial_arguments <- initial_arguments
-  state$trigger <- trigger
-  state$debounce_ms <- debounce_ms
-  state$height <- height
-  state$debug <- debug
+  state$kind <- kind
+  state$tool <- tool
+  state$arguments <- arguments %||% json_object()
+  state$result <- result
+  state$title <- title %||% state$source$title
+  # Without a title of its own, an instance takes its tool's or its page's.
+  state$title_given <- !is.null(title)
+  state$default_title <- is.null(title)
+  # Bridge settings for in-process pages (trigger, debounce).
+  state$config <- config
+  state$call_seq <- 0L
+  state$call_error <- NULL
+  state$attached <- FALSE
+  # A pane's open() loads the app again in a new page; the requests of the
+  # page attached before are no longer the instance's own.
+  state$page_generation <- 0L
+  state$attached_generation <- 0L
   state$model_context <- NULL
+  state$context_time <- NULL
   state$last_tool_call <- NULL
-  state$last_raw_result <- NULL
-  state$last_result <- NULL
   state$last_size <- NULL
+  state$messages <- list()
+  state$views <- NULL
   state$disposed <- FALSE
   state$on_model_context <- NULL
   state$on_tool_call <- NULL
+  state$on_message <- NULL
   state$on_size <- NULL
   state
 }
 
-#' Invoke an optional host-state callback
-#'
-#' @param state A host state environment.
-#' @param name Callback field name.
-#' @param value Callback payload.
 #' @noRd
 mcp_host_callback <- function(state, name, value) {
   callback <- state[[name]]
-  if (!is.function(callback)) {
-    if (!is.null(callback)) {
-      cli::cli_warn(
-        "Callback {.field {name}} is not a function (got {.cls {class(callback)}}); ignoring."
-      )
-    }
-    return(invisible(value))
+  if (is.function(callback)) {
+    tryCatch(
+      callback(value),
+      error = function(e) {
+        cli::cli_warn(
+          "Host callback {.field {name}} failed: {conditionMessage(e)}"
+        )
+      }
+    )
   }
-  tryCatch(
-    callback(value, state),
-    error = function(e) {
-      cli::cli_warn(
-        "Callback {.field {name}} threw: {conditionMessage(e)}"
-      )
-    }
-  )
   invisible(value)
 }
 
-#' Resolve host interaction settings against the app's declaration
-#'
-#' Host-supplied values win when given; otherwise the app's own
-#' `mcp_app(trigger = , debounce_ms = )` declaration applies, then the
-#' package defaults. Keeps `mcp_app()`'s interaction arguments effective in
-#' embedded contexts instead of being silently clobbered by host defaults.
-#'
-#' @param app An McpApp object.
-#' @param trigger Host-supplied trigger, or NULL to defer to the app.
-#' @param debounce_ms Host-supplied debounce, or NULL to defer to the app.
-#' @return A list with resolved `trigger` and `debounce_ms`.
+#' Record a tool call made in a hosted app
 #' @noRd
-resolve_host_interaction <- function(app, trigger = NULL, debounce_ms = NULL) {
-  defaults <- app$interaction_defaults()
-  trigger <- if (is.null(trigger)) {
-    defaults$trigger %||% "debounce"
-  } else {
-    rlang::arg_match0(trigger, c("debounce", "change", "submit", "manual"))
-  }
-  list(
-    trigger = trigger,
-    debounce_ms = debounce_ms %||% defaults$debounce_ms %||% 250
-  )
-}
-
-#' Build bridge config for a live host state
-#'
-#' @param state A host state environment.
-#' @return A named list.
-#' @noRd
-mcp_host_bridge_config <- function(state) {
-  compact_list(list(
-    instanceId = state$instance_id,
-    trigger = state$trigger,
-    debounceMs = state$debounce_ms
-  ))
-}
-
-#' Initialize a host connection for a live app instance
-#'
-#' @param state A host state environment.
-#' @return A list suitable for the MCP Apps `ui/initialize` response.
-#' @noRd
-mcp_host_initialize <- function(state) {
-  compact_list(list(
-    protocolVersion = SHINYMCP_APPS_PROTOCOL_VERSION,
-    hostInfo = list(
-      name = "shinymcp-host",
-      version = as.character(utils::packageVersion("shinymcp"))
-    ),
-    hostCapabilities = list(),
-    hostContext = compact_list(list(
-      instanceId = state$instance_id,
-      initialArguments = state$initial_arguments
-    ))
-  ))
-}
-
-#' Call a tool through a host state
-#'
-#' @param state A host state environment.
-#' @param tool_name Tool name.
-#' @param arguments Named list of arguments.
-#' @return A formatted MCP tool result.
-#' @noRd
-mcp_host_call_tool <- function(state, tool_name, arguments = list()) {
-  raw_result <- state$app$call_tool(tool_name, arguments)
-  result <- format_tool_result(raw_result)
-  call <- list(
-    name = tool_name,
-    arguments = arguments,
-    raw_result = raw_result,
-    result = result
-  )
-
+mcp_host_record_call <- function(state, name, arguments, result) {
+  mcp_host_track_views(state, result)
+  call <- list(name = name, arguments = arguments %||% list(), result = result)
   state$last_tool_call <- call
-  state$last_raw_result <- raw_result
-  state$last_result <- result
   mcp_host_callback(state, "on_tool_call", call)
-
-  result
+  invisible(state)
 }
 
-#' Read a resource through a host state
-#'
-#' Returns a spec-shaped `resources/read` result (`contents` array) for the
-#' app's own ui:// resource or any extra resource declared via
-#' `mcp_app(resources = )`.
-#'
-#' @param state A host state environment.
-#' @param uri Resource URI.
-#' @return A list with a `contents` entry.
+#' Remember the live view a tool call opened, to close it with the instance
 #' @noRd
-mcp_host_read_resource <- function(state, uri) {
-  if (identical(uri, state$app$resource_uri())) {
-    return(list(
-      contents = list(compact_list(list(
-        uri = uri,
-        mimeType = SHINYMCP_UI_MIME_TYPE,
-        text = state$app$html_resource(
-          bridge_config = mcp_host_bridge_config(state)
-        ),
-        `_meta` = state$app$resource_meta()
-      )))
-    ))
+mcp_host_track_views <- function(state, result) {
+  view <- result[["_meta"]][["shinymcp/view"]]$instance
+  if (is_string(view)) {
+    state$views <- unique(c(state$views, view))
   }
-  list(contents = list(state$app$read_extra_resource(uri)))
-}
-
-#' Update the most recent model context seen by a host instance
-#'
-#' @param state A host state environment.
-#' @param context Structured context object from the bridge.
-#' @return Invisibly, `state`.
-#' @noRd
-mcp_host_update_model_context <- function(state, context) {
-  state$model_context <- context
-  mcp_host_callback(state, "on_model_context", context)
   invisible(state)
 }
 
-#' Record the most recent rendered size for a host instance
-#'
-#' @param state A host state environment.
-#' @param width Reported width.
-#' @param height Reported height.
-#' @return Invisibly, `state`.
+#' Handle a notification from a hosted app
 #' @noRd
-mcp_host_notify_size <- function(state, width = NULL, height = NULL) {
-  state$last_size <- compact_list(list(width = width, height = height))
-  mcp_host_callback(state, "on_size", state$last_size)
+mcp_host_notification <- function(state, method, params) {
+  if (!is_string(method)) {
+    return(invisible(state))
+  }
+  switch(
+    method,
+    "ui/update-model-context" = {
+      state$model_context <- params
+      state$context_time <- as.numeric(Sys.time())
+      mcp_host_callback(state, "on_model_context", params)
+    },
+    "ui/message" = {
+      state$messages <- c(state$messages, list(params))
+      mcp_host_callback(state, "on_message", params)
+    },
+    "ui/notifications/size-changed" = {
+      state$last_size <- compact_list(list(
+        width = json_field(params, "width"),
+        height = json_field(params, "height")
+      ))
+      mcp_host_callback(state, "on_size", state$last_size)
+    },
+    "ui/resource-teardown" = mcp_host_dispose(state),
+    NULL
+  )
   invisible(state)
 }
 
-#' Dispose a host instance
-#'
-#' @param state A host state environment.
-#' @return Invisibly, `state`.
 #' @noRd
 mcp_host_dispose <- function(state) {
-  state$disposed <- TRUE
+  if (!isTRUE(state$disposed)) {
+    state$disposed <- TRUE
+    # Views of a live Shiny app opened by this instance die with it.
+    if (length(state$views)) {
+      state$source$close_views(state$views)
+    }
+  }
   invisible(state)
+}
+
+#' The text of a message or model context an app sent
+#'
+#' Text blocks, then the structured content as JSON, cut to `limit`
+#' characters.
+#' @noRd
+host_content_text <- function(params, limit = Inf) {
+  blocks <- Filter(
+    function(b) {
+      identical(json_field(b, "type"), "text") &&
+        is_string(json_field(b, "text"))
+    },
+    json_field(params, "content") %||% list()
+  )
+  parts <- vapply(blocks, function(b) b[["text"]], character(1))
+  structured <- json_field(params, "structuredContent")
+  if (length(structured)) {
+    parts <- c(parts, as.character(to_json(structured)))
+  }
+  text <- paste(parts, collapse = "\n")
+  if (is.finite(limit) && nchar(text) > limit) {
+    text <- paste0(substr(text, 1, limit - 3), "...")
+  }
+  text
+}
+
+#' The text of an HTML page's `<title>`, or NULL
+#' @noRd
+html_page_title <- function(html) {
+  if (!is_string(html)) {
+    return(NULL)
+  }
+  found <- regmatches(
+    html,
+    regexpr("<title[^>]*>[^<]*</title>", html, ignore.case = TRUE, perl = TRUE)
+  )
+  if (length(found) == 0) {
+    return(NULL)
+  }
+  text <- gsub("<[^>]+>", "", found)
+  for (entity in list(
+    c("&lt;", "<"),
+    c("&gt;", ">"),
+    c("&quot;", "\""),
+    c("&#39;", "'"),
+    c("&amp;", "&")
+  )) {
+    text <- gsub(entity[[1]], entity[[2]], text, fixed = TRUE)
+  }
+  text <- trimws(text)
+  if (nzchar(text)) text else NULL
 }

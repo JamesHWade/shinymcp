@@ -4,30 +4,48 @@
 # JS bridge and McpApp can discover them. Works as a pipe:
 #   selectInput("x", "X", choices) |> bindMcp()
 
-#' Mark a Shiny UI element for MCP exposure
+#' Choose what the model sees of a Shiny app
 #'
-#' Annotates a Shiny input or output tag with `data-shinymcp-*` attributes
-#' so it can be discovered by the MCP JS bridge. Auto-detects whether the
-#' tag is an input or output by inspecting Shiny's class conventions.
+#' @description
+#' In a Shiny app served with [as_mcp_app()], every input becomes an
+#' argument of the app's tool and every output is reported to the model.
+#' Mark some of them with `bindMcp()` and only the marked ones are: the
+#' model gets a smaller tool that is easier to use well. The person using
+#' the app still sees all of it.
 #'
-#' Use this as a pipe on standard Shiny UI elements:
 #' ```r
-#' selectInput("x", "X", c("a", "b")) |> bindMcp()
-#' plotOutput("plot") |> bindMcp()
+#' ui <- fluidPage(
+#'   selectInput("species", "Species", species) |> bindMcp(),
+#'   sliderInput("alpha", "Point opacity", 0, 1, 0.7),
+#'   plotOutput("scatter") |> bindMcp(),
+#'   verbatimTextOutput("debug")
+#' )
 #' ```
 #'
-#' `bindMcp()` is idempotent: calling it on an element that already has
-#' `data-shinymcp-input` or `data-shinymcp-output` attributes is a no-op.
+#' Here the model can set the species and reads the plot; the opacity
+#' slider and the debug output stay between the app and its user.
+#' Action buttons are only pressed by the model when marked.
 #'
-#' @param tag A [shiny.tag][htmltools::tag] or [shiny.tag.list][htmltools::tagList]
-#'   produced by a Shiny input or output function.
-#' @param id Override the input/output ID. If `NULL` (default), the ID is
-#'   auto-detected from the tag structure.
-#' @param type Override the output type (`"text"`, `"html"`, `"plot"`, or
-#'   `"table"`). Only used for outputs. If `NULL`, auto-detected.
-#' @param ... Reserved for future use.
-#' @return The modified [htmltools::tag] with MCP attributes stamped.
+#' In a UI for [mcp_app()], `bindMcp()` marks an element as an input or an
+#' output of the app's tools when shinymcp can't tell on its own.
+#'
+#' `bindMcp()` recognizes Shiny's and bslib's inputs and outputs, and
+#' htmlwidget outputs. For anything else, give `type`. Marking an element
+#' twice does nothing.
+#'
+#' @inheritSection as_mcp_app Shiny's own MCP support
+#' @param tag A tag or tag list from a Shiny input or output function.
+#' @param id The id to use, when it isn't the element's own.
+#' @param type For outputs: `"text"`, `"html"`, `"plot"`, `"table"`,
+#'   `"image"`, or `"widget"`. Usually detected; required to mark an
+#'   element shinymcp doesn't recognize.
+#' @param ... Unused.
+#' @return `tag`, marked.
+#' @family apps
 #' @export
+#' @examplesIf rlang::is_installed("shiny")
+#' shiny::selectInput("species", "Species", c("Adelie", "Gentoo")) |>
+#'   bindMcp()
 bindMcp <- function(tag, ...) {
   UseMethod("bindMcp")
 }
@@ -70,10 +88,22 @@ bindMcp.shiny.tag <- function(
     return(mcp_output(tag, id = resolved_id, type = resolved_type))
   }
 
+  # An element shinymcp can't classify is an output when given a type.
+  if (!is.null(type)) {
+    resolved_id <- id %||% detected$id
+    if (is.null(resolved_id)) {
+      cli::cli_abort(
+        "Cannot detect an ID for this element. Provide {.arg id} explicitly.",
+        class = "shinymcp_error_validation"
+      )
+    }
+    return(mcp_output(tag, id = resolved_id, type = type))
+  }
+
   cli::cli_abort(
     c(
       "Cannot determine MCP role for this element.",
-      i = "Ensure this is a Shiny input or output, or provide {.arg id} and {.arg type}."
+      i = "For an output shinymcp doesn't recognize, give its {.arg type} (and {.arg id} if the element has none)."
     ),
     class = "shinymcp_error_validation"
   )

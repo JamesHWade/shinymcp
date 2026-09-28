@@ -1,0 +1,460 @@
+/* shinymcp bridge styles
+ *
+ * Colors, fonts, and radii come from the MCP Apps standard style variables
+ * when the host provides them, with neutral fallbacks otherwise. With
+ * `color-scheme` set from the host's theme, the fallbacks follow light and
+ * dark mode too.
+ */
+
+:root {
+  color-scheme: light dark;
+  --shinymcp-bg: var(--color-background-primary, Canvas);
+  --shinymcp-bg-muted: var(--color-background-secondary, color-mix(in srgb, CanvasText 4%, Canvas));
+  --shinymcp-text: var(--color-text-primary, CanvasText);
+  --shinymcp-text-muted: var(--color-text-secondary, color-mix(in srgb, CanvasText 62%, Canvas));
+  --shinymcp-border: var(--color-border-primary, color-mix(in srgb, CanvasText 16%, Canvas));
+  --shinymcp-accent: var(--color-ring-primary, #2563eb);
+  --shinymcp-danger-bg: var(--color-background-danger, color-mix(in srgb, #dc2626 10%, Canvas));
+  --shinymcp-danger-text: var(--color-text-danger, #b91c1c);
+  --shinymcp-danger-border: var(--color-border-danger, color-mix(in srgb, #dc2626 35%, Canvas));
+  --shinymcp-font: var(--font-sans, system-ui, -apple-system, "Segoe UI", sans-serif);
+  --shinymcp-mono: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  --shinymcp-radius: var(--border-radius-md, 6px);
+}
+
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+/* conditionalPanel(): hidden until its condition holds, as in Shiny. */
+[data-display-if]:not(.shiny-conditional--shown) { display: none; }
+
+/* Bootstrap 3 and 4 have no dark mode: those pages stay light. */
+:root.shinymcp-bs3,
+:root.shinymcp-bs4 { color-scheme: light; }
+
+html, body {
+  margin: 0;
+}
+
+/* When the host sizes the view to its content (the usual case in a chat),
+   pages built to fill a window, such as bslib's page_sidebar() and
+   page_fillable(), flow at their natural height instead: filling the
+   frame would squeeze cards to fit whatever height the frame has. With a
+   fixed height (full screen, or a host that sets one) they fill as usual. */
+html.shinymcp:not(.shinymcp-fixed-height) {
+  --bslib-page-main-min-height: 0px;
+  --bslib-page-main-min-width: 0px;
+}
+
+html.shinymcp:not(.shinymcp-fixed-height),
+html.shinymcp:not(.shinymcp-fixed-height) > body {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+body[data-shinymcp-body] {
+  background: var(--shinymcp-bg);
+  color: var(--shinymcp-text);
+}
+
+html:not(.shinymcp-bootstrap) body[data-shinymcp-body] {
+  font-family: var(--shinymcp-font);
+  font-size: var(--font-text-sm-size, 14px);
+  line-height: var(--font-text-sm-line-height, 1.5);
+}
+
+/* Layout for apps that aren't a full page */
+.shinymcp-app {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px;
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.shinymcp-app *, .shinymcp-app *::before, .shinymcp-app *::after {
+  box-sizing: border-box;
+}
+
+/* shinymcp's own input components */
+.shinymcp-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.shinymcp-input-group > label {
+  font-weight: var(--font-weight-semibold, 600);
+  font-size: 0.93em;
+}
+
+html:not(.shinymcp-bootstrap) .shinymcp-app select,
+html:not(.shinymcp-bootstrap) .shinymcp-app input[type="text"],
+html:not(.shinymcp-bootstrap) .shinymcp-app input[type="number"],
+html:not(.shinymcp-bootstrap) .shinymcp-app input[type="date"],
+html:not(.shinymcp-bootstrap) .shinymcp-app input[type="password"],
+html:not(.shinymcp-bootstrap) .shinymcp-app textarea {
+  font: inherit;
+  color: inherit;
+  background: var(--shinymcp-bg);
+  padding: 6px 8px;
+  border: 1px solid var(--shinymcp-border);
+  border-radius: var(--shinymcp-radius);
+}
+
+html:not(.shinymcp-bootstrap) .shinymcp-app button {
+  font: inherit;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: var(--shinymcp-radius);
+  background: var(--shinymcp-accent);
+  color: #fff;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+html:not(.shinymcp-bootstrap) .shinymcp-app button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.shinymcp-app input[type="range"],
+.shinymcp-slider input[type="range"] {
+  width: 100%;
+  accent-color: var(--shinymcp-accent);
+}
+
+/* Outputs */
+.shinymcp-output {
+  min-height: 2em;
+}
+
+pre.shinymcp-output,
+.shiny-text-output.shinymcp-text,
+pre.shiny-text-output {
+  font-family: var(--shinymcp-mono);
+  font-size: 0.9em;
+  /* R aligns printed output in columns; scroll rather than wrap. */
+  white-space: pre;
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--shinymcp-bg-muted);
+  border: 1px solid var(--shinymcp-border);
+  border-radius: var(--shinymcp-radius);
+  overflow-x: auto;
+}
+
+pre.shinymcp-output:empty {
+  display: none;
+}
+
+.shinymcp-output img,
+.shiny-plot-output img,
+.shiny-image-output img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+.shinymcp-plot img {
+  width: 100%;
+}
+
+.shinymcp-plot-fixed img {
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Until a tool has drawn a plot at its box's size (the model's call that
+   opens the app can't know it), fit the plot into the box a plotOutput()
+   sets, as with a fixed-height mcp_plot(). */
+.shinymcp-tools .shiny-plot-output img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+table.shinymcp-table {
+  border-collapse: collapse;
+  width: auto;
+  max-width: 100%;
+  font-size: 0.93em;
+}
+
+html:not(.shinymcp-bootstrap) table.shinymcp-table th,
+html:not(.shinymcp-bootstrap) table.shinymcp-table td,
+html:not(.shinymcp-bootstrap) .shiny-table th,
+html:not(.shinymcp-bootstrap) .shiny-table td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--shinymcp-border);
+  text-align: left;
+}
+
+.shinymcp-table-note {
+  color: var(--shinymcp-text-muted);
+  font-size: 0.88em;
+  margin: 6px 0 0;
+}
+
+.recalculating {
+  opacity: 0.35;
+  transition: opacity 250ms ease 400ms;
+}
+
+/* Errors inside outputs, as Shiny shows them */
+.shiny-output-error {
+  color: var(--shinymcp-danger-text);
+  white-space: pre-wrap;
+}
+
+.shiny-output-error-validation {
+  color: var(--shinymcp-text-muted);
+}
+
+/* Stand-ins for Shiny's slider widget: one or two range inputs on a
+   shared track */
+.shinymcp-slider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shinymcp-slider-track {
+  position: relative;
+  flex: 1;
+  height: 24px;
+}
+
+.shinymcp-slider-track::before,
+.shinymcp-slider-fill {
+  content: "";
+  position: absolute;
+  top: 10px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.shinymcp-slider-track::before {
+  left: 0;
+  right: 0;
+  background: var(--shinymcp-border);
+}
+
+.shinymcp-slider-fill {
+  background: var(--shinymcp-accent);
+}
+
+.shinymcp-slider-track input[type="range"] {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  background: transparent;
+  pointer-events: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.shinymcp-slider-track input[type="range"]::-webkit-slider-runnable-track {
+  height: 24px;
+  background: transparent;
+}
+
+.shinymcp-slider-track input[type="range"]::-moz-range-track {
+  background: transparent;
+}
+
+.shinymcp-slider-track input[type="range"]::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 4px;
+  border-radius: 50%;
+  background: var(--shinymcp-bg);
+  border: 2px solid var(--shinymcp-accent);
+  cursor: pointer;
+}
+
+.shinymcp-slider-track input[type="range"]::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--shinymcp-bg);
+  border: 2px solid var(--shinymcp-accent);
+  cursor: pointer;
+}
+
+.shinymcp-slider-track input[type="range"]:focus-visible {
+  outline: none;
+}
+
+.shinymcp-slider-track input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--shinymcp-accent) 35%, transparent);
+}
+
+.shinymcp-slider-value {
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--shinymcp-text-muted);
+}
+
+/* Busy indicator: a thin bar at the top while a call is running */
+html.shinymcp-busy::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 100%;
+  z-index: 10000;
+  background: linear-gradient(90deg, transparent, var(--shinymcp-accent), transparent);
+  background-size: 50% 100%;
+  background-repeat: no-repeat;
+  animation: shinymcp-busy 1.1s linear infinite;
+}
+
+@keyframes shinymcp-busy {
+  from { background-position: -50% 0; }
+  to { background-position: 150% 0; }
+}
+
+/* Error banner */
+#shinymcp-error {
+  position: sticky;
+  top: 0;
+  z-index: 9000;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--shinymcp-danger-border);
+  border-radius: var(--shinymcp-radius);
+  background: var(--shinymcp-danger-bg);
+  color: var(--shinymcp-danger-text);
+  font-family: var(--shinymcp-font);
+  font-size: 0.9em;
+  white-space: pre-wrap;
+}
+
+#shinymcp-error[hidden] {
+  display: none;
+}
+
+#shinymcp-error .shinymcp-error-text {
+  flex: 1;
+}
+
+#shinymcp-error button {
+  all: unset;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+/* Notifications (showNotification()) */
+#shinymcp-notifications {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 9500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 24px));
+}
+
+.shinymcp-notification {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: var(--shinymcp-radius);
+  border: 1px solid var(--shinymcp-border);
+  background: var(--shinymcp-bg);
+  color: var(--shinymcp-text);
+  box-shadow: var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.12));
+  font-family: var(--shinymcp-font);
+  font-size: 0.9em;
+}
+
+.shinymcp-notification > div {
+  flex: 1;
+}
+
+.shinymcp-notification-warning {
+  border-color: var(--color-border-warning, #d97706);
+}
+
+.shinymcp-notification-error {
+  border-color: var(--shinymcp-danger-border);
+  color: var(--shinymcp-danger-text);
+}
+
+.shinymcp-notification button {
+  all: unset;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+/* Modals (showModal()) */
+.shinymcp-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9600;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow: auto;
+  padding: 24px 12px;
+}
+
+.shinymcp-modal-backdrop .modal {
+  position: static;
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+html:not(.shinymcp-bootstrap) .shinymcp-modal-backdrop .modal-dialog {
+  max-width: 520px;
+  margin: 0 auto;
+  background: var(--shinymcp-bg);
+  border-radius: var(--shinymcp-radius);
+  padding: 16px;
+}
+
+/* Downloads and the submit bar */
+.shinymcp-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.shinymcp-submit-bar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 8px 0;
+  background: var(--shinymcp-bg);
+}
+
+/* A search box over a select whose choices stay in R. */
+.shinymcp-choice-search {
+  margin-bottom: 0.25rem;
+}
+
+.shinymcp-file-note {
+  color: var(--shinymcp-text-muted);
+  font-size: 0.88em;
+}

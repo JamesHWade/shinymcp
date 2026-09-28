@@ -17,83 +17,94 @@ knitr::opts_chunk$set(
 
 <!-- badges: start -->
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-[![CRAN status](https://www.r-pkg.org/badges/version/shinymcp)](https://CRAN.R-project.org/package=shinymcp)
 [![R-CMD-check](https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml)
 [![Codecov test coverage](https://codecov.io/gh/JamesHWade/shinymcp/graph/badge.svg)](https://app.codecov.io/gh/JamesHWade/shinymcp)
 <!-- badges: end -->
 
-```{r home-hero, echo = FALSE, results = "asis"}
-cat(paste(
-  '<div class="shinymcp-hero" aria-label="shinymcp overview"><img class="shinymcp-hero-image" src="man/figures/demo.gif" alt="shinymcp demo showing an interactive Palmer Penguins dashboard inside Claude Desktop"><div class="shinymcp-hero-copy"><p class="shinymcp-eyebrow">Shiny apps inside AI chat</p><h2>Turn live Shiny workflows into MCP Apps.</h2><p>shinymcp converts Shiny interfaces and R computations into MCP Apps: interactive cards that can run in chat clients, Shiny hosts, and shinychat conversations.</p><div class="shinymcp-actions"><a class="btn btn-primary" href="#quick-start">Get started</a><a class="btn btn-outline-primary" href="https://jameshwade.github.io/shinymcp/articles/use-cases.html">See use cases</a><a class="btn btn-outline-secondary" href="https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></div></div></div>',
-  '<div class="shinymcp-signal-row" aria-label="shinymcp capabilities"><div><strong>ui:// resources</strong><span>Declare HTML app surfaces for MCP hosts.</span></div><div><strong>postMessage bridge</strong><span>Keep inputs, tool calls, and results synchronized.</span></div><div><strong>Shiny hosting</strong><span>Embed MCP Apps as full-screen-capable Shiny cards.</span></div></div>',
-  sep = "\n\n"
-))
-```
+shinymcp builds [MCP Apps](https://modelcontextprotocol.io/docs/extensions/apps)
+in R. An MCP App is a tool with a page: a chat client that supports the MCP
+Apps extension, such as Claude, ChatGPT, or VS Code, shows the page in the
+conversation, and the person can keep working with it. In shinymcp the
+tools are R functions and the page is Shiny UI. The model can call the
+tools on their own, in any MCP client, and the page calls the same tools as
+the person uses it.
 
-## Start with a path
-
-```{r home-paths, echo = FALSE, results = "asis"}
-cat('<div class="shinymcp-path-grid"><a class="shinymcp-path-card" href="#quick-start"><strong>Build</strong><h3>Create an MCP App directly</h3><p>Use Shiny or bslib inputs, add MCP output targets, and bind them to R tools.</p></a><a class="shinymcp-path-card" href="https://jameshwade.github.io/shinymcp/articles/converting-shiny-apps.html"><strong>Convert</strong><h3>Move an existing Shiny app</h3><p>Flatten reactive groups into tool functions while keeping the user-facing workflow.</p></a><a class="shinymcp-path-card" href="https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.html"><strong>Integrate</strong><h3>Render apps inside shinychat</h3><p>Return rich MCP cards from chat tools, including state sync and full-screen mode.</p></a></div>')
-```
+<img src="man/figures/demo.gif" alt="A Shiny app exploring the Palmer penguins, open in a Claude Desktop conversation" width="100%">
 
 ## Installation
-
-You can install the development version of shinymcp from
-[GitHub](https://github.com/) with:
 
 ```r
 # install.packages("pak")
 pak::pak("JamesHWade/shinymcp")
 ```
 
-## Quick start
+## An app from a tool
 
-An MCP App has two parts: **UI components** that render in the chat interface,
-and **tools** that run R code when inputs change. Use standard shiny or bslib
-inputs --- the bridge auto-detects them by matching tool argument names to
-element `id` attributes.
-
-```{r example-scratch, eval = FALSE}
+```{r faithful, message = FALSE}
+library(shiny)
 library(shinymcp)
-library(bslib)
 
-ui <- page_sidebar(
-  theme = bs_theme(preset = "shiny"),
-  title = "Dataset Explorer",
-  sidebar = sidebar(
-    # Standard shiny input — auto-detected because id matches tool arg "dataset"
-    shiny::selectInput("dataset", "Choose dataset", c("mtcars", "iris", "pressure"))
-  ),
-  card(
-    card_header("Summary"),
-    mcp_text("summary")
-  )
-)
-
-tools <- list(
-  ellmer::tool(
-    fun = function(dataset = "mtcars") {
-      data <- get(dataset, envir = asNamespace("datasets"))
-      paste(capture.output(summary(data)), collapse = "\n")
-    },
-    name = "get_summary",
-    description = "Get summary statistics for the selected dataset",
-    arguments = list(
-      dataset = ellmer::type_string("Dataset name")
+faithful_histogram <- ellmer::tool(
+  function(bins = 20) {
+    list(
+      histogram = mcp_result_plot(
+        function() hist(faithful$waiting, breaks = bins, main = NULL, xlab = "Minutes"),
+        text = "Histogram of waiting times between eruptions."
+      ),
+      caption = sprintf("%d eruptions; median wait %d minutes.", nrow(faithful), median(faithful$waiting))
     )
-  )
+  },
+  name = "faithful_histogram",
+  description = "Show a histogram of waiting times between Old Faithful eruptions.",
+  arguments = list(
+    bins = ellmer::type_integer("Number of bins, 5 to 50.", required = FALSE)
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
 )
 
-app <- mcp_app(ui, tools, name = "dataset-explorer")
-serve(app)
+app <- mcp_app(
+  ui = fluidPage(
+    sliderInput("bins", "Number of bins", min = 5, max = 50, value = 20),
+    plotOutput("histogram"),
+    textOutput("caption")
+  ),
+  tools = list(faithful_histogram),
+  name = "faithful"
+)
 ```
 
-Save this as `app.R`, then register it in your Claude Desktop config:
+Names connect the two halves. The tool's argument `bins` takes its value
+from the input with that id, and the list it returns fills the outputs
+`histogram` and `caption`. When the person moves the slider, the page calls
+the tool again.
+
+The model calls the same tool, and reads what it returns, whether or not
+its client can show the page:
+
+```{r faithful-result}
+result <- app$run_tool("faithful_histogram", list(bins = 30))
+cat(result$content[[1]]$text)
+```
+
+The plot reaches it as an image, too. Each result is split three ways:
+text and compact structured data for the model, and what the page draws
+(HTML, images, widget data), which clients pass to the page and keep from
+the model. Results can hold text, tables, plots, images, HTML, and
+htmlwidgets.
+
+`preview_app(app)` opens the app in your browser the way a chat client
+shows it, next to what the model receives from each call.
+
+## Use it from a chat client
+
+Save the app in a file that ends with `serve(app)` and register the file
+with your client. For Claude Desktop, in **Settings > Developer > Edit
+Config**:
 
 ```json
 {
   "mcpServers": {
-    "dataset-explorer": {
+    "faithful": {
       "command": "Rscript",
       "args": ["/path/to/app.R"]
     }
@@ -101,238 +112,74 @@ Save this as `app.R`, then register it in your Claude Desktop config:
 }
 ```
 
-Restart Claude Desktop. When the tool is invoked, an interactive UI appears
-inline in the conversation. Changing the dropdown calls the tool and updates
-the output --- no page reload needed.
+Other ways to run an app:
 
-If nothing renders, see `vignette("debugging-shinymcp")` --- the most common
-cause is a host that doesn't support the MCP Apps extension yet.
+* `serve(app, type = "http")` serves it over HTTP, for clients that
+  connect to a URL.
+* `mcp_endpoint(app)` makes it a Shiny app that serves MCP at `/mcp`, to
+  deploy on Posit Connect, Shiny Server, or shinyapps.io. Apps built from
+  tools keep nothing between calls, so they run in as many processes as
+  the server starts.
 
-### Where MCP Apps run
+## Showing apps in Shiny
 
-MCP Apps is an optional MCP extension
-([spec](https://github.com/modelcontextprotocol/ext-apps)) that hosts must
-opt into. Your tools degrade gracefully: **in any MCP client they work as
-ordinary text tools; the interactive UI appears in hosts that support
-MCP Apps.**
+shinymcp also does the chat client's part, in Shiny.
+`mcp_chat_host()` puts apps in a
+[shinychat](https://posit-dev.github.io/shinychat/) conversation: the
+model opens them, and what the person does in them reaches the model with
+their next message. `mcp_host_ui()` and `mcp_host_server()` put an app in
+a pane of any Shiny app. The apps can be built with shinymcp, or come from
+any MCP server through `mcp_client()`, including Shiny apps served with
+Shiny's own MCP support.
 
-| Host | Interactive UI |
-|---|---|
-| Claude Desktop / claude.ai | ✅ (MCP Apps support rolling out) |
-| ChatGPT (apps) | ✅ |
-| `preview_app()` --- local browser preview | ✅ reference host with protocol log |
-| Shiny / shinychat via `mcp_embed()` | ✅ |
-| Any other MCP client (no apps extension) | text-only tools, still fully functional |
+## What the page can do
 
-The bridge also reports input state to the model's context as the user
-interacts with the rendered UI (`ui/update-model-context`). The model can
-see what the user changed in the app and act on it in its next turn.
+The page is the UI you give `mcp_app()`, with shinymcp's JavaScript in
+place of Shiny's. It takes Shiny's inputs and bslib's, inputs from
+packages that register a Shiny input binding (shinyWidgets, for example),
+and the small `mcp_*()` components shinymcp provides. It draws every kind
+of output: text, tables, plots, HTML, and htmlwidgets such as plotly, DT,
+and leaflet. Conditional panels show and hide, buttons run the tools that
+take their id, and the page tells the model what the person chose.
 
-## Converting a Shiny app
+Anything from another website, such as map tiles or a script from a CDN,
+needs a `csp` declaration: chat clients block the rest.
 
-The core idea: **flatten your reactive graph into tool functions**.
+## A Shiny app you already have
 
-Each connected group of inputs → reactives → outputs becomes a single tool
-that takes input values as arguments and returns a named list of outputs.
+There are two ways to put an existing Shiny app in a chat:
 
-```{r shiny-to-mcp, eval = FALSE}
-# --- Shiny ---
-server <- function(input, output, session) {
-  filtered <- reactive({
-    penguins[penguins$species == input$species, ]
-  })
-  output$scatter <- renderPlot({
-    ggplot(filtered(), aes(x, y)) + geom_point()
-  })
-  output$stats <- renderPrint({
-    summary(filtered())
-  })
-}
+* **Rewrite the part the model should use as tools.** The UI stays as it
+  is; the server function becomes R functions. See
+  [Rewriting a Shiny app as tools](https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.html).
+* **Serve the whole app as it is** with `as_mcp_app()`. Its server
+  function keeps running in R, one session each time the app opens. Shiny
+  is gaining MCP support of its own
+  ([rstudio/shiny#4407](https://github.com/rstudio/shiny/pull/4407)). Once
+  it is released, it will be the way to do this, and shinymcp will stop
+  serving live apps. See
+  [Serving a Shiny app as it is](https://jameshwade.github.io/shinymcp/articles/shiny-apps.html).
 
-# --- MCP App tool ---
-ellmer::tool(
-  fun = function(species = "Adelie") {
-    filtered <- penguins[penguins$species == species, ]
+shinymcp comes with a
+[skill](https://github.com/JamesHWade/shinymcp/tree/main/inst/skills/convert-shiny-app)
+that takes a coding agent through either one. For Claude Code, copy its
+folder, `system.file("skills", "convert-shiny-app", package = "shinymcp")`,
+into `~/.claude/skills/`.
 
-    # Render plot to base64 PNG
-    tmp <- tempfile(fileext = ".png")
-    ggplot2::ggsave(tmp, my_plot, width = 7, height = 4, dpi = 144)
-    on.exit(unlink(tmp))
+## Learn more
 
-    list(
-      scatter = base64enc::base64encode(tmp),
-      stats = paste(capture.output(summary(filtered)), collapse = "\n")
-    )
-  },
-  name = "explore",
-  description = "Filter and visualize penguins",
-  arguments = list(
-    species = ellmer::type_string("Penguin species")
-  )
-)
-```
+* [Get started](https://jameshwade.github.io/shinymcp/articles/shinymcp.html):
+  a first app, from preview to Claude Desktop.
+* [Building an app from tools](https://jameshwade.github.io/shinymcp/articles/tools.html):
+  inputs, outputs, results, and tools only the page may call.
+* [Running an app](https://jameshwade.github.io/shinymcp/articles/deployment.html):
+  chat clients, HTTP, and Posit Connect.
+* [Hosting MCP Apps in Shiny](https://jameshwade.github.io/shinymcp/articles/hosting.html):
+  in a shinychat conversation or a pane, from any MCP server.
+* [Rewriting a Shiny app as tools](https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.html).
+* [Serving a Shiny app as it is](https://jameshwade.github.io/shinymcp/articles/shiny-apps.html).
+* [How shinymcp works](https://jameshwade.github.io/shinymcp/articles/protocol.html).
+* [Troubleshooting](https://jameshwade.github.io/shinymcp/articles/troubleshooting.html).
 
-Return keys (`scatter`, `stats`) must match output IDs in the UI
-(`mcp_plot("scatter")`, `mcp_text("stats")`). The bridge routes each
-value to the correct output element.
-
-For a full worked example converting a Shiny app step-by-step, see
-`vignette("converting-shiny-apps")`.
-
-## Automatic conversion
-
-shinymcp includes a parse-analyze-generate pipeline that can scaffold an
-MCP App from an existing Shiny app:
-
-```{r auto-convert, eval = FALSE}
-convert_app("path/to/my-shiny-app")
-```
-
-This parses the UI and server code, maps the reactive dependency graph
-into tool groups, and writes a working MCP App with tools, components,
-and a server entrypoint. The generated tool bodies contain placeholders
-that you fill in with the actual computation logic.
-
-For details, see `vignette("automatic-conversion")`.
-
-### AI-assisted conversion
-
-For complex Shiny apps, shinymcp ships a
-[deputy](https://github.com/JamesHWade/deputy) skill that guides an AI
-agent through the conversion process. The skill handles dynamic UI,
-modules, file uploads, and other patterns that require human judgment.
-See `inst/skills/convert-shiny-app/SKILL.md` for the full instructions.
-
-## Component reference
-
-### Inputs: use standard shiny/bslib
-
-The bridge auto-detects standard form elements (`<select>`, `<input>`, etc.)
-whose `id` matches a tool argument name. This means you can use the Shiny and
-bslib inputs you already know:
-
-```{r native-inputs, eval = FALSE}
-sidebar(
-  shiny::selectInput("species", "Species", choices),
-  shiny::numericInput("n", "Count", value = 10),
-  shiny::checkboxInput("trend", "Show trend line")
-)
-```
-
-For edge cases (id doesn't match arg name, custom widgets), use `mcp_input()`
-to explicitly mark an element:
-
-```{r mcp-input, eval = FALSE}
-mcp_input(shiny::radioButtons("fmt", "Format", c("summary", "head")), id = "fmt")
-```
-
-shinymcp also provides lightweight `mcp_select()`, `mcp_text_input()`, etc.
-that generate minimal HTML without Shiny's JS runtime. These are useful for
-simple apps and are what the automatic conversion pipeline generates.
-
-### Outputs
-
-| Shiny | shinymcp | Notes |
-|---|---|---|
-| `textOutput()` / `verbatimTextOutput()` | `mcp_text()` | Renders in `<pre>` with monospace font |
-| `plotOutput()` | `mcp_plot()` | Tool returns base64-encoded PNG |
-| `tableOutput()` | `mcp_table()` | Tool returns HTML table string |
-| `htmlOutput()` | `mcp_html()` | Tool returns raw HTML |
-
-You can also turn any tag into an output target with `mcp_output()`:
-
-```{r mcp-output, eval = FALSE}
-mcp_output(tags$pre(id = "result"), type = "text")
-```
-
-### External assets and CSP
-
-MCP hosts apply a restrictive Content Security Policy to the app iframe:
-**external scripts, stylesheets, fonts, and network requests are blocked by
-default, and they fail silently.** shinymcp sidesteps this by inlining all
-CSS/JS dependencies into the HTML resource and sending plots as base64 ---
-stick to that model and you never hit it. If your app genuinely needs
-external domains (a CDN-loaded htmlwidget, client-side API calls), declare
-them so hosts can allow them:
-
-```{r csp, eval = FALSE}
-mcp_app(
-  ui, tools,
-  name = "my-app",
-  csp = list(
-    connect_domains = "https://api.example.com",
-    resource_domains = "https://cdn.jsdelivr.net"
-  )
-)
-```
-
-See `vignette("mcp-apps-protocol")` for details.
-
-## Examples
-
-shinymcp ships an example ladder: each app adds one new idea, so you can
-work up from a 30-line hello-world to a full embedded-governance demo.
-
-```{r examples, eval = FALSE}
-# 1. The whole contract in ~30 lines: one input, one tool, one output
-system.file("examples", "hello-mcp", "app.R", package = "shinymcp")
-
-# 2. Native shiny/bslib inputs, auto-detected by id — no wrappers
-system.file("examples", "bslib-inputs", "app.R", package = "shinymcp")
-
-# 3. A real dashboard: Palmer Penguins with ggplot2, multiple outputs,
-#    and a declared outputSchema
-system.file("examples", "penguins", "app.R", package = "shinymcp")
-
-# 4. Protocol feature tour: app-only tools, lazy-loaded resources, theme
-#    syncing, and the window.shinymcp host-interaction API
-system.file("examples", "feature-tour", "app.R", package = "shinymcp")
-
-# 5. Several tools in one app — reactive groups become separate contracts
-system.file("examples", "multi-tool", "app.R", package = "shinymcp")
-
-# 6. Realistic chat cards: revenue planning, experiment design, incident
-#    triage, plus a shinychat app that hosts them as rich tool cards
-system.file("examples", "use-cases", "app.R", package = "shinymcp")
-system.file("examples", "use-cases", "shinychat-app.R", package = "shinymcp")
-```
-
-Every example runs in `preview_app()` (a local reference host with a
-protocol log) or as an MCP server via `Rscript app.R`. The guided tour with
-what-to-look-for notes is in `vignette("use-cases")`.
-
-## How it works
-
-MCP Apps render inside sandboxed iframes in the AI chat interface.
-A lightweight JavaScript bridge (no npm dependencies) handles
-communication via postMessage/JSON-RPC:
-
-1. User changes an input → bridge auto-detects which form elements are
-   inputs (by matching tool argument names to element ids) and collects
-   all values
-2. Bridge pushes the input state into the model's context
-   (`ui/update-model-context`) and sends a `tools/call` request to the host
-3. Host proxies the call to the MCP server (your R process)
-4. R tool function runs, returns results
-5. Bridge updates output elements with the response
-
-The bridge also implements the MCP Apps initialization handshake
-(`ui/initialize`), host theme syncing (light/dark mode follows the chat
-client automatically), auto-resize notifications, ping health checks, and
-graceful teardown.
-
-shinymcp targets the MCP Apps spec version **2026-01-26**. For a message-level
-walkthrough, a compliance table, and the `window.shinymcp` JS API for custom
-host interactions (open links, send chat messages, request fullscreen), see
-`vignette("mcp-apps-protocol")`.
-
-## Related packages
-
-- [ellmer](https://ellmer.tidyverse.org/) --- LLM framework that shinymcp uses
-  for tool definitions
-- [bslib](https://rstudio.github.io/bslib/) --- Bootstrap-based layout and
-  theming for the UI
-- [mcptools](https://github.com/posit-dev/mcptools) --- MCP server framework
-  (shinymcp extends this with resource support)
-- [deputy](https://github.com/JamesHWade/deputy) --- Agentic AI framework
-  with a bundled skill for AI-assisted Shiny conversion
+The [examples](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples)
+folder has runnable apps for each of these.

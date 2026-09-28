@@ -1,0 +1,125 @@
+---
+title: "How shinymcp works"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{How shinymcp works}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+You don't need this article to use shinymcp. It explains what happens
+between R and the chat client, which helps when debugging an app, writing
+JavaScript for one, or deciding how to deploy it.
+
+## MCP Apps
+
+The [Model Context Protocol](https://modelcontextprotocol.io) lets a chat
+client use tools that a server provides. The
+[MCP Apps extension](https://modelcontextprotocol.io/docs/extensions/apps)
+lets a tool come with a page:
+
+1. The server lists its tools. A tool with a page names it in
+   `_meta.ui.resourceUri`, a `ui://` URI.
+2. The client reads that resource, an HTML document with the MIME type
+   `text/html;profile=mcp-app`, and shows it in a sandboxed iframe in the
+   conversation, under a Content Security Policy that blocks anything the
+   app hasn't declared.
+3. When the model calls the tool, the client sends the page the call's
+   arguments and then its result, over `postMessage` using JSON-RPC.
+4. The page can ask the client to call the server's tools, read its
+   resources, tell the model what the person did
+   (`ui/update-model-context`), post a message to the chat, open a link,
+   switch to full screen, or save a file.
+
+A tool can also be marked for the page only (`_meta.ui.visibility`), so the
+client never offers it to the model. Clients that don't support the
+extension see neither the pages nor those tools, and get the rest as
+ordinary tools whose results are text.
+
+## The page
+
+`McpApp$html_resource()` builds the page: the app's UI rendered once to
+HTML, every dependency (Bootstrap, bslib, htmlwidgets' JavaScript) written
+into it, and two scripts. The first, at the top of `<head>`, provides
+`window.Shiny` for packages that expect it. The second, at the end of
+`<body>`, is shinymcp's bridge. It speaks the MCP Apps protocol with the
+client, draws Shiny's inputs, fills in outputs, and applies the client's
+theme and fonts.
+
+The page is self-contained because a client may show it from a string
+(`srcdoc`), with no address to load anything from.
+
+## Apps built from tools
+
+For an app made with `mcp_app()`, the bridge matches inputs to tool
+arguments and outputs to the names in tool results. When an input changes,
+it asks the client to call the tools that take it, and draws the results.
+
+A result has three parts: `content` (text for the model),
+`structuredContent` (data for the model), and `_meta["shinymcp/view"]`,
+which holds what the page draws: HTML, images, widget data, and the
+JavaScript libraries they need. Clients pass `_meta` to the page and keep
+it from the model.
+
+## Live Shiny apps
+
+This is the part of shinymcp that Shiny's own MCP support will replace; see
+`vignette("shiny-apps")`.
+
+An app made with `as_mcp_app()` has two tools. The model's tool (named after
+the app) opens a *view*: a session of the app's server function, created
+for that call, given the call's arguments as inputs, and run until it
+settles. The result reports the outputs to the model and carries them, with
+the view's id, to the page.
+
+The second tool, `<name>_view`, is for the page only. As the person works,
+the page sends it the inputs that changed. The runtime sets them in the
+view's session, lets it settle, and returns the outputs that changed, the
+input updates the server sent (`updateSelectInput()` and the like),
+notifications, modals, inserted UI, and custom messages. Each result also
+says when the session's next timer (`invalidateLater()`, `reactivePoll()`)
+is due, and the page calls back then.
+
+Sessions are `shiny::MockShinySession` objects, as in `shiny::testServer()`,
+extended to record what the server sends to the browser. Each view has a
+revision number; a page that missed updates (reloaded, or shown again from
+chat history) sends all its inputs and gets every output back. A page whose
+session is gone starts a new one the same way.
+
+Libraries the page doesn't have yet go with the result that needs them.
+In a result for the model, which the client keeps in the conversation,
+large ones go by name, and the page fetches them through the view tool.
+
+## Versions and transports
+
+shinymcp's server speaks MCP versions 2024-11-05 through 2025-11-25, which
+begin with an `initialize` handshake and keep a session, and the
+2026-07-28 revision, in which every request carries its version and the
+client's capabilities, so any server process can answer it. It implements
+the MCP Apps extension as of 2026-01-26.
+
+`serve()` runs it over stdio or Streamable HTTP. Over HTTP, responses are
+plain JSON: the server never starts a stream, since it has nothing to send
+unprompted. `mcp_endpoint()` adds the same HTTP endpoint to a Shiny app.
+
+## Hosts
+
+`mcp_chat_host()`, `mcp_host_server()`, and `preview_app()` are the client
+side: they show the page in a sandboxed iframe and pass tool calls and
+results to it, as a chat client does.
+
+In a Shiny app, the page's requests travel over the Shiny session to R,
+which passes them to the app's server: an `McpServer` in the same process,
+or a remote one through `mcp_client()`, which speaks both protocol eras
+and keeps each result's `_meta`. R passes on only the requests a page may
+make: tools visible to the app, resource reads, and `ping`. A card or pane
+carries the tool call that opened it (tool, arguments, result) rather than
+the page; when it starts, the host reads the page for it, and a card
+restored with a saved conversation starts the same way.
+
+`preview_app()` is the exception: its page talks to the endpoint over
+HTTP itself, as a browser-based client would.

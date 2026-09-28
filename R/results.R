@@ -1,85 +1,33 @@
-# Typed result helpers and shinychat integration.
+# Tool results
+#
+# A tool's return value has two audiences. The model reads text and compact
+# data; the app's UI renders HTML, tables, and images. An MCP tool result has
+# room for both, so shinymcp fills three places:
+#
+#   content            text for the model and for hosts without MCP Apps,
+#                      plus plot images the model can look at
+#   structuredContent  the model-facing value of each output, keyed by id
+#   _meta              what the UI needs to render each output (HTML, PNG
+#                      data, dependencies), under "shinymcp/view", which
+#                      hosts pass to the app but do not show the model
+#
+# The typed constructors below let a tool say what each output is and what
+# the model should see for it.
+
+# ---- Typed outputs ----
 
 #' @noRd
-new_mcp_result <- function(kind, value, model_value = NULL, text = NULL) {
+new_mcp_result <- function(kind, value, model_value = NULL, text = NULL, ...) {
   structure(
     list(
       kind = kind,
       value = value,
       model_value = model_value,
-      text = text
+      text = text,
+      options = list(...)
     ),
     class = "shinymcp_result"
   )
-}
-
-#' Build a typed text result
-#'
-#' @param value Text value.
-#' @param model_value Optional machine-facing value. Defaults to `value`.
-#' @export
-mcp_result_text <- function(value, model_value = value) {
-  new_mcp_result("text", as.character(value), model_value, as.character(value))
-}
-
-#' Build a typed HTML result
-#'
-#' @param html HTML string or htmltools tag object.
-#' @param model_value Optional machine-facing value.
-#' @param text Optional plain-text fallback.
-#' @export
-mcp_result_html <- function(html, model_value = NULL, text = NULL) {
-  new_mcp_result("html", html, model_value, text)
-}
-
-#' Build a typed table result
-#'
-#' @param data A data frame, matrix, or table-like object.
-#' @param model_value Optional machine-facing value. Defaults to `data`.
-#' @param text Optional plain-text fallback.
-#' @export
-mcp_result_table <- function(data, model_value = data, text = NULL) {
-  new_mcp_result("table", data, model_value, text)
-}
-
-#' Build a typed plot result
-#'
-#' @param plot A plotting function, ggplot object, recorded plot, or image path.
-#' @param model_value Optional machine-facing value.
-#' @param text Optional plain-text fallback.
-#' @export
-mcp_result_plot <- function(plot, model_value = NULL, text = NULL) {
-  new_mcp_result("plot", plot, model_value, text)
-}
-
-#' Build a typed image result
-#'
-#' @param path_or_data Image path or raw/base64 data.
-#' @param model_value Optional machine-facing value.
-#' @param text Optional plain-text fallback.
-#' @export
-mcp_result_image <- function(path_or_data, model_value = NULL, text = NULL) {
-  new_mcp_result("image", path_or_data, model_value, text)
-}
-
-#' Build a typed PDF result
-#'
-#' @param path_or_data PDF path or raw/base64 data.
-#' @param model_value Optional machine-facing value.
-#' @param text Optional plain-text fallback.
-#' @export
-mcp_result_pdf <- function(path_or_data, model_value = NULL, text = NULL) {
-  new_mcp_result("pdf", path_or_data, model_value, text)
-}
-
-#' Build a typed widget result
-#'
-#' @param ui htmltools tag or tagList.
-#' @param model_value Optional machine-facing value.
-#' @param text Optional plain-text fallback.
-#' @export
-mcp_result_widget <- function(ui, model_value = NULL, text = NULL) {
-  new_mcp_result("widget", ui, model_value, text)
 }
 
 #' @noRd
@@ -87,735 +35,985 @@ is_mcp_result <- function(x) {
   inherits(x, "shinymcp_result")
 }
 
-#' @noRd
-call_with_supported_args <- function(fn, args) {
-  if (!is.function(fn)) {
-    return(fn)
-  }
-  formals_names <- names(formals(fn))
-  if (is.null(formals_names)) {
-    return(fn())
-  }
-  if ("..." %in% formals_names) {
-    return(do.call(fn, args))
-  }
-  supported <- args[intersect(names(args), formals_names)]
-  do.call(fn, supported)
+#' Typed output values for tool results
+#'
+#' @description
+#' A tool that feeds an app returns a named list: one element per output,
+#' named by the output's id. Plain values work (a string for [mcp_text()], a
+#' data frame for [mcp_table()]), but the typed constructors say more:
+#'
+#' * `mcp_result_text()`: text, rendered in a `<pre>` by [mcp_text()].
+#' * `mcp_result_html()`: HTML or an htmltools tag.
+#' * `mcp_result_table()`: a data frame, rendered as an HTML table.
+#' * `mcp_result_plot()`: a plot, rendered to PNG.
+#' * `mcp_result_image()`: an image file or raw PNG/JPEG data.
+#' * `mcp_result_pdf()`: a PDF the user can download from the app.
+#' * `mcp_result_widget()`: an htmlwidget or other tag with JavaScript
+#'   dependencies, such as a plotly chart.
+#'
+#' Each takes a `model_value`, the value the model sees for this output in
+#' the tool result's structured content, and a `text`, the plain-text
+#' version used when the model or host can only read text. By default the
+#' model gets a table's rows and a plot's description; set them when it
+#' needs something more specific: identifiers, a decision, the numbers
+#' behind a chart.
+#'
+#' @param value,html,data,plot,path_or_data,ui The content to render.
+#' @param model_value What the model sees for this output. Defaults to the
+#'   text for text and HTML outputs, the rows for tables, and `text` for
+#'   plots, images, PDFs, and widgets.
+#' @param text Plain-text version of the output.
+#' @param width,height Plot size in CSS pixels. By default, the size of the
+#'   output the plot goes to, which the app's page reports when it calls the
+#'   tool, and 800 by 500 for calls it didn't make (such as the model's).
+#'   The page draws a plot of the wrong size to fit, then calls the tool
+#'   again for one of the right size.
+#' @param res Plot resolution in pixels per inch at 1x.
+#' @param scale Pixel density multiplier; `2` gives sharp plots on high
+#'   density screens at four times the file size. By default, the screen's,
+#'   as the page reports it, else the `shinymcp.plot_scale` option (1.5).
+#' @param filename File name offered when the user downloads a PDF.
+#' @return A typed output value, to be returned from a tool inside a named
+#'   list or on its own.
+#' @family writing tools
+#' @examples
+#' summarise_cars <- function(cyl = 4) {
+#'   cars <- mtcars[mtcars$cyl == cyl, ]
+#'   list(
+#'     summary = mcp_result_text(
+#'       paste(nrow(cars), "cars with", cyl, "cylinders"),
+#'       model_value = list(cyl = cyl, n = nrow(cars))
+#'     ),
+#'     cars = mcp_result_table(head(cars)),
+#'     scatter = mcp_result_plot(
+#'       function() plot(cars$wt, cars$mpg),
+#'       text = "Weight against fuel economy"
+#'     )
+#'   )
+#' }
+#' @name mcp_result
+NULL
+
+#' @rdname mcp_result
+#' @export
+mcp_result_text <- function(value, model_value = NULL, text = NULL) {
+  value <- paste(as.character(value), collapse = "\n")
+  new_mcp_result("text", value, model_value, text %||% value)
 }
 
-#' @noRd
-schema_properties_to_arguments <- function(schema) {
-  props <- schema$properties %||% list()
-  lapply(props, function(prop) {
-    description <- prop$description %||% ""
-    switch(
-      prop$type %||% "string",
-      string = ellmer::type_string(description),
-      number = ellmer::type_number(description),
-      integer = ellmer::type_integer(description),
-      boolean = ellmer::type_boolean(description),
-      ellmer::type_string(description)
-    )
-  })
+#' @rdname mcp_result
+#' @export
+mcp_result_html <- function(html, model_value = NULL, text = NULL) {
+  new_mcp_result("html", html, model_value, text)
 }
 
-#' @noRd
-tool_formals <- function(tool) {
-  if (is_ellmer_tool(tool)) {
-    return(formals(tool))
-  }
-  if (is.list(tool) && is.function(tool$fun)) {
-    return(formals(tool$fun))
-  }
-  as.pairlist(list())
+#' @rdname mcp_result
+#' @export
+mcp_result_table <- function(data, model_value = NULL, text = NULL) {
+  new_mcp_result("table", data, model_value, text)
 }
 
-#' @noRd
-ellmer_tool_arguments <- function(tool) {
-  arguments <- tool@arguments
-  is_type_object <- any(
-    class(arguments) %in% c("TypeObject", "ellmer::TypeObject")
-  ) ||
-    inherits(arguments, "TypeObject") ||
-    inherits(arguments, "ellmer::TypeObject") ||
-    (isS4(arguments) && methods::is(arguments, "TypeObject"))
-
-  if (is_type_object) {
-    return(arguments@properties)
-  }
-  arguments
-}
-
-#' @noRd
-as_shinychat_request_tool <- function(tool) {
-  if (is.null(tool)) {
-    return(NULL)
-  }
-
-  if (is_ellmer_tool(tool)) {
-    return(tool)
-  }
-
-  if (!is.list(tool)) {
-    return(NULL)
-  }
-
-  arguments <- schema_properties_to_arguments(
-    tool$inputSchema %||%
-      list(
-        type = "object",
-        properties = list()
-      )
-  )
-  fun <- tool$fun
-  if (!is.function(fun)) {
-    fun <- function() NULL
-    formals(fun) <- as.pairlist(
-      stats::setNames(
-        rep(list(NULL), length(arguments)),
-        names(arguments)
-      )
-    )
-  }
-
-  ellmer::tool(
-    fun = fun,
-    name = tool_name(tool),
-    description = tool$description %||% "",
-    arguments = arguments,
-    annotations = tool$annotations %||% list()
-  )
-}
-
-#' @noRd
-resolve_shinychat_request_source <- function(
-  app,
-  request_tool_name = NULL,
-  app_tool = NULL
+#' @rdname mcp_result
+#' @export
+mcp_result_plot <- function(
+  plot,
+  model_value = NULL,
+  text = NULL,
+  width = NULL,
+  height = NULL,
+  res = 96,
+  scale = NULL
 ) {
-  if (!is.null(app_tool)) {
+  new_mcp_result(
+    "plot",
+    plot,
+    model_value,
+    text,
+    width = width,
+    height = height,
+    res = res,
+    scale = scale
+  )
+}
+
+#' @rdname mcp_result
+#' @export
+mcp_result_image <- function(path_or_data, model_value = NULL, text = NULL) {
+  new_mcp_result("image", path_or_data, model_value, text)
+}
+
+#' @rdname mcp_result
+#' @export
+mcp_result_pdf <- function(
+  path_or_data,
+  model_value = NULL,
+  text = NULL,
+  filename = NULL
+) {
+  new_mcp_result("pdf", path_or_data, model_value, text, filename = filename)
+}
+
+#' @rdname mcp_result
+#' @export
+mcp_result_widget <- function(ui, model_value = NULL, text = NULL) {
+  new_mcp_result("widget", ui, model_value, text)
+}
+
+#' Set a tool result's text and data explicitly
+#'
+#' By default the text a model reads from a tool result is assembled from the
+#' outputs, and the structured content is each output's model value. Wrap a
+#' tool's outputs in `mcp_tool_result()` to write those yourself, for example
+#' to lead with record identifiers the model should quote back:
+#'
+#' ```r
+#' mcp_tool_result(
+#'   proposal = mcp_result_table(batches),
+#'   text = "Proposal P-3 drafted for campaign C-014: six batches.",
+#'   data = list(campaign = "C-014", proposal = "P-3", revision = 47)
+#' )
+#' ```
+#'
+#' @param ... Outputs, named by output id, as in a tool's usual return list.
+#' @param text Text for the model and for hosts that only show text. Replaces
+#'   the text assembled from the outputs.
+#' @param data A named list sent as the result's structured content. Replaces
+#'   the default of one entry per output.
+#' @param error If `TRUE`, the result is marked as a tool error. Use it for
+#'   failures the model should see and react to.
+#' @return An object a tool can return.
+#' @family writing tools
+#' @export
+mcp_tool_result <- function(..., text = NULL, data = NULL, error = FALSE) {
+  outputs <- list(...)
+  if (
+    length(outputs) && (is.null(names(outputs)) || any(!nzchar(names(outputs))))
+  ) {
+    shinymcp_abort(
+      "Outputs passed to {.fn mcp_tool_result} must be named by output id.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  check_output_ids(names(outputs))
+  # Structured content is a JSON object.
+  named <- is.list(data) &&
+    !is.data.frame(data) &&
+    (length(data) == 0 || (!is.null(names(data)) && all(nzchar(names(data)))))
+  if (!is.null(data) && !named) {
+    shinymcp_abort(
+      c(
+        "{.arg data} must be a named list: a tool's structured content is a JSON object.",
+        "i" = "Name other values in one, as in {.code data = list(rows = x)}."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
+  if (!is.null(text)) {
+    text <- paste(as.character(text), collapse = "\n")
+  }
+  structure(
+    list(outputs = outputs, text = text, data = data, error = isTRUE(error)),
+    class = "shinymcp_tool_result"
+  )
+}
+
+#' @noRd
+is_tool_result <- function(x) {
+  inherits(x, "shinymcp_tool_result")
+}
+
+# ---- Resolving values into outputs ----
+
+#' Resolve a value into a rendered output entry
+#'
+#' @param value A typed result or plain R value.
+#' @param skip_deps Dependencies ("name@version") the view already has.
+#' @return A list with `kind`, `render` (payload for the view), `model`
+#'   (model-facing value), `text`, and optionally `image` and `deps`.
+#' @noRd
+resolve_output <- function(
+  value,
+  skip_deps = character(),
+  hint = NULL,
+  size = NULL,
+  pixel_ratio = NULL
+) {
+  if (!is_mcp_result(value)) {
+    value <- as_typed_result(value, hint)
+  }
+  kind <- value$kind
+  out <- switch(
+    kind,
+    text = list(
+      kind = "text",
+      render = value$value,
+      model = value$model_value %||% value$value,
+      text = value$text %||% value$value
+    ),
+    html = resolve_html_output(value, skip_deps),
+    widget = resolve_html_output(value, skip_deps, kind = "widget"),
+    table = resolve_table_output(value),
+    plot = resolve_plot_output(value, size, pixel_ratio),
+    image = resolve_image_output(value),
+    pdf = resolve_pdf_output(value),
+    json = list(
+      kind = "text",
+      render = value$text,
+      model = value$model_value %||% value$value,
+      text = value$text
+    ),
+    shinymcp_abort(
+      "Unknown output kind {.val {kind}}.",
+      class = "shinymcp_error_validation"
+    )
+  )
+  out
+}
+
+#' Classify a plain R value returned by a tool
+#'
+#' `hint` is the type of the UI placeholder the value goes to, if known: a
+#' base64 string headed for an `mcp_plot()` is an image, not text.
+#' @noRd
+as_typed_result <- function(x, hint = NULL) {
+  if (is.null(x)) {
+    return(new_mcp_result("text", "", NULL, ""))
+  }
+  if (is.data.frame(x) || is.matrix(x)) {
+    return(mcp_result_table(x))
+  }
+  if (inherits(x, "htmlwidget")) {
+    return(mcp_result_widget(x))
+  }
+  if (inherits(x, c("shiny.tag", "shiny.tag.list", "html"))) {
+    return(mcp_result_html(x))
+  }
+  if (inherits(x, c("ggplot", "recordedplot", "trellis"))) {
+    return(mcp_result_plot(x))
+  }
+  if (is.character(x)) {
+    if (
+      length(hint) == 1 &&
+        hint %in% c("plot", "image") &&
+        looks_like_image_data(x)
+    ) {
+      return(mcp_result_image(x))
+    }
+    return(mcp_result_text(x))
+  }
+  if (is.atomic(x)) {
+    text <- if (length(x) == 1) format(x) else paste(format(x), collapse = ", ")
+    return(new_mcp_result("text", text, unclass(x), text))
+  }
+  text <- paste(
+    utils::capture.output(utils::str(x, give.attr = FALSE)),
+    collapse = "\n"
+  )
+  new_mcp_result("json", x, x, text)
+}
+
+#' @noRd
+resolve_html_output <- function(value, skip_deps, kind = "html") {
+  rendered <- render_html_payload(value$value, skip_deps)
+  text <- value$text %||% html_to_text(rendered$html)
+  list(
+    kind = kind,
+    render = rendered$html,
+    deps = rendered$deps,
+    model = value$model_value %||% text,
+    text = text
+  )
+}
+
+#' @noRd
+resolve_table_output <- function(value) {
+  data <- value$value
+  if (is.character(data) && length(data) == 1) {
+    text <- value$text %||% html_to_text(data)
     return(list(
-      name = request_tool_name %||% tool_name(app_tool),
-      tool = as_shinychat_request_tool(app_tool)
+      kind = "table",
+      render = data,
+      model = value$model_value %||% text,
+      text = text
     ))
   }
+  data <- as_data_frame_safely(data)
+  if (is.null(data)) {
+    text <- paste(utils::capture.output(print(value$value)), collapse = "\n")
+    return(list(
+      kind = "text",
+      render = text,
+      model = value$model_value %||% text,
+      text = value$text %||% text
+    ))
+  }
+  list(
+    kind = "table",
+    render = render_table_html(data),
+    model = value$model_value %||% table_records(data),
+    text = value$text %||% table_text(data)
+  )
+}
 
-  app <- as_mcp_app(app)
-  app_tools <- app$mcp_tools()
+#' @noRd
+resolve_plot_output <- function(value, size = NULL, pixel_ratio = NULL) {
+  opts <- value$options
+  # A plot without a size of its own follows its output's, and the page
+  # asks again when that changes. An output that takes its image's height
+  # gives only a width; the plot keeps its own shape.
+  fit <- is.null(opts$width) || is.null(opts$height)
+  shape <- (opts$height %||% 500) / (opts$width %||% 800)
+  width <- opts$width %||% size$width %||% 800
+  height <- opts$height %||% size$height %||% round(width * shape)
+  png <- render_plot_png(
+    value$value,
+    width = width,
+    height = height,
+    res = opts$res %||% 96,
+    scale = opts$scale %||%
+      pixel_ratio %||%
+      getOption("shinymcp.plot_scale", 1.5)
+  )
+  text <- value$text %||% "A plot."
+  list(
+    kind = "plot",
+    render = compact_list(list(
+      src = paste0("data:image/png;base64,", png),
+      width = width,
+      height = height,
+      alt = text,
+      fit = if (fit) TRUE
+    )),
+    image = list(data = png, mimeType = "image/png"),
+    model = value$model_value %||% text,
+    text = text
+  )
+}
 
-  if (!is.null(request_tool_name)) {
-    for (candidate in app_tools) {
-      if (identical(tool_name(candidate), request_tool_name)) {
-        app_tool <- candidate
-        break
+#' @noRd
+resolve_image_output <- function(value) {
+  img <- read_binary_input(value$value, default_mime = "image/png")
+  text <- value$text %||% "An image."
+  list(
+    kind = "image",
+    render = list(
+      src = paste0("data:", img$mime, ";base64,", img$data),
+      alt = text
+    ),
+    image = if (
+      img$mime %in% c("image/png", "image/jpeg", "image/gif", "image/webp")
+    ) {
+      list(data = img$data, mimeType = img$mime)
+    },
+    model = value$model_value %||% text,
+    text = text
+  )
+}
+
+#' @noRd
+resolve_pdf_output <- function(value) {
+  pdf <- read_binary_input(value$value, default_mime = "application/pdf")
+  filename <- value$options$filename %||%
+    (if (
+      is.character(value$value) &&
+        length(value$value) == 1 &&
+        file.exists(value$value)
+    ) {
+      basename(value$value)
+    }) %||%
+    "document.pdf"
+  text <- value$text %||% paste0("A PDF, ", filename, ".")
+  list(
+    kind = "download",
+    render = list(
+      filename = filename,
+      mimeType = "application/pdf",
+      data = pdf$data,
+      label = paste("Download", filename)
+    ),
+    model = value$model_value %||% text,
+    text = text
+  )
+}
+
+#' Is a string a data URI or base64 of a PNG, JPEG, GIF, or WebP image?
+#' @noRd
+looks_like_image_data <- function(x) {
+  is.character(x) &&
+    length(x) == 1 &&
+    !is.na(x) &&
+    (startsWith(x, "data:image/") ||
+      (nchar(x) > 64 && !is.na(sniff_image_mime(x))))
+}
+
+#' The image type of base64 data, from its first bytes
+#' @noRd
+sniff_image_mime <- function(x) {
+  prefixes <- c(
+    "iVBORw0KGgo" = "image/png",
+    "/9j/" = "image/jpeg",
+    "R0lGOD" = "image/gif",
+    "UklGR" = "image/webp"
+  )
+  for (prefix in names(prefixes)) {
+    if (startsWith(x, prefix)) {
+      return(prefixes[[prefix]])
+    }
+  }
+  NA_character_
+}
+
+#' Base64 data with the image type its first bytes give, for images
+#' @noRd
+base64_with_mime <- function(data, default_mime) {
+  mime <- if (startsWith(default_mime, "image/")) {
+    sniff_image_mime(data)
+  } else {
+    NA_character_
+  }
+  list(data = data, mime = if (is.na(mime)) default_mime else mime)
+}
+
+#' Read a file path, raw vector, or base64 string as base64
+#' @noRd
+read_binary_input <- function(x, default_mime) {
+  if (is.character(x) && length(x) == 1 && file.exists(x)) {
+    return(list(data = base64_file(x), mime = mime_type_for(x, default_mime)))
+  }
+  if (is.raw(x)) {
+    return(base64_with_mime(base64_raw(x), default_mime))
+  }
+  if (is.character(x) && length(x) == 1) {
+    if (startsWith(x, "data:")) {
+      mime <- sub("^data:([^;,]+).*$", "\\1", x)
+      return(list(data = sub("^data:[^,]*,", "", x), mime = mime))
+    }
+    return(base64_with_mime(x, default_mime))
+  }
+  shinymcp_abort(
+    "Expected a file path, a raw vector, or a base64 string, not {.cls {class(x)}}.",
+    class = "shinymcp_error_validation"
+  )
+}
+
+# ---- Assembling the MCP result ----
+
+#' Build an MCP `CallToolResult` from a tool's return value
+#'
+#' @param raw What the tool function returned.
+#' @param images Whether to add plot and image content blocks for the model.
+#' @param skip_deps HTML dependencies the view already loaded.
+#' @param view Extra fields for `_meta["shinymcp/view"]` (runtime state).
+#' @param output_types Named character vector of the UI's output types, so
+#'   plain values can be read the way their placeholder expects.
+#' @return A list ready to serialize as a `tools/call` result.
+#' @noRd
+build_tool_result <- function(
+  raw,
+  images = TRUE,
+  skip_deps = character(),
+  view = NULL,
+  output_types = NULL,
+  sizes = NULL,
+  pixel_ratio = NULL
+) {
+  text <- NULL
+  data <- NULL
+  error <- FALSE
+  if (is_tool_result(raw)) {
+    text <- raw$text
+    data <- raw$data
+    error <- raw$error
+    outputs <- raw$outputs
+  } else if (is_named_output_list(raw)) {
+    check_output_ids(names(raw))
+    outputs <- raw
+  } else {
+    outputs <- NULL
+  }
+
+  if (is.null(outputs)) {
+    # A single unnamed value: the view routes it to its only output, whose
+    # type says how to read it.
+    hint <- if (length(output_types) == 1) output_types[[1]]
+    size <- if (length(output_types) == 1) sizes[[names(output_types)[[1]]]]
+    entry <- resolve_output(
+      raw,
+      skip_deps,
+      hint = hint,
+      size = size,
+      pixel_ratio = pixel_ratio
+    )
+    limit <- getOption("shinymcp.max_text_chars", 4000)
+    content <- list(text_block(
+      text %||% truncate_text(entry$text %||% "", limit)
+    ))
+    if (images && !is.null(entry$image)) {
+      content <- c(content, list(image_block(entry$image)))
+    }
+    view_meta <- compact_list(c(
+      list(result = view_payload(entry)),
+      view
+    ))
+    result <- list(content = content)
+    structured <- data %||% single_structured_value(entry)
+    if (!is.null(structured)) {
+      result$structuredContent <- structured
+    }
+  } else {
+    # Each library once per result: an output skips what earlier ones
+    # brought.
+    entries <- list()
+    for (id in names(outputs)) {
+      hint <- if (id %in% names(output_types)) output_types[[id]]
+      entry <- resolve_output(
+        outputs[[id]],
+        skip_deps = skip_deps,
+        hint = hint,
+        size = sizes[[id]],
+        pixel_ratio = pixel_ratio
+      )
+      skip_deps <- c(
+        skip_deps,
+        vapply(entry$deps %||% list(), function(d) d$name, character(1))
+      )
+      entries[[length(entries) + 1]] <- entry
+    }
+    names(entries) <- names(outputs)
+    content <- list(text_block(text %||% summarize_entries(entries)))
+    if (images) {
+      for (entry in entries) {
+        if (!is.null(entry$image)) {
+          content <- c(content, list(image_block(entry$image)))
+        }
       }
     }
-  } else if (length(app_tools) == 1) {
-    app_tool <- app_tools[[1]]
-  }
-
-  if (!is.null(app_tool)) {
-    return(list(
-      name = tool_name(app_tool),
-      tool = as_shinychat_request_tool(app_tool)
+    view_meta <- compact_list(c(
+      list(outputs = lapply(entries, view_payload)),
+      view
     ))
+    structured <- data %||% lapply(entries, function(e) json_safe(e$model))
+    # structuredContent is an object: with nothing in it, `{}`, not `[]`.
+    result <- list(
+      content = content,
+      structuredContent = if (length(structured)) structured else json_object()
+    )
   }
 
+  if (isTRUE(error)) {
+    result$isError <- TRUE
+  }
+  result[["_meta"]] <- list(`shinymcp/view` = view_meta)
+  result
+}
+
+#' Refuse an output id given twice: the second value would be lost
+#' @noRd
+check_output_ids <- function(ids) {
+  dupes <- unique(ids[duplicated(ids)])
+  if (length(dupes)) {
+    shinymcp_abort(
+      "Each output id can be given once; {.val {dupes}} {?is/are} given more than once.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  invisible()
+}
+
+#' @noRd
+is_named_output_list <- function(x) {
+  is.list(x) &&
+    !is.data.frame(x) &&
+    !is_mcp_result(x) &&
+    !inherits(x, c("shiny.tag", "shiny.tag.list", "htmlwidget")) &&
+    length(x) > 0 &&
+    !is.null(names(x)) &&
+    all(nzchar(names(x)))
+}
+
+#' @noRd
+view_payload <- function(entry) {
+  compact_list(list(
+    kind = entry$kind,
+    value = entry$render,
+    deps = if (length(entry$deps)) entry$deps
+  ))
+}
+
+#' @noRd
+single_structured_value <- function(entry) {
+  model <- json_safe(entry$model)
+  if (is.null(model)) {
+    return(NULL)
+  }
+  # structuredContent must be a JSON object for protocol versions before
+  # 2026-07-28; wrap anything that isn't one.
+  if (is.list(model) && !is.null(names(model)) && all(nzchar(names(model)))) {
+    return(model)
+  }
+  if (identical(entry$kind, "text") && is.character(model)) {
+    return(NULL)
+  }
+  list(value = model)
+}
+
+#' @noRd
+text_block <- function(text) {
+  list(type = "text", text = as.character(text %||% ""))
+}
+
+#' @noRd
+image_block <- function(image) {
+  list(type = "image", data = image$data, mimeType = image$mimeType)
+}
+
+#' Join each output's text into the text the model reads
+#' @noRd
+summarize_entries <- function(entries) {
+  limit <- getOption("shinymcp.max_text_chars", 4000)
+  parts <- character()
+  for (id in names(entries)) {
+    text <- truncate_text(entries[[id]]$text %||% "", limit)
+    if (!nzchar(text)) {
+      next
+    }
+    parts <- c(
+      parts,
+      if (grepl("\n", text, fixed = TRUE)) {
+        paste0(id, ":\n", text)
+      } else {
+        paste0(id, ": ", text)
+      }
+    )
+  }
+  paste(parts, collapse = "\n\n")
+}
+
+#' @noRd
+truncate_text <- function(text, limit) {
+  if (is.null(limit) || nchar(text) <= limit) {
+    return(text)
+  }
+  paste0(
+    substr(text, 1, limit),
+    "\n... [",
+    nchar(text) - limit,
+    " more characters]"
+  )
+}
+
+#' Make a model value serializable
+#'
+#' Data frames become rows; factors and dates become strings; other objects
+#' are left to jsonlite.
+#' @noRd
+json_safe <- function(x) {
+  if (is.null(x)) {
+    return(NULL)
+  }
+  if (is.data.frame(x)) {
+    return(table_records(x))
+  }
+  if (is.factor(x)) {
+    return(as.character(x))
+  }
+  if (inherits(x, c("Date", "POSIXt"))) {
+    return(format(x))
+  }
+  if (is.list(x) && !inherits(x, "json")) {
+    return(lapply(x, json_safe))
+  }
+  x
+}
+
+# ---- Rendering helpers ----
+
+#' @noRd
+render_html_payload <- function(x, skip_deps = character()) {
+  if (is.character(x) && !inherits(x, "html")) {
+    return(list(html = paste(x, collapse = "\n"), deps = list()))
+  }
+  rendered <- htmltools::renderTags(x)
+  deps <- htmltools::resolveDependencies(rendered$dependencies)
+  deps <- Filter(function(d) !dependency_loaded(d, skip_deps), deps)
+  html <- rendered$html
+  if (nzchar(rendered$head %||% "")) {
+    html <- paste(rendered$head, html, sep = "\n")
+  }
   list(
-    name = app$name %||% "shinymcp-app",
-    tool = NULL
+    html = as.character(html),
+    deps = lapply(deps, dependency_payload)
   )
 }
 
 #' @noRd
-build_shinychat_request <- function(
-  app,
-  initial_arguments = NULL,
-  request_tool_name = NULL,
-  app_tool = NULL
-) {
-  source <- resolve_shinychat_request_source(
-    app = app,
-    request_tool_name = request_tool_name,
-    app_tool = app_tool
-  )
+dependency_key <- function(dep) {
+  paste0(dep$name, "@", dep$version)
+}
 
-  ellmer::ContentToolRequest(
-    id = unique_id("mcp-request"),
-    name = source$name,
-    arguments = initial_arguments %||% list(),
-    tool = source$tool
+#' Does the page already have a dependency of this name?
+#'
+#' Any version counts, as in htmltools::resolveDependencies(): loading a
+#' second copy of a library (jQuery, say) over the first would drop the
+#' plugins attached to it.
+#' @param loaded Keys ("name@version") the page reported.
+#' @noRd
+dependency_loaded <- function(dep, loaded) {
+  length(loaded) > 0 && dep$name %in% sub("@[^@]*$", "", loaded)
+}
+
+#' An HTML dependency as inline markup the view can inject once
+#' @noRd
+dependency_payload <- function(dep) {
+  list(
+    name = dep$name,
+    version = dep$version,
+    head = inline_dependency(dep)
   )
 }
 
 #' @noRd
-build_shinychat_wrapper_fun <- function(
-  app,
-  app_tool,
-  tool_nm,
-  value_fn,
-  summary,
-  title,
-  icon,
-  open,
-  show_request,
-  full_screen
-) {
-  wrapped <- function() {}
-  formals(wrapped) <- tool_formals(app_tool)
-
-  environment(wrapped) <- list2env(
-    list(
-      APP = app,
-      APP_TOOL = app_tool,
-      TOOL_NM = tool_nm,
-      VALUE_FN = value_fn,
-      SUMMARY_FN = summary,
-      TITLE_FN = title,
-      ICON_FN = icon,
-      OPEN_FLAG = open,
-      SHOW_REQUEST_FLAG = show_request,
-      FULL_SCREEN_FLAG = full_screen
-    ),
-    parent = environment()
-  )
-
-  body(wrapped) <- quote({
-    args <- as.list(environment())
-    raw_result <- APP$call_tool(TOOL_NM, args)
-    context_args <- list(
-      raw_result = raw_result,
-      arguments = args,
-      app = APP,
-      tool = APP_TOOL,
-      tool_name = TOOL_NM
-    )
-
-    model_value <- if (is.function(VALUE_FN)) {
-      call_with_supported_args(VALUE_FN, context_args)
-    } else {
-      mcp_result_model_value(raw_result)
-    }
-
-    result_title <- if (is.function(TITLE_FN)) {
-      call_with_supported_args(TITLE_FN, context_args)
-    } else {
-      TITLE_FN
-    }
-    result_icon <- if (is.function(ICON_FN)) {
-      call_with_supported_args(ICON_FN, context_args)
-    } else {
-      ICON_FN
-    }
-    result_text <- if (is.function(SUMMARY_FN)) {
-      call_with_supported_args(SUMMARY_FN, context_args)
-    } else {
-      SUMMARY_FN
-    }
-
-    mcp_content_result_internal(
-      app = APP,
-      value = model_value,
-      title = result_title,
-      icon = result_icon,
-      open = OPEN_FLAG,
-      show_request = SHOW_REQUEST_FLAG,
-      full_screen = FULL_SCREEN_FLAG,
-      text = result_text,
-      intent = args[["_intent"]] %||% NULL,
-      initial_arguments = args,
-      request_tool_name = TOOL_NM,
-      app_tool = APP_TOOL
-    )
+render_table_html <- function(data) {
+  limit <- getOption("shinymcp.max_display_rows", 1000)
+  shown <- if (nrow(data) > limit) utils::head(data, limit) else data
+  header <- htmltools::tags$thead(htmltools::tags$tr(
+    lapply(names(shown), htmltools::tags$th)
+  ))
+  rows <- lapply(seq_len(nrow(shown)), function(i) {
+    htmltools::tags$tr(lapply(shown[i, , drop = FALSE], function(cell) {
+      htmltools::tags$td(format_cell(cell))
+    }))
   })
-
-  wrapped
+  table <- htmltools::tags$table(
+    class = "table table-sm shinymcp-table",
+    header,
+    htmltools::tags$tbody(rows)
+  )
+  note <- if (nrow(data) > limit) {
+    htmltools::tags$p(
+      class = "shinymcp-table-note",
+      sprintf("Showing %d of %d rows.", limit, nrow(data))
+    )
+  }
+  as.character(htmltools::tagList(table, note))
 }
 
 #' @noRd
-render_html_fragment <- function(x) {
-  if (inherits(x, "shiny.tag.list")) {
-    return(htmltools::renderTags(x)$html)
+format_cell <- function(x) {
+  x <- x[[1]]
+  if (is.null(x) || (length(x) == 1 && is.na(x))) {
+    return("")
   }
-  if (inherits(x, "shiny.tag")) {
-    return(htmltools::renderTags(htmltools::tagList(x))$html)
+  if (is.numeric(x)) {
+    return(format(x, big.mark = ",", scientific = FALSE, trim = TRUE))
   }
   as.character(x)
 }
 
+#' Table rows for the model, capped
 #' @noRd
-render_table_fragment <- function(x) {
-  if (is.character(x) && length(x) == 1) {
-    return(x)
+table_records <- function(data) {
+  limit <- getOption("shinymcp.max_model_rows", 100)
+  data <- as.data.frame(data)
+  if (nrow(data) > limit) {
+    data <- utils::head(data, limit)
   }
-
-  data <- tryCatch(as.data.frame(x), error = function(...) NULL)
-  if (is.null(data)) {
-    return(render_html_fragment(htmltools::tags$pre(
-      utils::capture.output(print(x))
-    )))
-  }
-
-  header <- htmltools::tags$thead(
-    htmltools::tags$tr(
-      lapply(names(data), htmltools::tags$th)
-    )
-  )
-  rows <- apply(data, 1, function(row) {
-    htmltools::tags$tr(
-      lapply(row, function(cell) htmltools::tags$td(as.character(cell)))
-    )
+  data[] <- lapply(data, function(col) {
+    if (is.factor(col) || inherits(col, c("Date", "POSIXt"))) {
+      format(col)
+    } else {
+      col
+    }
   })
-
-  render_html_fragment(
-    htmltools::tags$table(
-      class = "table table-sm",
-      header,
-      htmltools::tags$tbody(rows)
-    )
-  )
+  if (nrow(data) == 0) {
+    return(list())
+  }
+  unname(lapply(seq_len(nrow(data)), function(i) {
+    row <- lapply(data[i, , drop = FALSE], function(v) {
+      v <- v[[1]]
+      if (length(v) == 1 && is.na(v)) NULL else v
+    })
+    row
+  }))
 }
 
 #' @noRd
-render_plot_base64 <- function(x) {
-  rlang::check_installed("base64enc", reason = "for plot/image encoding")
-
-  if (is.character(x) && length(x) == 1 && file.exists(x)) {
-    return(base64enc::base64encode(x))
-  }
-
-  tmp <- tempfile(fileext = ".png")
-  grDevices::png(tmp, width = 800, height = 500, res = 96)
-  on.exit(unlink(tmp), add = TRUE)
-
-  if (is.function(x)) {
-    x()
-  } else if (inherits(x, "ggplot")) {
-    print(x)
-  } else if (inherits(x, "recordedplot")) {
-    print(x)
-  } else {
-    print(x)
-  }
-
-  grDevices::dev.off()
-  base64enc::base64encode(tmp)
-}
-
-#' @noRd
-render_image_html <- function(x) {
-  rlang::check_installed("base64enc", reason = "for image encoding")
-
-  if (is.character(x) && length(x) == 1 && file.exists(x)) {
-    ext <- tools::file_ext(x)
-    mime <- switch(
-      tolower(ext),
-      png = "image/png",
-      jpg = "image/jpeg",
-      jpeg = "image/jpeg",
-      gif = "image/gif",
-      webp = "image/webp",
-      "image/png"
-    )
-    data_uri <- paste0(
-      "data:",
-      mime,
-      ";base64,",
-      base64enc::base64encode(x)
-    )
-    return(render_html_fragment(
-      htmltools::tags$img(
-        src = data_uri,
-        style = "max-width: 100%; height: auto;"
-      )
-    ))
-  }
-
-  render_html_fragment(
-    htmltools::tags$img(
-      src = paste0("data:image/png;base64,", as.character(x)),
-      style = "max-width: 100%; height: auto;"
-    )
-  )
-}
-
-#' @noRd
-render_pdf_html <- function(x) {
-  rlang::check_installed("base64enc", reason = "for PDF encoding")
-
-  if (is.character(x) && length(x) == 1 && file.exists(x)) {
-    data_uri <- paste0(
-      "data:application/pdf;base64,",
-      base64enc::base64encode(x)
-    )
-    return(render_html_fragment(
-      htmltools::tags$a(href = data_uri, target = "_blank", "Open PDF")
-    ))
-  }
-
-  render_html_fragment(htmltools::tags$code("PDF output"))
-}
-
-#' @noRd
-mcp_result_patch_value <- function(x) {
-  if (!is_mcp_result(x)) {
-    return(x)
-  }
-
-  switch(
-    x$kind,
-    text = as.character(x$value),
-    html = render_html_fragment(x$value),
-    table = render_table_fragment(x$value),
-    plot = render_plot_base64(x$value),
-    image = render_image_html(x$value),
-    pdf = render_pdf_html(x$value),
-    widget = render_html_fragment(x$value),
-    x$value
-  )
-}
-
-#' @noRd
-mcp_result_output_type <- function(x) {
-  if (!is_mcp_result(x)) {
-    return("text")
-  }
-
-  switch(
-    x$kind,
-    image = "html",
-    pdf = "html",
-    widget = "html",
-    x$kind
-  )
-}
-
-#' @noRd
-mcp_result_wire_payload <- function(x) {
-  if (!is_mcp_result(x)) {
-    return(NULL)
-  }
-
-  list(
-    type = mcp_result_output_type(x),
-    value = mcp_result_patch_value(x)
-  )
-}
-
-#' @noRd
-mcp_result_model_value <- function(x) {
-  if (is_mcp_result(x)) {
-    if (!is.null(x$model_value)) {
-      return(x$model_value)
-    }
-
-    return(
-      switch(
-        x$kind,
-        text = as.character(x$value),
-        html = x$text %||% render_html_fragment(x$value),
-        table = x$value,
-        plot = x$text %||% "[plot]",
-        image = x$text %||% "[image]",
-        pdf = x$text %||% "[pdf]",
-        widget = x$text %||% render_html_fragment(x$value),
-        x$value
-      )
-    )
-  }
-
-  if (is.list(x) && !is.null(names(x))) {
-    return(lapply(x, mcp_result_model_value))
-  }
-
-  x
-}
-
-#' @noRd
-mcp_result_text_fallback <- function(x) {
-  if (is_mcp_result(x)) {
-    if (!is.null(x$text)) {
-      return(as.character(x$text))
-    }
-
-    return(
-      switch(
-        x$kind,
-        text = as.character(x$value),
-        html = paste(trimws(gsub(
-          "<[^>]+>",
-          " ",
-          render_html_fragment(x$value)
-        ))),
-        table = paste(
-          utils::capture.output(utils::head(as.data.frame(x$value))),
-          collapse = "\n"
-        ),
-        plot = "[plot]",
-        image = "[image]",
-        pdf = "[pdf]",
-        widget = "[widget]",
-        ""
-      )
-    )
-  }
-
-  if (is.character(x)) {
-    return(paste(x, collapse = "\n"))
-  }
-
-  if (is.list(x) && !is.null(names(x))) {
-    parts <- vapply(x, mcp_result_text_fallback, character(1))
-    return(paste(parts[nzchar(parts)], collapse = "\n\n"))
-  }
-
-  paste(
-    utils::capture.output(utils::str(x, give.attr = FALSE)),
+table_text <- function(data) {
+  limit <- getOption("shinymcp.max_model_rows", 100)
+  shown <- if (nrow(data) > limit) utils::head(data, limit) else data
+  text <- paste(
+    utils::capture.output(print(shown, row.names = FALSE)),
     collapse = "\n"
   )
+  if (nrow(data) > limit) {
+    text <- paste0(text, "\n(", nrow(data) - limit, " more rows)")
+  }
+  text
 }
 
 #' @noRd
-mcp_result_structured_content <- function(result) {
-  if (is.list(result) && !is.null(names(result))) {
-    return(lapply(result, mcp_result_patch_value))
+as_data_frame_safely <- function(x) {
+  if (is.data.frame(x)) {
+    return(x)
   }
-
-  NULL
+  tryCatch(as.data.frame(x), error = function(e) NULL)
 }
 
-#' Map each typed output id to its render type for the bridge
-#'
-#' Plain (non-`shinymcp_result`) values are skipped: they render as text and
-#' need no type hint.
-#'
-#' @param result A named list keyed by output id.
-#' @return A named list of `id -> type`, or an empty list.
+#' Render a plot to base64 PNG
 #' @noRd
-mcp_result_structured_types <- function(result) {
-  if (!is.list(result) || is.null(names(result))) {
-    return(list())
-  }
-  types <- list()
-  for (id in names(result)) {
-    value <- result[[id]]
-    if (is_mcp_result(value)) {
-      types[[id]] <- mcp_result_output_type(value)
-    }
-  }
-  types
-}
-
-#' Build a native MCP image content block for a plot result
-#'
-#' Returns a one-element list with an `image` content block (raw base64 PNG)
-#' so text-only and model-only hosts can see generated plots, or an empty
-#' list for non-plot results.
-#'
-#' @param x A typed result (or any value).
-#' @return A list of zero or one content blocks.
-#' @noRd
-mcp_result_image_content <- function(x) {
-  if (!is_mcp_result(x) || !identical(x$kind, "plot")) {
-    return(list())
-  }
-  data <- mcp_result_patch_value(x)
-  if (!is.character(data) || length(data) != 1 || !nzchar(data)) {
-    return(list())
-  }
-  list(list(type = "image", data = data, mimeType = "image/png"))
-}
-
-#' Build a shinychat-friendly tool result with a live embedded card
-#'
-#' @param app An [McpApp] object.
-#' @param value Machine-facing value returned to the model.
-#' @param title Optional card title.
-#' @param icon Optional card icon.
-#' @param open Whether the card starts expanded.
-#' @param show_request Whether shinychat should show the request payload.
-#' @param full_screen Whether shinychat should offer its full-screen tool-card
-#'   mode when supported.
-#' @param html Optional HTML display body.
-#' @param markdown Optional markdown fallback.
-#' @param text Optional plain-text fallback.
-#' @param intent Optional display intent metadata.
-#' @export
-mcp_content_result <- function(
-  app,
-  value,
-  title = NULL,
-  icon = NULL,
-  open = TRUE,
-  show_request = FALSE,
-  full_screen = TRUE,
-  html = NULL,
-  markdown = NULL,
-  text = NULL,
-  intent = NULL
+render_plot_png <- function(
+  x,
+  width = 800,
+  height = 500,
+  res = 96,
+  scale = 1.5
 ) {
-  mcp_content_result_internal(
-    app = app,
-    value = value,
-    title = title,
-    icon = icon,
-    open = open,
-    show_request = show_request,
-    full_screen = full_screen,
-    html = html,
-    markdown = markdown,
-    text = text,
-    intent = intent,
-    initial_arguments = NULL
+  if (is.character(x) && length(x) == 1 && file.exists(x)) {
+    return(base64_file(x))
+  }
+  tmp <- tempfile(fileext = ".png")
+  on.exit(unlink(tmp), add = TRUE)
+  grDevices::png(
+    tmp,
+    width = round(width * scale),
+    height = round(height * scale),
+    res = res * scale
   )
-}
-
-#' @noRd
-mcp_content_result_internal <- function(
-  app,
-  value,
-  title = NULL,
-  icon = NULL,
-  open = TRUE,
-  show_request = FALSE,
-  full_screen = TRUE,
-  html = NULL,
-  markdown = NULL,
-  text = NULL,
-  intent = NULL,
-  initial_arguments = NULL,
-  request_tool_name = NULL,
-  app_tool = NULL
-) {
-  rlang::check_installed("ellmer", reason = "for shinychat tool results")
-
-  display <- compact_list(list(
-    title = title,
-    icon = icon,
-    open = open,
-    show_request = show_request,
-    full_screen = full_screen,
-    intent = intent
-  ))
-
-  if (is.null(html) && is.null(markdown) && is.null(text)) {
-    session <- active_shiny_session()
-    if (!is.null(session) && !is.null(app)) {
-      dom_id <- sanitize_dom_id(unique_id("shinymcp-card"))
-      registered <- register_shiny_host_instance(
-        session = session,
-        app = app,
-        instance_id = unique_id(paste0("mcp-", as_mcp_app(app)$name)),
-        initial_arguments = initial_arguments
-      )
-      html <- mcp_host_markup(dom_id, registered$config)
-    } else {
-      text <- mcp_result_text_fallback(value)
-    }
-  }
-
-  if (!is.null(html)) {
-    display$html <- html
-  }
-  if (!is.null(markdown)) {
-    display$markdown <- markdown
-  }
-  if (!is.null(text)) {
-    display$text <- text
-  }
-
-  ellmer::ContentToolResult(
-    value = value,
-    extra = list(display = display),
-    request = build_shinychat_request(
-      app = app,
-      initial_arguments = initial_arguments,
-      request_tool_name = request_tool_name,
-      app_tool = app_tool
-    )
-  )
-}
-
-#' Wrap an McpApp as an ellmer tool for shinychat
-#'
-#' Small single-card apps work best here. Multi-tool apps return a list of
-#' wrapped ellmer tools, one wrapper per underlying app tool.
-#'
-#' @param app An [McpApp] object.
-#' @param value_fn Optional function that derives the machine-facing value from
-#'   the raw tool result.
-#' @param summary Optional text fallback or summary function.
-#' @param title Optional card title or title function.
-#' @param icon Optional card icon or icon function.
-#' @param open Whether the card starts expanded.
-#' @param show_request Whether shinychat should show the request payload.
-#' @param full_screen Whether shinychat should offer its full-screen tool-card
-#'   mode when supported.
-#' @export
-as_shinychat_tool <- function(
-  app,
-  value_fn = NULL,
-  summary = NULL,
-  title = NULL,
-  icon = NULL,
-  open = TRUE,
-  show_request = FALSE,
-  full_screen = TRUE
-) {
-  rlang::check_installed("ellmer", reason = "for shinychat tool wrappers")
-  app <- as_mcp_app(app)
-  app_tools <- app$mcp_tools()
-
-  wrapped <- lapply(app_tools, function(app_tool) {
-    tool_nm <- tool_name(app_tool)
-    description <- if (is_ellmer_tool(app_tool)) {
-      app_tool@description %||% ""
-    } else {
-      app_tool$description %||% ""
-    }
-
-    arguments <- if (is_ellmer_tool(app_tool)) {
-      ellmer_tool_arguments(app_tool)
-    } else {
-      schema_properties_to_arguments(
-        app_tool$inputSchema %||%
-          list(
-            type = "object",
-            properties = list()
-          )
-      )
-    }
-
-    annotations <- if (is_ellmer_tool(app_tool)) {
-      app_tool@annotations %||% list()
-    } else {
-      app_tool$annotations %||% list()
-    }
-
-    ellmer::tool(
-      fun = build_shinychat_wrapper_fun(
-        app = app,
-        app_tool = app_tool,
-        tool_nm = tool_nm,
-        value_fn = value_fn,
-        summary = summary,
-        title = title %||% annotations$title,
-        icon = icon %||% annotations$icon,
-        open = open,
-        show_request = show_request,
-        full_screen = full_screen
-      ),
-      name = tool_nm,
-      description = description,
-      arguments = arguments,
-      annotations = annotations
-    )
-  })
-
-  if (length(wrapped) == 1) {
-    wrapped[[1]]
+  device <- grDevices::dev.cur()
+  closed <- FALSE
+  on.exit(if (!closed) grDevices::dev.off(device), add = TRUE, after = FALSE)
+  if (is.function(x)) {
+    x()
   } else {
-    names(wrapped) <- vapply(app_tools, tool_name, character(1))
-    wrapped
+    print(x)
   }
+  grDevices::dev.off(device)
+  closed <- TRUE
+  base64_file(tmp)
+}
+
+#' Strip tags from HTML to get readable text
+#'
+#' Tables become Markdown tables, which models read well.
+#' @noRd
+html_to_text <- function(html) {
+  html <- paste(as.character(html), collapse = "\n")
+  html <- gsub("(?is)<(script|style)[^>]*>.*?</\\1>", " ", html, perl = TRUE)
+  # Preformatted text keeps its line breaks; set it aside while the rest
+  # is reflowed.
+  pre <- regmatches(
+    html,
+    gregexpr("(?is)<pre\\b.*?</pre>", html, perl = TRUE)
+  )[[1]]
+  for (i in seq_along(pre)) {
+    html <- sub(pre[[i]], paste0("\u0001", i, "\u0001"), html, fixed = TRUE)
+  }
+  html <- tables_to_markdown(html)
+  # Line breaks in the source are layout; tags decide where lines break.
+  html <- gsub("[ \t]*\n[ \t]*", " ", html, perl = TRUE)
+  html <- gsub("[ \t]+", " ", html, perl = TRUE)
+  html <- gsub("(?i)<br\\s*/?>", "\n", html, perl = TRUE)
+  html <- gsub(
+    "(?i)</(p|div|li|tr|h[1-6]|table|ul|ol|section|article)>",
+    "\n",
+    html,
+    perl = TRUE
+  )
+  html <- gsub(
+    "(?i)<(p|div|li|h[1-6]|ul|ol|section|article)\\b[^>]*>",
+    "\n",
+    html,
+    perl = TRUE
+  )
+  html <- gsub("\u0002", "\n", html, fixed = TRUE)
+  for (i in seq_along(pre)) {
+    text <- gsub("(?is)^<pre\\b[^>]*>|</pre>$", "", pre[[i]], perl = TRUE)
+    html <- sub(
+      paste0("\u0001", i, "\u0001"),
+      paste0("\n", text, "\n"),
+      html,
+      fixed = TRUE
+    )
+  }
+  html <- gsub("<[^>]+>", "", html)
+  html <- unescape_html(html)
+  lines <- strsplit(html, "\n", fixed = TRUE)[[1]]
+  lines <- sub("[ \t]+$", "", sub("^[ \t]+(?=\\S)", "", lines, perl = TRUE))
+  paste(lines[nzchar(trimws(lines))], collapse = "\n")
+}
+
+#' Replace each HTML table with a Markdown table
+#' @noRd
+tables_to_markdown <- function(html) {
+  matches <- gregexpr("(?is)<table\\b.*?</table>", html, perl = TRUE)
+  tables <- regmatches(html, matches)[[1]]
+  if (length(tables) == 0) {
+    return(html)
+  }
+  regmatches(html, matches) <- list(vapply(
+    tables,
+    html_table_markdown,
+    character(1),
+    USE.NAMES = FALSE
+  ))
+  html
+}
+
+#' @noRd
+html_table_markdown <- function(table) {
+  rows <- regmatches(
+    table,
+    gregexpr("(?is)<tr\\b.*?</tr>", table, perl = TRUE)
+  )[[1]]
+  cells <- lapply(rows, function(row) {
+    found <- regmatches(
+      row,
+      gregexpr("(?is)<t[hd]\\b[^>]*>.*?</t[hd]>", row, perl = TRUE)
+    )[[1]]
+    # Entities stay escaped here: html_to_text() strips tags from the whole
+    # text afterwards and only then unescapes, so "&lt; 0.001" survives.
+    text <- gsub("(?is)^<t[hd]\\b[^>]*>|</t[hd]>$", "", found, perl = TRUE)
+    text <- gsub("<[^>]+>", "", text)
+    text <- trimws(gsub("\\s+", " ", text))
+    gsub("|", "\\|", text, fixed = TRUE)
+  })
+  cells <- Filter(length, cells)
+  if (length(cells) == 0) {
+    return("\u0002")
+  }
+  width <- max(lengths(cells))
+  line <- function(x) {
+    x <- c(x, rep("", width - length(x)))
+    paste0(
+      "|",
+      paste0(ifelse(nzchar(x), paste0(" ", x, " "), " "), collapse = "|"),
+      "|"
+    )
+  }
+  body <- vapply(cells, line, character(1))
+  # U+0002 marks line breaks that survive html_to_text()'s reflow.
+  paste0(
+    "\u0002",
+    paste(c(body[1], line(rep("---", width)), body[-1]), collapse = "\u0002"),
+    "\u0002"
+  )
+}
+
+#' @noRd
+unescape_html <- function(x) {
+  entities <- c(
+    "&lt;" = "<",
+    "&gt;" = ">",
+    "&quot;" = "\"",
+    "&#39;" = "'",
+    "&#x27;" = "'",
+    "&#10;" = "\n",
+    "&#13;" = "\r",
+    "&nbsp;" = " ",
+    "&amp;" = "&"
+  )
+  for (e in names(entities)) {
+    x <- gsub(e, entities[[e]], x, fixed = TRUE)
+  }
+  x
 }

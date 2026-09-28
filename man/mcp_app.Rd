@@ -9,85 +9,159 @@ mcp_app(
   tools = list(),
   name = "shinymcp-app",
   version = "0.1.0",
+  title = NULL,
+  description = NULL,
   theme = NULL,
   csp = NULL,
   permissions = NULL,
   prefers_border = NULL,
+  domain = NULL,
   tool_visibility = NULL,
+  tool_outputs = NULL,
   trigger = NULL,
   debounce_ms = NULL,
   resources = NULL,
-  tool_outputs = NULL,
+  host_styles = TRUE,
+  model_context = TRUE,
+  images = TRUE,
+  www = NULL,
   ...
 )
 }
 \arguments{
-\item{ui}{UI definition (htmltools tags). Can be a simple
-\code{\link[htmltools:tagList]{htmltools::tagList()}} of shinymcp components, or a full
-\code{\link[bslib:page]{bslib::page()}} with theme.}
+\item{ui}{The app's UI: an htmltools tag or tag list, or a full page such
+as \code{\link[bslib:page_sidebar]{bslib::page_sidebar()}}.}
 
-\item{tools}{List of tools}
+\item{tools}{A list of tools: \code{\link[ellmer:tool]{ellmer::tool()}} objects, or plain lists
+with \code{name}, \code{description}, \code{fun}, and optionally \code{inputSchema},
+\code{outputSchema}, \code{annotations}, and \code{visibility}.}
 
-\item{name}{App name}
+\item{name}{App name, used for the \verb{ui://<name>} resource. Letters,
+digits, \code{-} and \verb{_} work everywhere.}
 
-\item{version}{App version}
+\item{version}{App version string.}
 
-\item{theme}{Optional \code{\link[bslib:bs_theme]{bslib::bs_theme()}} object. Supports
-\code{brand} for \href{https://posit-dev.github.io/brand-yml/}{brand.yml} theming.
-Not needed if \code{ui} is already a \code{\link[bslib:page]{bslib::page()}}.}
+\item{title}{Human-readable title, shown by some hosts.}
 
-\item{csp}{Optional named list of Content Security Policy domain
-declarations for the app's \verb{ui://} resource, per the MCP Apps spec.
-MCP hosts apply a restrictive default policy that blocks all external
-network access and assets, so any domain your app loads from at runtime
-must be declared here. Fields (snake_case or spec camelCase):
-\itemize{
-\item \code{connect_domains}: origins for fetch/XHR/WebSocket requests
-\item \code{resource_domains}: origins for scripts, styles, images, fonts
-\item \code{frame_domains}: origins for nested iframes
-\item \code{base_uri_domains}: allowed \code{base-uri} values
-}
+\item{description}{What the app does. Hosts and models read it when
+deciding whether to use it.}
 
-Apps with fully inlined assets (the shinymcp default) don't need this.}
+\item{theme}{A \code{\link[bslib:bs_theme]{bslib::bs_theme()}} to wrap a UI that isn't already a page.}
 
-\item{permissions}{Optional named list of iframe permissions the app
-needs, e.g. \code{list(camera = list())}. Most apps don't need this.}
+\item{csp}{External domains the page needs, as a named list with any of
+\code{connect_domains} (fetch and WebSocket), \code{resource_domains} (scripts,
+styles, images, fonts), \code{frame_domains} (nested iframes), and
+\code{base_uri_domains}. Hosts block everything not declared. shinymcp
+inlines its own dependencies, so most apps need none.}
 
-\item{prefers_border}{Optional logical hint that the host should draw a
-border around the embedded app.}
+\item{permissions}{Browser permissions the page asks for: a character
+vector drawn from \code{"camera"}, \code{"microphone"}, \code{"geolocation"}, and
+\code{"clipboard_write"}. Hosts may refuse.}
 
-\item{tool_visibility}{Optional named list mapping tool names to MCP Apps
-visibility scopes (character vectors drawn from \code{c("model", "app")}).
-Use \code{"app"} for tools only the rendered UI should call (hidden from the
-model's tool list), \code{"model"} for tools the UI must not call. Unset
-tools are visible to both.}
+\item{prefers_border}{\code{TRUE} or \code{FALSE} to ask the host for (or not for)
+a border and background around the app. \code{NULL} leaves it to the host.}
 
-\item{trigger}{When the UI calls tools as inputs change: \code{"debounce"}
-(default) or \code{"change"}. \code{"submit"}/\code{"manual"} only apply inside
-shinymcp's own Shiny host.}
+\item{domain}{A dedicated origin for the app's sandbox, in the format the
+host documents. Rarely needed.}
 
-\item{debounce_ms}{Debounce interval in milliseconds (default 250).}
+\item{tool_visibility}{Who may call each tool: a named list mapping tool
+names to \code{"model"}, \code{"app"}, or both. Tools only the app calls (\code{"app"})
+are hidden from the model; use them for controls that must stay in the
+user's hands, such as an approval button.}
 
-\item{resources}{Optional named list of extra resources served alongside
-the app, readable from the UI via \code{window.shinymcp.readResource(uri)}.
-Names are URIs; values are a string (static content), a function
-returning a string (evaluated on each read --- useful for lazy-loading
-data instead of inlining it into the app HTML), or a list with fields
-\code{content}, \code{mime_type} (default \code{"text/plain"}), \code{name}, \code{description},
-and \code{meta}. For example:
-\code{resources = list("ui://my-app/data" = list(content = function() jsonlite::toJSON(mtcars), mime_type = "application/json"))}}
+\item{tool_outputs}{The output ids each tool returns, as a named list
+(\code{list(explore = c("scatter", "stats"))}). Declared tools get an
+\code{outputSchema}.}
 
-\item{tool_outputs}{Optional named list mapping tool names to the output
-ids they return, e.g. \code{list(explore = c("scatter", "stats"))}. Declared
-tools get an auto-generated \code{outputSchema} (all properties are strings,
-with descriptions derived from the matching UI output types). Only
-declare tools that return a named list keyed by those output ids.}
+\item{trigger}{When the app calls tools as inputs change: \code{"debounce"}
+(after a pause, the default), \code{"change"} (on every change), or
+\code{"submit"} (when the user presses an apply button; add one with
+\code{\link[=mcp_submit_button]{mcp_submit_button()}}).}
 
-\item{...}{Additional arguments passed to \code{McpApp$new()}}
+\item{debounce_ms}{The pause for \code{trigger = "debounce"}, in milliseconds
+(default 250).}
+
+\item{resources}{Extra resources the page can load on demand with
+\code{window.shinymcp.readResource(uri)}, as a named list from URI to a
+string, a function returning a string, or a list with \code{content},
+\code{mime_type}, \code{name}, \code{description}, and \code{meta}. Use this to keep large
+data out of the page.}
+
+\item{host_styles}{If \code{TRUE} (the default) the app takes the host's
+colors and fonts when the host provides them, and a Bootstrap 5 page
+follows its dark mode, so the app looks native in each client. Set
+\code{FALSE} to keep your own theme.}
+
+\item{model_context}{If \code{TRUE} (the default) the app tells the model what
+the user has changed in it, so the model can take it into account on
+its next turn.}
+
+\item{images}{If \code{TRUE} (the default) plots and images in a result
+returned to the model are also sent as image content the model can
+see. Set \code{FALSE} to save tokens.}
+
+\item{www}{A directory of files the UI refers to by relative path, like
+a Shiny app's \verb{www/} folder: scripts, stylesheets, and images. They are
+written into the page, since a host's frame can't fetch them. Paths
+added with \code{\link[shiny:addResourcePath]{shiny::addResourcePath()}} are found without it.}
+
+\item{...}{Passed to \code{McpApp$new()}.}
 }
 \value{
-An \link{McpApp} object
+An \link{McpApp} object.
 }
 \description{
-Convenience function to create an \link{McpApp} object.
+An MCP App is an interactive page that an AI chat client (Claude, ChatGPT,
+VS Code, Goose) shows inside the conversation, next to the tools that feed
+it. \code{mcp_app()} pairs a UI with those tools:
+\itemize{
+\item The \strong{UI} is ordinary htmltools: Shiny or bslib inputs, outputs, and
+layouts, or shinymcp's own components such as \code{\link[=mcp_select]{mcp_select()}} and
+\code{\link[=mcp_plot]{mcp_plot()}}.
+\item The \strong{tools} are R functions, usually written with \code{\link[ellmer:tool]{ellmer::tool()}}.
+A tool's argument names match input ids, and the names of the list it
+returns match output ids. When the user changes an input, the app calls
+the tools that take that input and fills in their outputs.
 }
+
+The model can call the same tools. When it does, the host shows the app
+and the app fills in from the result. Tools keep nothing between calls,
+so any R process can answer any call.
+
+To make one from a Shiny app you already have, see
+\code{vignette("rewriting-as-tools")}.
+}
+\examples{
+\dontshow{if (rlang::is_installed("ellmer")) withAutoprint(\{ # examplesIf}
+app <- mcp_app(
+  ui = htmltools::tagList(
+    mcp_text_input("name", "Your name", value = "world"),
+    mcp_text("greeting")
+  ),
+  tools = list(
+    ellmer::tool(
+      function(name = "world") list(greeting = paste0("Hello, ", name, "!")),
+      name = "greet",
+      description = "Greet someone by name.",
+      arguments = list(name = ellmer::type_string("Name to greet"))
+    )
+  ),
+  name = "greeter"
+)
+app
+app$call_tool("greet", list(name = "Ada"))
+
+\dontrun{
+preview_app(app) # try it in a browser
+serve(app)       # serve it to an MCP client over stdio
+}
+\dontshow{\}) # examplesIf}
+}
+\seealso{
+Other apps:
+\code{\link{McpApp}},
+\code{\link[=as_mcp_app]{as_mcp_app()}},
+\code{\link[=bindMcp]{bindMcp()}},
+\code{\link[=mcp_tool_module]{mcp_tool_module()}}
+}
+\concept{apps}

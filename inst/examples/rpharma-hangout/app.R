@@ -1269,14 +1269,16 @@ metric_box <- function(label, value, note) {
   )
 }
 
+# The structured handoff in a tool result: the first output whose value for
+# the model is a record rather than plain text.
 result_model_value <- function(result) {
   if (is.null(result)) {
     return(NULL)
   }
 
-  for (value in result) {
-    if (inherits(value, "shinymcp_result") && !is.null(value$model_value)) {
-      return(value$model_value)
+  for (value in result$structuredContent) {
+    if (is.list(value) && !is.null(names(value))) {
+      return(value)
     }
   }
 
@@ -1968,10 +1970,10 @@ server <- function(input, output, session) {
 
   safety_host <- mcp_host_server(
     "safety",
-    app = safety_card,
+    safety_card,
     trigger = "submit",
     height = "520px",
-    initial_arguments = list(
+    arguments = list(
       cohort = "All cohorts",
       ae_term = "Neutropenia",
       grade_threshold = 3,
@@ -1980,10 +1982,10 @@ server <- function(input, output, session) {
   )
   enrollment_host <- mcp_host_server(
     "enrollment",
-    app = enrollment_card,
+    enrollment_card,
     trigger = "submit",
     height = "520px",
-    initial_arguments = list(
+    arguments = list(
       target_subjects = 520,
       monthly_randomized = 54,
       screen_failure_rate = 16,
@@ -2112,9 +2114,9 @@ server <- function(input, output, session) {
 
   active_result <- reactive({
     if (identical(input$active_widget, "safety")) {
-      safety_host$last_raw_result()
+      safety_host$last_result()
     } else {
-      enrollment_host$last_raw_result()
+      enrollment_host$last_result()
     }
   })
 

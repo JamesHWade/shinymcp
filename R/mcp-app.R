@@ -1,720 +1,634 @@
-# McpApp R6 class - bundles UI + tools into a servable MCP App
+# McpApp: a UI plus the tools behind it, servable as an MCP App.
 
-#' MCP App
+#' MCP App object
 #'
-#' An R6 class that bundles UI components and tools into a servable MCP App.
-#' The app generates HTML with an embedded JS bridge and provides tools
-#' annotated with resource URIs for MCP consumption.
+#' @description
+#' An `McpApp` bundles a user interface with the tools it calls. It knows how
+#' to render itself as the self-contained HTML page an MCP host shows (the
+#' app's `ui://` resource), how to describe its tools to a client, and how to
+#' run them. Create one with [mcp_app()] or [as_mcp_app()] rather than
+#' calling `McpApp$new()` directly; the arguments are the same.
 #'
-#' @param bridge_config Optional named list of bridge config overrides used by
-#'   `$html_resource()`.
+#' Most code only needs `$call_tool()` (run a tool and get its R value
+#' back, as in tests) and `$html_resource()` (the page a host renders).
+#'
+#' @family apps
 #' @export
 McpApp <- R6::R6Class(
   "McpApp",
   public = list(
-    #' @field name App name
+    #' @field name App name; the UI resource is `ui://<name>`, with any
+    #'   characters a URI can't carry percent-encoded.
     name = NULL,
-    #' @field version App version
+    #' @field version App version string.
     version = NULL,
+    #' @field title Human-readable title, or `NULL`.
+    title = NULL,
+    #' @field description What the app is for, or `NULL`.
+    description = NULL,
 
-    #' @description Create a new McpApp
-    #' @param ui An htmltools tag or tagList defining the UI. Can be a simple
-    #'   tagList of shinymcp components, or a full [bslib::page()] with theme.
-    #' @param tools A list of tool definitions (ellmer tool objects or named list)
-    #' @param name App name (used in resource URIs)
-    #' @param version App version string
-    #' @param theme Optional bslib theme (a [bslib::bs_theme()] object). If
-    #'   provided, the UI will be wrapped in a themed page. Not needed if `ui`
-    #'   is already a [bslib::page()].
-    #' @param csp Optional named list of Content Security Policy domain
-    #'   declarations for the app's `ui://` resource, per the MCP Apps spec.
-    #'   Hosts block undeclared external domains. Fields: `connect_domains`
-    #'   (fetch/XHR/WebSocket origins), `resource_domains` (scripts, styles,
-    #'   images, fonts), `frame_domains` (nested iframes), `base_uri_domains`.
-    #'   Apps with fully inlined assets (the shinymcp default) don't need this.
-    #' @param permissions Optional named list of sandbox permissions the app
-    #'   needs (e.g. `list(camera = list())`). Most apps don't need this.
-    #' @param prefers_border Optional logical; hint that the host should draw
-    #'   a border around the embedded app.
-    #' @param tool_visibility Optional named list mapping tool names to
-    #'   visibility scopes per the MCP Apps spec. Each entry is a character
-    #'   vector drawn from `c("model", "app")`. Use `"app"` for tools only the
-    #'   UI should call (hidden from the model), `"model"` for tools the UI
-    #'   should not call. Default (unset) is both.
-    #' @param trigger When the UI calls tools as inputs change: `"debounce"`
-    #'   (default, batches rapid changes) or `"change"` (immediate). The
-    #'   `"submit"` and `"manual"` modes only apply inside shinymcp's own
-    #'   Shiny host, which provides Apply/Run buttons.
-    #' @param debounce_ms Debounce interval in milliseconds (default 250).
-    #' @param resources Optional named list of extra resources served
-    #'   alongside the app. Names are URIs; values are a string (static
-    #'   content), a function returning a string (evaluated on each read,
-    #'   useful for lazy-loading data into the UI via
-    #'   `window.shinymcp.readResource()`), or a list with fields `content`
-    #'   (string or function), `mime_type`, `name`, `description`, `meta`.
-    #' @param tool_outputs Optional named list mapping tool names to the
-    #'   output ids they return (e.g. `list(explore = c("scatter", "stats"))`).
-    #'   Used to generate an `outputSchema` for each tool. Only declare this
-    #'   for tools that return a named list keyed by those output ids.
+    #' @description Create an app. See [mcp_app()] for the arguments.
+    #' @param ui,tools,name,version,title,description,theme,csp,permissions,prefers_border,domain,tool_visibility,tool_outputs,trigger,debounce_ms,resources,host_styles,model_context,images,www See [mcp_app()].
+    #' @param runtime Internal: the live Shiny runtime for apps created by
+    #'   [as_mcp_app()] from a Shiny app.
     initialize = function(
       ui,
       tools = list(),
       name = "shinymcp-app",
       version = "0.1.0",
+      title = NULL,
+      description = NULL,
       theme = NULL,
       csp = NULL,
       permissions = NULL,
       prefers_border = NULL,
+      domain = NULL,
       tool_visibility = NULL,
+      tool_outputs = NULL,
       trigger = NULL,
       debounce_ms = NULL,
       resources = NULL,
-      tool_outputs = NULL
+      host_styles = TRUE,
+      model_context = TRUE,
+      images = TRUE,
+      www = NULL,
+      runtime = NULL
     ) {
-      if (!inherits(ui, c("shiny.tag", "shiny.tag.list"))) {
-        rlang::abort(
-          cli::format_inline(
-            "{.arg ui} must be an {.cls htmltools} tag or tagList."
-          ),
+      if (!inherits(ui, c("shiny.tag", "shiny.tag.list", "html"))) {
+        shinymcp_abort(
+          "{.arg ui} must be an htmltools tag or tag list, not {.cls {class(ui)}}.",
           class = "shinymcp_error_validation"
         )
+      }
+      if (inherits(tools, "shinymcp_tool") || is_ellmer_tool(tools)) {
+        tools <- list(tools)
       }
       if (!is.list(tools)) {
-        rlang::abort(
-          cli::format_inline("{.arg tools} must be a list."),
+        shinymcp_abort(
+          "{.arg tools} must be a list of tools.",
           class = "shinymcp_error_validation"
         )
       }
-
-      # If a theme is provided, wrap the UI in a bslib page
+      if (!is_string(name)) {
+        shinymcp_abort(
+          "{.arg name} must be a single non-empty string.",
+          class = "shinymcp_error_validation"
+        )
+      }
       if (!is.null(theme)) {
-        rlang::check_installed("bslib", reason = "for themed MCP Apps")
+        rlang::check_installed("bslib", reason = "to theme an MCP App.")
+        if (is_page(ui)) {
+          shinymcp_abort(
+            c(
+              "{.arg theme} applies only to a UI that isn't already a page.",
+              "i" = "Give the theme to your page function instead, as in {.code bslib::page_fluid(theme = ...)}."
+            ),
+            class = "shinymcp_error_validation"
+          )
+        }
         ui <- bslib::page(theme = theme, ui)
       }
-
       if (!is.null(trigger)) {
         trigger <- rlang::arg_match0(
           trigger,
           c("debounce", "change", "submit", "manual")
         )
       }
-      if (!is.null(tool_visibility)) {
-        if (!is.list(tool_visibility) || is.null(names(tool_visibility))) {
-          rlang::abort(
-            "`tool_visibility` must be a named list (tool name -> scopes).",
-            class = "shinymcp_error_validation"
-          )
-        }
-        for (nm in names(tool_visibility)) {
-          scopes <- tool_visibility[[nm]]
-          if (!is.character(scopes) || !all(scopes %in% c("model", "app"))) {
-            rlang::abort(
-              cli::format_inline(
-                "Visibility for tool {.val {nm}} must be a character vector drawn from {.val {c('model', 'app')}}."
-              ),
-              class = "shinymcp_error_validation"
-            )
-          }
-        }
-      }
-
-      if (!is.null(tool_outputs)) {
-        if (
-          !is.list(tool_outputs) ||
-            is.null(names(tool_outputs)) ||
-            !all(vapply(tool_outputs, is.character, logical(1)))
-        ) {
-          rlang::abort(
-            "`tool_outputs` must be a named list of character vectors (tool name -> output ids).",
-            class = "shinymcp_error_validation"
-          )
-        }
+      if (
+        !is.null(debounce_ms) &&
+          !(is.numeric(debounce_ms) &&
+            length(debounce_ms) == 1 &&
+            !is.na(debounce_ms) &&
+            debounce_ms >= 0)
+      ) {
+        shinymcp_abort(
+          "{.arg debounce_ms} must be a single non-negative number of milliseconds.",
+          class = "shinymcp_error_validation"
+        )
       }
 
       self$name <- name
       self$version <- version
+      self$title <- title
+      self$description <- description
+
+      normalized <- lapply(seq_along(tools), function(i) {
+        as_mcp_tool(tools[[i]], index = i)
+      })
+      names(normalized) <- vapply(normalized, `[[`, character(1), "name")
+      dupes <- unique(names(normalized)[duplicated(names(normalized))])
+      if (length(dupes)) {
+        shinymcp_abort(
+          "Tool names must be unique; {.val {dupes}} appear more than once.",
+          class = "shinymcp_error_validation"
+        )
+      }
+      normalized <- apply_tool_visibility(normalized, tool_visibility)
+      normalized <- apply_tool_outputs(normalized, tool_outputs)
+
       private$.ui <- ui
-      private$.tools <- tools
-      private$.csp_meta <- csp_to_meta(csp)
-      private$.permissions <- permissions
+      private$.tools <- normalized
+      private$.csp <- csp_to_meta(csp)
+      private$.permissions <- permissions_to_meta(permissions)
       private$.prefers_border <- prefers_border
-      private$.tool_visibility <- tool_visibility
+      private$.domain <- domain
       private$.trigger <- trigger
       private$.debounce_ms <- debounce_ms
       private$.resources <- normalize_extra_resources(resources)
-      private$.tool_outputs <- tool_outputs
-
-      # A tool_visibility/tool_outputs entry naming no actual tool is a
-      # silent no-op (no schema, no scoping), so surface likely typos.
-      known <- private$get_tool_names()
-      for (arg in c("tool_visibility", "tool_outputs")) {
-        declared <- names(get(arg) %||% list())
-        unknown <- setdiff(declared, known)
-        if (length(unknown) > 0) {
-          cli::cli_warn(
-            "{.arg {arg}} names {.val {unknown}} match no tool in this app (tools: {.val {known}})."
-          )
-        }
+      private$.host_styles <- isTRUE(host_styles)
+      private$.model_context <- isTRUE(model_context)
+      private$.images <- isTRUE(images)
+      if (!is.null(www) && !(is_string(www) && dir.exists(www))) {
+        shinymcp_abort(
+          "{.arg www} must be the path of a directory.",
+          class = "shinymcp_error_validation"
+        )
       }
-
+      # Relative paths are the working directory's now, not when the page
+      # is built.
+      private$.www <- if (!is.null(www)) normalizePath(www)
+      private$.runtime <- runtime
+      # An app made while its app.R loads runs in that file's directory.
+      private$.dir <- the$app_dir
       invisible(self)
     },
 
-    #' @description Generate the full HTML resource
-    #' Returns a character string of the complete HTML page including
-    #' UI components, bridge script, and config. HTML dependencies from
-    #' bslib or other htmltools-based packages are inlined automatically.
-    html_resource = function(bridge_config = NULL) {
-      tool_names <- private$get_tool_names()
-      tool_args <- private$get_tool_arg_names()
+    #' @description The HTML page an MCP host renders for this app.
+    #'   Dependencies (Bootstrap, bslib components, htmlwidgets) are inlined
+    #'   so the page works under a host's default Content Security Policy.
+    #' @param config Named list merged into the bridge configuration. Hosts
+    #'   use it to pass their own settings; apps rarely need it.
+    html_resource = function(config = NULL) {
+      private$in_dir(build_app_html(self, private, config))
+    },
 
-      config <- compact_list(list(
-        appName = self$name,
-        version = self$version,
-        tools = I(tool_names),
-        toolArgs = tool_args,
-        trigger = private$.trigger,
-        debounceMs = private$.debounce_ms
+    #' @description The app's `ui://` resource URI.
+    resource_uri = function() {
+      paste0("ui://", utils::URLencode(self$name, reserved = TRUE))
+    },
+
+    #' @description The `_meta` published with the app's `ui://` resource
+    #'   (CSP, permissions, border preference), or `NULL`.
+    resource_meta = function() {
+      ui <- compact_list(list(
+        csp = private$.csp,
+        permissions = private$.permissions,
+        domain = private$.domain,
+        prefersBorder = private$.prefers_border
       ))
-      if (!is.null(bridge_config)) {
-        config <- utils::modifyList(config, bridge_config, keep.null = TRUE)
-      }
-      config_json <- to_json(config)
-
-      bridge_js <- private$read_bridge_js()
-
-      # Render UI to extract HTML and any dependencies (bslib, etc.)
-      rendered_ui <- htmltools::renderTags(private$.ui)
-      has_deps <- length(rendered_ui$dependencies) > 0
-
-      if (has_deps) {
-        # bslib/themed UI: inline all CSS/JS dependencies
-        head_content <- paste(
-          '<meta charset="UTF-8">',
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-          paste0("<title>", htmltools::htmlEscape(self$name), "</title>"),
-          private$inline_dependencies(rendered_ui$dependencies),
-          rendered_ui$head,
-          sep = "\n"
-        )
-        body_content <- rendered_ui$html
-      } else {
-        # Simple UI: use default CSS, wrap in container
-        body_tag <- htmltools::tags$div(
-          id = "shinymcp-app",
-          class = "shinymcp-container",
-          private$.ui
-        )
-        rendered_body <- htmltools::renderTags(body_tag)
-        head_content <- paste(
-          '<meta charset="UTF-8">',
-          '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
-          paste0("<title>", htmltools::htmlEscape(self$name), "</title>"),
-          paste0("<style>\n", private$default_css(), "\n</style>"),
-          sep = "\n"
-        )
-        body_content <- rendered_body$html
-      }
-
-      # Assemble final HTML (built as string to avoid renderTags
-      # stripping <head> content)
-      paste0(
-        "<!DOCTYPE html>\n",
-        '<html lang="en">\n',
-        "<head>\n",
-        head_content,
-        "\n</head>\n",
-        "<body>\n",
-        body_content,
-        "\n",
-        '<script id="shinymcp-config" type="application/json">',
-        config_json,
-        "</script>\n",
-        "<script>\n",
-        bridge_js,
-        "\n</script>\n",
-        "</body>\n</html>"
-      )
+      if (length(ui) == 0) NULL else list(ui = ui)
     },
 
-    #' @description Get tools annotated with MCP metadata
-    #' Returns the tools list with `_meta.ui` added to each plain-list tool,
-    #' excluding tools whose `visibility` does not include `"model"` (those
-    #' are app-only: callable from the rendered UI, hidden from the model).
-    #' Used by the shinychat/mcptools registration paths.
-    mcp_tools = function() {
-      uri <- self$resource_uri()
-      tools <- Filter(
-        function(tool) {
-          visibility <- private$tool_visibility_for(tool)
-          is.null(visibility) || "model" %in% visibility
-        },
-        private$.tools
-      )
-      lapply(tools, function(tool) {
-        if (is.list(tool) && !is_ellmer_tool(tool)) {
-          ui_meta <- list(resourceUri = uri)
-          visibility <- private$tool_visibility_for(tool)
-          if (!is.null(visibility)) {
-            ui_meta$visibility <- I(visibility)
-          }
-          tool[["_meta"]] <- list(
-            ui = ui_meta,
-            `ui/resourceUri` = uri
-          )
-        }
-        tool
+    #' @description Resource records for `resources/list`: the app's UI and
+    #'   any extra resources.
+    resources = function() {
+      main <- compact_list(list(
+        uri = self$resource_uri(),
+        name = self$name,
+        title = self$title,
+        description = self$description %||% paste("MCP App:", self$name),
+        mimeType = SHINYMCP_UI_MIME_TYPE,
+        `_meta` = self$resource_meta()
+      ))
+      extra <- lapply(unname(private$.resources), function(res) {
+        compact_list(list(
+          uri = res$uri,
+          name = res$name,
+          description = res$description,
+          mimeType = res$mime_type,
+          `_meta` = res$meta
+        ))
       })
+      c(list(main), extra)
     },
 
-    #' @description Get tool definitions for MCP tools/list responses
-    #' Returns a list of tool definition objects suitable for JSON-RPC.
-    #' Each tool includes `_meta.ui.resourceUri` linking it to the app's
-    #' UI resource, which tells MCP Apps-capable hosts to render the UI.
-    #' @param include_ui_meta Whether to attach the nested `_meta.ui` block
-    #'   to each tool. Set to `FALSE` for clients that did not advertise the
-    #'   MCP Apps extension capability. The deprecated flat
-    #'   `_meta["ui/resourceUri"]` key is kept in both cases so hosts that
-    #'   predate capability negotiation (SEP-1865 draft era) keep rendering;
-    #'   text-only clients ignore unknown `_meta` keys per the MCP spec.
-    tool_definitions = function(include_ui_meta = TRUE) {
-      uri <- self$resource_uri()
-
-      lapply(private$.tools, function(tool) {
-        def <- if (is_ellmer_tool(tool)) {
-          list(
-            name = tool@name,
-            description = tool@description %||% "",
-            inputSchema = type_object_to_schema(tool@arguments)
-          )
-        } else if (is.list(tool)) {
-          compact_list(list(
-            name = tool$name %||% "unnamed",
-            description = tool$description %||% "",
-            inputSchema = tool$inputSchema %||%
-              list(type = "object", properties = list()),
-            outputSchema = tool$outputSchema
-          ))
-        } else {
-          list(
-            name = "unnamed",
-            description = "",
-            inputSchema = list(type = "object", properties = list())
-          )
-        }
-
-        # Surface tool annotation hints (readOnlyHint, etc.) so hosts can
-        # decide auto-run vs confirm. ellmer stores these snake_case; the MCP
-        # wire shape is camelCase.
-        annotations <- normalize_tool_annotations(tool_annotations_of(tool))
-        if (!is.null(annotations)) {
-          def$annotations <- annotations
-        }
-
-        # Generate an outputSchema from declared tool_outputs. Only tools whose
-        # output ids we know get one: per the MCP spec a tool with an
-        # outputSchema MUST return conforming structuredContent. We can verify
-        # this for tools declared via `tool_outputs` and for auto-generated
-        # tools (which carry `.output_ids` and return a named list of strings),
-        # but not for arbitrary tools returning bare values.
-        if (is.null(def$outputSchema)) {
-          declared_outputs <- private$.tool_outputs[[def$name]]
-          if (is.null(declared_outputs) && is.list(tool)) {
-            declared_outputs <- tool[[".output_ids"]]
-          }
-          if (!is.null(declared_outputs)) {
-            def$outputSchema <- build_output_schema(
-              declared_outputs,
-              private$scan_ui_outputs()
-            )
-          }
-        }
-
-        if (!include_ui_meta) {
-          # Client did not advertise the MCP Apps extension. Withhold the
-          # nested _meta.ui block, but keep the deprecated flat key so
-          # draft-era hosts (which never advertise) keep finding the UI.
-          def[["_meta"]] <- list(`ui/resourceUri` = uri)
-          return(def)
-        }
-
-        ui_meta <- list(resourceUri = uri)
-        visibility <- private$tool_visibility_for(tool)
-        if (!is.null(visibility)) {
-          ui_meta$visibility <- I(visibility)
-        }
-
-        # Include both new and legacy _meta formats for compatibility.
-        # The flat "ui/resourceUri" key is deprecated in the 2026-01-26 spec
-        # but some hosts still normalize it.
-        def[["_meta"]] <- list(
-          ui = ui_meta,
-          `ui/resourceUri` = uri
-        )
-        def
-      })
-    },
-
-    #' @description Get the extra resources declared for this app
-    #' Returns a named list (URI -> normalized spec with `uri`, `name`,
-    #' `description`, `mime_type`, `content_fn`, `meta`) for registration
-    #' alongside the app's main ui:// resource.
-    extra_resources = function() {
-      private$.resources
-    },
-
-    #' @description Read one extra resource by URI
-    #' Returns a `resources/read` contents entry (`uri`, `mimeType`, `text`,
-    #' optional `_meta`). Errors with class `shinymcp_error_resource` when
-    #' the URI is not a declared extra resource.
-    #' @param uri The resource URI to read
-    read_extra_resource = function(uri) {
+    #' @description Read one of the app's resources.
+    #' @param uri Resource URI.
+    #' @return A `resources/read` contents entry (`uri`, `mimeType`, `text`,
+    #'   optional `_meta`).
+    read_resource = function(uri) {
+      if (identical(uri, self$resource_uri())) {
+        return(compact_list(list(
+          uri = uri,
+          mimeType = SHINYMCP_UI_MIME_TYPE,
+          text = self$html_resource(),
+          `_meta` = self$resource_meta()
+        )))
+      }
       spec <- private$.resources[[uri]]
       if (is.null(spec)) {
-        shinymcp_error_resource(
-          cli::format_inline("Resource not found: {.val {uri}}"),
-          uri = uri
-        )
+        shinymcp_error_resource("Resource not found: {.val {uri}}", uri = uri)
       }
       compact_list(list(
         uri = spec$uri,
         mimeType = spec$mime_type,
-        text = coerce_resource_text(spec$content_fn()),
+        text = coerce_resource_text(private$in_dir(spec$content_fn())),
         `_meta` = spec$meta
       ))
     },
 
-    #' @description Get the `_meta` for this app's ui:// resource
-    #' Returns the `_meta` list (CSP domains, permissions, prefersBorder)
-    #' to attach to the resource in `resources/list` and `resources/read`
-    #' responses, or `NULL` when nothing was declared.
-    resource_meta = function() {
-      ui_meta <- compact_list(list(
-        csp = private$.csp_meta,
-        permissions = private$.permissions,
-        prefersBorder = private$.prefers_border
-      ))
-      if (length(ui_meta) == 0) {
-        return(NULL)
-      }
-      list(ui = ui_meta)
+    #' @description Does the app serve this resource URI?
+    #' @param uri Resource URI.
+    has_resource = function(uri) {
+      identical(uri, self$resource_uri()) || !is.null(private$.resources[[uri]])
     },
 
-    #' @description Call a tool by name
-    #' @param name Name of the tool to call
-    #' @param arguments Named list of arguments to pass to the tool
-    call_tool = function(name, arguments = list()) {
-      tool <- NULL
-      for (t in private$.tools) {
-        if (identical(tool_name(t), name)) {
-          tool <- t
-          break
+    #' @description The app's tools, normalized.
+    #' @param audience `NULL` for all tools, or `"model"` / `"app"` for the
+    #'   tools that audience may call.
+    tools = function(audience = NULL) {
+      tools <- private$.tools
+      if (!is.null(audience)) {
+        tools <- Filter(function(t) tool_visible_to(t, audience), tools)
+      }
+      tools
+    },
+
+    #' @description Tool definitions for an MCP `tools/list` response.
+    #' @param include_ui_meta Include the nested `_meta.ui` block. `FALSE`
+    #'   for clients that did not declare MCP Apps support.
+    #' @param include_app_only Include tools only the app's UI can call.
+    tool_definitions = function(
+      include_ui_meta = TRUE,
+      include_app_only = TRUE
+    ) {
+      tools <- private$.tools
+      if (!include_app_only) {
+        tools <- Filter(function(t) tool_visible_to(t, "model"), tools)
+      }
+      ui_outputs <- private$ui_outputs()
+      unname(lapply(tools, function(tool) {
+        output_schema <- if (
+          is.null(tool$output_schema) && length(tool$outputs)
+        ) {
+          build_output_schema(tool$outputs, ui_outputs)
         }
-      }
-      if (is.null(tool)) {
-        rlang::abort(
-          cli::format_inline("Tool {.val {name}} not found."),
-          class = "shinymcp_error_tool_not_found"
+        tool_wire_definition(
+          tool,
+          resource_uri = self$resource_uri(),
+          include_ui_meta = include_ui_meta,
+          output_schema = output_schema
         )
-      }
-      if (is_ellmer_tool(tool) || is.function(tool)) {
-        do.call(tool, arguments)
-      } else if (is.list(tool) && is.function(tool$fun)) {
-        do.call(tool$fun, arguments)
-      } else {
-        rlang::abort(
-          cli::format_inline(
-            "Tool {.val {name}} does not have a callable function."
-          ),
-          class = "shinymcp_error_tool_not_callable"
-        )
-      }
+      }))
     },
 
-    #' @description Get the ui:// resource URI for this app
-    resource_uri = function() {
-      paste0("ui://", self$name)
-    },
-
-    #' @description Get the app's declared interaction defaults
-    #' Returns a list with `trigger` and `debounce_ms` as declared at
-    #' construction (either may be `NULL` when unset). Hosts use this to
-    #' defer to the app's declaration when the embedder didn't specify.
-    interaction_defaults = function() {
-      list(
-        trigger = private$.trigger,
-        debounce_ms = private$.debounce_ms
+    #' @description Run a tool and return its R value, as the tool function
+    #'   returned it. Useful in tests.
+    #' @param name Tool name.
+    #' @param arguments Named list of arguments, as a client would send them.
+    #'   A vector of one value is one value; write an array of one as
+    #'   `list(x)`.
+    #' @param context Request context; see [mcp_request()].
+    call_tool = function(name, arguments = list(), context = list()) {
+      tool <- private$find_tool(name)
+      context <- utils::modifyList(
+        list(caller = "model", transport = "in-process"),
+        context %||% list()
       )
+      private$in_dir(with_request_context(
+        context,
+        tool$handler(arguments %||% list(), context)
+      ))
     },
 
-    #' @description Print method
+    #' @description Run a tool and return an MCP `tools/call` result.
+    #' @param name Tool name.
+    #' @param arguments Named list of arguments, as a client would send them.
+    #'   A vector of one value is one value; write an array of one as
+    #'   `list(x)`.
+    #' @param context Request context. `caller = "app"` marks calls from the
+    #'   app's own UI, and `images = FALSE` asks for a result without image
+    #'   blocks for the model.
+    #' @param raw If `TRUE`, return a list with the `result` and the `raw`
+    #'   value the tool function returned (`NULL` if it failed).
+    run_tool = function(
+      name,
+      arguments = list(),
+      context = list(),
+      raw = FALSE
+    ) {
+      result <- private$in_dir(private$run_tool_parts(name, arguments, context))
+      if (raw) result else result$result
+    },
+
+    #' @description Does the app have a tool with this name?
+    #' @param name Tool name.
+    has_tool = function(name) {
+      !is.null(private$.tools[[name]])
+    },
+
+    #' @description The app's declared interaction defaults (`trigger`,
+    #'   `debounce_ms`), each possibly `NULL`.
+    interaction_defaults = function() {
+      list(trigger = private$.trigger, debounce_ms = private$.debounce_ms)
+    },
+
+    #' @description The live Shiny runtime behind an app made from a Shiny
+    #'   app, or `NULL`.
+    runtime = function() {
+      private$.runtime
+    },
+
+    #' @description Close the app's open views and stop the Shiny app
+    #'   behind it, if any, running its `onStop` hook. [serve()] and
+    #'   [mcp_endpoint()] call this when they stop.
+    close = function() {
+      if (!is.null(private$.runtime)) {
+        private$.runtime$close_all()
+      }
+      invisible(self)
+    },
+
+    #' @description Output ids and types found in the UI.
+    output_types = function() {
+      private$ui_outputs()
+    },
+
+    #' @description Print a summary.
     #' @param ... Ignored.
     print = function(...) {
-      cli::cli_h1("McpApp: {self$name}")
-      cli::cli_text("Version: {self$version}")
-      cli::cli_text("Resource URI: {self$resource_uri()}")
-      n_tools <- length(private$.tools)
-      cli::cli_text("Tools: {n_tools}")
+      tools <- private$.tools
+      lines <- c(
+        paste0("<McpApp> ", self$name, " ", self$version),
+        if (!is.null(self$title)) paste0("Title: ", self$title),
+        if (!is.null(self$description)) {
+          strwrap(self$description, width = getOption("width", 80))
+        },
+        paste0("UI resource: ", self$resource_uri()),
+        if (!is.null(private$.runtime)) {
+          "Runs the Shiny app's server function, one session per view."
+        },
+        if (length(tools) == 0) {
+          "No tools."
+        } else {
+          c(
+            "Tools:",
+            vapply(
+              tools,
+              function(t) {
+                scope <- if (
+                  !is.null(t$visibility) && !"model" %in% t$visibility
+                ) {
+                  " (app only)"
+                } else {
+                  ""
+                }
+                paste0("* ", t$name, scope)
+              },
+              character(1)
+            )
+          )
+        }
+      )
+      cli::cat_line(lines)
       invisible(self)
     }
   ),
+
   private = list(
+    # Run a tool: its MCP result, and the R value its function returned.
+    run_tool_parts = function(name, arguments, context) {
+      tool <- private$find_tool(name)
+      context <- utils::modifyList(
+        list(caller = "model", transport = "in-process"),
+        context %||% list()
+      )
+      images <- private$.images &&
+        !isFALSE(context$images) &&
+        !identical(context$caller, "app")
+      if (!images) {
+        context$images <- FALSE
+      }
+      # Results never carry a library the page was built with.
+      context$skip_deps <- union(
+        as.character(unlist(context$skip_deps)),
+        private$page_dep_names()
+      )
+      raw <- tryCatch(
+        with_request_context(
+          context,
+          tool$handler(arguments %||% list(), context)
+        ),
+        error = function(e) e
+      )
+      if (inherits(raw, "error")) {
+        return(list(result = tool_error_result(raw), raw = NULL))
+      }
+      if (inherits(raw, "shinymcp_wire_result")) {
+        return(list(result = unclass(raw), raw = raw))
+      }
+      result <- tryCatch(
+        build_tool_result(
+          raw,
+          images = images,
+          skip_deps = context$skip_deps %||% character(),
+          view = list(tool = name),
+          output_types = private$ui_outputs(),
+          sizes = context$sizes,
+          pixel_ratio = context$pixel_ratio
+        ),
+        error = tool_error_result
+      )
+      list(result = result, raw = raw)
+    },
+
     .ui = NULL,
     .tools = list(),
-    .csp_meta = NULL,
+    .csp = NULL,
     .permissions = NULL,
     .prefers_border = NULL,
-    .tool_visibility = NULL,
+    .domain = NULL,
     .trigger = NULL,
     .debounce_ms = NULL,
     .resources = list(),
-    .tool_outputs = NULL,
+    .host_styles = TRUE,
+    .model_context = TRUE,
+    .images = TRUE,
+    .www = NULL,
+    .runtime = NULL,
+    .dir = NULL,
     .ui_outputs = NULL,
+    .rendered = NULL,
+    .page_deps = NULL,
 
-    # Resolve a tool's visibility: app-level tool_visibility wins, then a
-    # plain-list tool's own `visibility` field. NULL means default (both).
-    tool_visibility_for = function(tool) {
-      private$.tool_visibility[[tool_name(tool)]] %||%
-        (if (!is_ellmer_tool(tool) && is.list(tool)) tool$visibility)
+    # Evaluate `expr` in the directory of the app.R the app was made in.
+    in_dir = function(expr) {
+      if (is.null(private$.dir)) {
+        return(expr)
+      }
+      old <- setwd(private$.dir)
+      on.exit(setwd(old), add = TRUE)
+      expr
     },
 
-    # Scan the rendered UI for output elements and their declared types.
-    # Returns a named character vector: output id -> type. Cached.
-    scan_ui_outputs = function() {
-      if (!is.null(private$.ui_outputs)) {
-        return(private$.ui_outputs)
-      }
-      html <- htmltools::renderTags(private$.ui)$html
-      result <- character(0)
-      # Match each element carrying data-shinymcp-output, then pull the
-      # type attribute out of the same tag.
-      matches <- gregexpr(
-        "<[^>]*data-shinymcp-output=\"[^\"]*\"[^>]*>",
-        html
-      )
-      starts <- matches[[1]]
-      if (starts[1] != -1) {
-        lengths <- attr(starts, "match.length")
-        for (i in seq_along(starts)) {
-          tag <- substr(html, starts[i], starts[i] + lengths[i] - 1)
-          id <- sub(
-            '.*data-shinymcp-output="([^"]*)".*',
-            "\\1",
-            tag
-          )
-          type <- if (grepl('data-shinymcp-output-type="', tag, fixed = TRUE)) {
-            sub('.*data-shinymcp-output-type="([^"]*)".*', "\\1", tag)
-          } else {
-            "text"
-          }
-          result[[id]] <- type
-        }
-      }
-      private$.ui_outputs <- result
-      result
-    },
-
-    # Inline HTML dependencies as <style> and <script> tags.
-    inline_dependencies = function(deps) {
-      parts <- character(0)
-      for (dep in deps) {
-        base_path <- dep$src$file
-        if (is.null(base_path) || !nzchar(base_path)) {
-          next
-        }
-
-        # Inline stylesheets
-        for (css in dep$stylesheet) {
-          css_path <- file.path(base_path, css)
-          if (file.exists(css_path)) {
-            content <- paste(readLines(css_path, warn = FALSE), collapse = "\n")
-            parts <- c(
-              parts,
-              paste0(
-                "<style>/* ",
-                dep$name,
-                ": ",
-                css,
-                " */\n",
-                content,
-                "\n</style>"
-              )
-            )
-          }
-        }
-
-        # Inline scripts
-        for (js_entry in dep$script) {
-          js_file <- if (is.list(js_entry)) js_entry$src else js_entry
-          js_path <- file.path(base_path, js_file)
-          if (file.exists(js_path)) {
-            content <- paste(readLines(js_path, warn = FALSE), collapse = "\n")
-            # Preserve type="module" if specified
-            type_attr <- ""
-            if (is.list(js_entry) && !is.null(js_entry$type)) {
-              type_attr <- paste0(' type="', js_entry$type, '"')
-            }
-            parts <- c(
-              parts,
-              paste0(
-                "<script",
-                type_attr,
-                ">/* ",
-                dep$name,
-                ": ",
-                js_file,
-                " */\n",
-                content,
-                "\n</script>"
-              )
-            )
-          }
-        }
-      }
-      paste(parts, collapse = "\n")
-    },
-
-    # Read the bridge JS file.
-    read_bridge_js = function() {
-      js_path <- system.file(
-        "js",
-        "shinymcp-bridge.js",
-        package = "shinymcp",
-        mustWork = FALSE
-      )
-      if (nzchar(js_path) && file.exists(js_path)) {
-        paste(readLines(js_path, warn = FALSE), collapse = "\n")
-      } else {
-        cli::cli_warn(
-          "Bridge JS file not found. The MCP App will not have bridge functionality."
+    find_tool = function(name) {
+      tool <- private$.tools[[name %||% ""]]
+      if (is.null(tool)) {
+        shinymcp_abort(
+          "Tool {.val {name}} not found in app {.val {self$name}}.",
+          class = "shinymcp_error_tool_not_found"
         )
-        "/* shinymcp-bridge.js not found */"
       }
+      tool
     },
 
-    # Extract tool names from the tools list.
-    get_tool_names = function() {
-      vapply(
-        private$.tools,
-        tool_name,
-        character(1),
-        USE.NAMES = FALSE
-      )
-    },
-
-    # Extract argument names from each tool.
-    # Returns a named list: tool_name -> character vector of arg names.
-    get_tool_arg_names = function() {
-      result <- list()
-      for (tool in private$.tools) {
-        name <- tool_name(tool)
-        args <- if (is_ellmer_tool(tool)) {
-          names(tool@arguments@properties)
-        } else if (is.list(tool) && !is.null(tool$inputSchema$properties)) {
-          names(tool$inputSchema$properties)
-        } else if (is.list(tool) && is.function(tool$fun)) {
-          names(formals(tool$fun))
-        } else if (is.function(tool)) {
-          names(formals(tool))
-        } else {
-          character(0)
-        }
-        result[[name]] <- I(args)
+    # Render the UI once; the tag tree doesn't change after construction.
+    rendered = function() {
+      if (is.null(private$.rendered)) {
+        private$.rendered <- htmltools::renderTags(private$.ui)
       }
-      result
+      private$.rendered
     },
 
-    # Default CSS for shinymcp components.
-    default_css = function() {
-      paste(
-        "*, *::before, *::after { box-sizing: border-box; }",
-        "body { margin: 0; padding: 16px; font-family: system-ui, -apple-system, sans-serif; font-size: 14px; line-height: 1.5; color: #1a1a1a; }",
-        ".shinymcp-container { display: flex; flex-direction: column; gap: 16px; max-width: 800px; margin: 0 auto; }",
-        ".shinymcp-input-group { display: flex; flex-direction: column; gap: 4px; }",
-        ".shinymcp-input-group label { font-weight: 600; font-size: 13px; }",
-        ".shinymcp-input-group select, .shinymcp-input-group input[type='text'], .shinymcp-input-group input[type='number'] { padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }",
-        ".shinymcp-input-group input[type='range'] { width: 100%; }",
-        ".shinymcp-input-group button { padding: 8px 16px; border: none; border-radius: 4px; background: #0066cc; color: white; font-size: 14px; cursor: pointer; }",
-        ".shinymcp-input-group button:hover { background: #0052a3; }",
-        ".shinymcp-output { border: 1px solid #e0e0e0; border-radius: 4px; padding: 12px; min-height: 40px; background: #fafafa; }",
-        # Dark mode: the bridge sets data-bs-theme from the host's theme
-        ":root[data-bs-theme='dark'] body { color: #e6e6e6; background: #212529; }",
-        ":root[data-bs-theme='dark'] .shinymcp-input-group select, :root[data-bs-theme='dark'] .shinymcp-input-group input[type='text'], :root[data-bs-theme='dark'] .shinymcp-input-group input[type='number'] { background: #2b3035; color: #e6e6e6; border-color: #495057; }",
-        ":root[data-bs-theme='dark'] .shinymcp-output { background: #2b3035; border-color: #495057; }",
-        sep = "\n"
-      )
+    page_dep_names = function() {
+      if (is.null(private$.page_deps)) {
+        private$.page_deps <- vapply(
+          app_page_dependencies(private$rendered()),
+          function(d) d$name,
+          character(1)
+        )
+      }
+      private$.page_deps
+    },
+
+    ui_outputs = function() {
+      if (is.null(private$.ui_outputs)) {
+        outputs <- extract_outputs_from_tags(private$.ui, selective = FALSE)
+        types <- vapply(outputs, function(o) o$type %||% "html", character(1))
+        names(types) <- vapply(outputs, `[[`, character(1), "id")
+        private$.ui_outputs <- types
+      }
+      private$.ui_outputs
     }
   )
 )
 
-
 #' Create an MCP App
 #'
-#' Convenience function to create an [McpApp] object.
+#' @description
+#' An MCP App is an interactive page that an AI chat client (Claude, ChatGPT,
+#' VS Code, Goose) shows inside the conversation, next to the tools that feed
+#' it. `mcp_app()` pairs a UI with those tools:
 #'
-#' @param ui UI definition (htmltools tags). Can be a simple
-#'   [htmltools::tagList()] of shinymcp components, or a full
-#'   [bslib::page()] with theme.
-#' @param tools List of tools
-#' @param name App name
-#' @param version App version
-#' @param theme Optional [bslib::bs_theme()] object. Supports
-#'   `brand` for [brand.yml](https://posit-dev.github.io/brand-yml/) theming.
-#'   Not needed if `ui` is already a [bslib::page()].
-#' @param csp Optional named list of Content Security Policy domain
-#'   declarations for the app's `ui://` resource, per the MCP Apps spec.
-#'   MCP hosts apply a restrictive default policy that blocks all external
-#'   network access and assets, so any domain your app loads from at runtime
-#'   must be declared here. Fields (snake_case or spec camelCase):
-#'   * `connect_domains`: origins for fetch/XHR/WebSocket requests
-#'   * `resource_domains`: origins for scripts, styles, images, fonts
-#'   * `frame_domains`: origins for nested iframes
-#'   * `base_uri_domains`: allowed `base-uri` values
+#' * The **UI** is ordinary htmltools: Shiny or bslib inputs, outputs, and
+#'   layouts, or shinymcp's own components such as [mcp_select()] and
+#'   [mcp_plot()].
+#' * The **tools** are R functions, usually written with [ellmer::tool()].
+#'   A tool's argument names match input ids, and the names of the list it
+#'   returns match output ids. When the user changes an input, the app calls
+#'   the tools that take that input and fills in their outputs.
 #'
-#'   Apps with fully inlined assets (the shinymcp default) don't need this.
-#' @param permissions Optional named list of iframe permissions the app
-#'   needs, e.g. `list(camera = list())`. Most apps don't need this.
-#' @param prefers_border Optional logical hint that the host should draw a
-#'   border around the embedded app.
-#' @param tool_visibility Optional named list mapping tool names to MCP Apps
-#'   visibility scopes (character vectors drawn from `c("model", "app")`).
-#'   Use `"app"` for tools only the rendered UI should call (hidden from the
-#'   model's tool list), `"model"` for tools the UI must not call. Unset
-#'   tools are visible to both.
-#' @param trigger When the UI calls tools as inputs change: `"debounce"`
-#'   (default) or `"change"`. `"submit"`/`"manual"` only apply inside
-#'   shinymcp's own Shiny host.
-#' @param debounce_ms Debounce interval in milliseconds (default 250).
-#' @param resources Optional named list of extra resources served alongside
-#'   the app, readable from the UI via `window.shinymcp.readResource(uri)`.
-#'   Names are URIs; values are a string (static content), a function
-#'   returning a string (evaluated on each read --- useful for lazy-loading
-#'   data instead of inlining it into the app HTML), or a list with fields
-#'   `content`, `mime_type` (default `"text/plain"`), `name`, `description`,
-#'   and `meta`. For example:
-#'   `resources = list("ui://my-app/data" = list(content = function() jsonlite::toJSON(mtcars), mime_type = "application/json"))`
-#' @param tool_outputs Optional named list mapping tool names to the output
-#'   ids they return, e.g. `list(explore = c("scatter", "stats"))`. Declared
-#'   tools get an auto-generated `outputSchema` (all properties are strings,
-#'   with descriptions derived from the matching UI output types). Only
-#'   declare tools that return a named list keyed by those output ids.
-#' @param ... Additional arguments passed to `McpApp$new()`
-#' @return An [McpApp] object
+#' The model can call the same tools. When it does, the host shows the app
+#' and the app fills in from the result. Tools keep nothing between calls,
+#' so any R process can answer any call.
+#'
+#' To make one from a Shiny app you already have, see
+#' `vignette("rewriting-as-tools")`.
+#'
+#' @param ui The app's UI: an htmltools tag or tag list, or a full page such
+#'   as [bslib::page_sidebar()].
+#' @param tools A list of tools: [ellmer::tool()] objects, or plain lists
+#'   with `name`, `description`, `fun`, and optionally `inputSchema`,
+#'   `outputSchema`, `annotations`, and `visibility`.
+#' @param name App name, used for the `ui://<name>` resource. Letters,
+#'   digits, `-` and `_` work everywhere.
+#' @param version App version string.
+#' @param title Human-readable title, shown by some hosts.
+#' @param description What the app does. Hosts and models read it when
+#'   deciding whether to use it.
+#' @param theme A [bslib::bs_theme()] to wrap a UI that isn't already a page.
+#' @param csp External domains the page needs, as a named list with any of
+#'   `connect_domains` (fetch and WebSocket), `resource_domains` (scripts,
+#'   styles, images, fonts), `frame_domains` (nested iframes), and
+#'   `base_uri_domains`. Hosts block everything not declared. shinymcp
+#'   inlines its own dependencies, so most apps need none.
+#' @param permissions Browser permissions the page asks for: a character
+#'   vector drawn from `"camera"`, `"microphone"`, `"geolocation"`, and
+#'   `"clipboard_write"`. Hosts may refuse.
+#' @param prefers_border `TRUE` or `FALSE` to ask the host for (or not for)
+#'   a border and background around the app. `NULL` leaves it to the host.
+#' @param domain A dedicated origin for the app's sandbox, in the format the
+#'   host documents. Rarely needed.
+#' @param tool_visibility Who may call each tool: a named list mapping tool
+#'   names to `"model"`, `"app"`, or both. Tools only the app calls (`"app"`)
+#'   are hidden from the model; use them for controls that must stay in the
+#'   user's hands, such as an approval button.
+#' @param tool_outputs The output ids each tool returns, as a named list
+#'   (`list(explore = c("scatter", "stats"))`). Declared tools get an
+#'   `outputSchema`.
+#' @param trigger When the app calls tools as inputs change: `"debounce"`
+#'   (after a pause, the default), `"change"` (on every change), or
+#'   `"submit"` (when the user presses an apply button; add one with
+#'   [mcp_submit_button()]).
+#' @param debounce_ms The pause for `trigger = "debounce"`, in milliseconds
+#'   (default 250).
+#' @param resources Extra resources the page can load on demand with
+#'   `window.shinymcp.readResource(uri)`, as a named list from URI to a
+#'   string, a function returning a string, or a list with `content`,
+#'   `mime_type`, `name`, `description`, and `meta`. Use this to keep large
+#'   data out of the page.
+#' @param host_styles If `TRUE` (the default) the app takes the host's
+#'   colors and fonts when the host provides them, and a Bootstrap 5 page
+#'   follows its dark mode, so the app looks native in each client. Set
+#'   `FALSE` to keep your own theme.
+#' @param model_context If `TRUE` (the default) the app tells the model what
+#'   the user has changed in it, so the model can take it into account on
+#'   its next turn.
+#' @param images If `TRUE` (the default) plots and images in a result
+#'   returned to the model are also sent as image content the model can
+#'   see. Set `FALSE` to save tokens.
+#' @param www A directory of files the UI refers to by relative path, like
+#'   a Shiny app's `www/` folder: scripts, stylesheets, and images. They are
+#'   written into the page, since a host's frame can't fetch them. Paths
+#'   added with [shiny::addResourcePath()] are found without it.
+#' @param ... Passed to `McpApp$new()`.
+#' @return An [McpApp] object.
+#' @family apps
 #' @export
+#' @examplesIf rlang::is_installed("ellmer")
+#' app <- mcp_app(
+#'   ui = htmltools::tagList(
+#'     mcp_text_input("name", "Your name", value = "world"),
+#'     mcp_text("greeting")
+#'   ),
+#'   tools = list(
+#'     ellmer::tool(
+#'       function(name = "world") list(greeting = paste0("Hello, ", name, "!")),
+#'       name = "greet",
+#'       description = "Greet someone by name.",
+#'       arguments = list(name = ellmer::type_string("Name to greet"))
+#'     )
+#'   ),
+#'   name = "greeter"
+#' )
+#' app
+#' app$call_tool("greet", list(name = "Ada"))
+#'
+#' \dontrun{
+#' preview_app(app) # try it in a browser
+#' serve(app)       # serve it to an MCP client over stdio
+#' }
 mcp_app <- function(
   ui,
   tools = list(),
   name = "shinymcp-app",
   version = "0.1.0",
+  title = NULL,
+  description = NULL,
   theme = NULL,
   csp = NULL,
   permissions = NULL,
   prefers_border = NULL,
+  domain = NULL,
   tool_visibility = NULL,
+  tool_outputs = NULL,
   trigger = NULL,
   debounce_ms = NULL,
   resources = NULL,
-  tool_outputs = NULL,
+  host_styles = TRUE,
+  model_context = TRUE,
+  images = TRUE,
+  www = NULL,
   ...
 ) {
   McpApp$new(
@@ -722,15 +636,239 @@ mcp_app <- function(
     tools = tools,
     name = name,
     version = version,
+    title = title,
+    description = description,
     theme = theme,
     csp = csp,
     permissions = permissions,
     prefers_border = prefers_border,
+    domain = domain,
     tool_visibility = tool_visibility,
+    tool_outputs = tool_outputs,
     trigger = trigger,
     debounce_ms = debounce_ms,
     resources = resources,
-    tool_outputs = tool_outputs,
+    host_styles = host_styles,
+    model_context = model_context,
+    images = images,
+    www = www,
     ...
+  )
+}
+
+# ---- Construction helpers ----
+
+#' @noRd
+apply_tool_visibility <- function(
+  tools,
+  tool_visibility,
+  call = rlang::caller_env()
+) {
+  if (is.null(tool_visibility)) {
+    return(tools)
+  }
+  if (!is.list(tool_visibility) || is.null(names(tool_visibility))) {
+    shinymcp_abort(
+      "{.arg tool_visibility} must be a named list (tool name -> visibility).",
+      class = "shinymcp_error_validation",
+      call = call
+    )
+  }
+  unknown <- setdiff(names(tool_visibility), names(tools))
+  if (length(unknown)) {
+    cli::cli_warn(
+      "{.arg tool_visibility} names {.val {unknown}}, which match no tool (tools: {.val {names(tools)}})."
+    )
+  }
+  for (nm in intersect(names(tool_visibility), names(tools))) {
+    tools[[nm]]$visibility <- validate_visibility(
+      tool_visibility[[nm]],
+      nm,
+      call = call
+    )
+  }
+  tools
+}
+
+#' @noRd
+apply_tool_outputs <- function(
+  tools,
+  tool_outputs,
+  call = rlang::caller_env()
+) {
+  if (is.null(tool_outputs)) {
+    return(tools)
+  }
+  if (
+    !is.list(tool_outputs) ||
+      is.null(names(tool_outputs)) ||
+      !all(vapply(tool_outputs, is.character, logical(1)))
+  ) {
+    shinymcp_abort(
+      "{.arg tool_outputs} must be a named list of character vectors (tool name -> output ids).",
+      class = "shinymcp_error_validation",
+      call = call
+    )
+  }
+  unknown <- setdiff(names(tool_outputs), names(tools))
+  if (length(unknown)) {
+    cli::cli_warn(
+      "{.arg tool_outputs} names {.val {unknown}}, which match no tool (tools: {.val {names(tools)}})."
+    )
+  }
+  for (nm in intersect(names(tool_outputs), names(tools))) {
+    tools[[nm]]$outputs <- tool_outputs[[nm]]
+  }
+  tools
+}
+
+#' Convert CSP declarations to the spec's `_meta.ui.csp` keys
+#' @noRd
+csp_to_meta <- function(csp, call = rlang::caller_env()) {
+  if (is.null(csp)) {
+    return(NULL)
+  }
+  if (!is.list(csp) || is.null(names(csp)) || any(!nzchar(names(csp)))) {
+    shinymcp_abort(
+      "{.arg csp} must be a named list of domain declarations.",
+      class = "shinymcp_error_validation",
+      call = call
+    )
+  }
+  key_map <- c(
+    connect_domains = "connectDomains",
+    resource_domains = "resourceDomains",
+    frame_domains = "frameDomains",
+    base_uri_domains = "baseUriDomains"
+  )
+  allowed <- unique(c(names(key_map), unname(key_map)))
+  out <- list()
+  for (nm in names(csp)) {
+    if (!nm %in% allowed) {
+      shinymcp_abort(
+        "Unknown {.arg csp} field {.val {nm}}. Use {.or {.val {names(key_map)}}}.",
+        class = "shinymcp_error_validation",
+        call = call
+      )
+    }
+    key <- if (nm %in% names(key_map)) key_map[[nm]] else nm
+    out[[key]] <- I(as.character(unlist(csp[[nm]])))
+  }
+  out
+}
+
+#' Convert permission requests to the spec's `_meta.ui.permissions`
+#' @noRd
+permissions_to_meta <- function(permissions, call = rlang::caller_env()) {
+  if (is.null(permissions)) {
+    return(NULL)
+  }
+  key_map <- c(
+    camera = "camera",
+    microphone = "microphone",
+    geolocation = "geolocation",
+    clipboard_write = "clipboardWrite",
+    clipboardWrite = "clipboardWrite"
+  )
+  # Accept the older list(camera = list()) form as well as a character vector.
+  requested <- if (is.character(permissions)) {
+    permissions
+  } else {
+    names(permissions)
+  }
+  unknown <- setdiff(requested, names(key_map))
+  if (length(unknown) || length(requested) == 0) {
+    shinymcp_abort(
+      "{.arg permissions} must name permissions from {.val {c('camera', 'microphone', 'geolocation', 'clipboard_write')}}.",
+      class = "shinymcp_error_validation",
+      call = call
+    )
+  }
+  out <- lapply(requested, function(x) json_object())
+  names(out) <- unname(key_map[requested])
+  out
+}
+
+#' Normalize extra resources declared with `mcp_app(resources = )`
+#' @noRd
+normalize_extra_resources <- function(resources, call = rlang::caller_env()) {
+  if (is.null(resources)) {
+    return(list())
+  }
+  if (
+    !is.list(resources) ||
+      is.null(names(resources)) ||
+      any(!nzchar(names(resources)))
+  ) {
+    shinymcp_abort(
+      "{.arg resources} must be a named list (URI -> content).",
+      class = "shinymcp_error_validation",
+      call = call
+    )
+  }
+  out <- list()
+  for (uri in names(resources)) {
+    spec <- resources[[uri]]
+    if (is.function(spec) || (is.character(spec) && length(spec) == 1)) {
+      spec <- list(content = spec)
+    } else if (!is.list(spec)) {
+      shinymcp_abort(
+        "Resource {.val {uri}} must be a string, a function, or a list with a {.field content} field.",
+        class = "shinymcp_error_validation",
+        call = call
+      )
+    }
+    content <- spec$content
+    content_fn <- if (is.function(content)) {
+      content
+    } else if (is.character(content) && length(content) == 1) {
+      local({
+        static <- content
+        function() static
+      })
+    } else {
+      shinymcp_abort(
+        "Resource {.val {uri}} needs {.field content}: a single string or a function returning one.",
+        class = "shinymcp_error_validation",
+        call = call
+      )
+    }
+    out[[uri]] <- list(
+      uri = uri,
+      name = spec$name %||% uri,
+      description = spec$description %||% "",
+      mime_type = spec$mime_type %||% "text/plain",
+      content_fn = content_fn,
+      meta = spec$meta
+    )
+  }
+  out
+}
+
+#' Coerce resource content to a plain string
+#'
+#' `jsonlite::toJSON()` returns a `json`-classed object that serializers
+#' would inline as raw JSON; strip classes and collapse vectors.
+#' @noRd
+coerce_resource_text <- function(content) {
+  content <- as.character(content)
+  if (length(content) != 1) {
+    content <- paste(content, collapse = "\n")
+  }
+  content
+}
+
+#' A tool error as an MCP result the model can read
+#' @noRd
+tool_error_result <- function(e) {
+  message <- if (inherits(e, "rlang_error")) {
+    rlang::cnd_message(e)
+  } else {
+    conditionMessage(e)
+  }
+  message <- cli::ansi_strip(message)
+  list(
+    content = list(text_block(paste("Error:", message))),
+    isError = TRUE
   )
 }

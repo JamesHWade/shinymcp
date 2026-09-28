@@ -1,119 +1,130 @@
-# MCP-compatible input components
+# Inputs for apps built from tools
 #
-# These functions generate static HTML with data-shinymcp-* attributes
-# that the JS bridge reads to construct MCP tool parameters.
+# Plain HTML controls with data-shinymcp-* attributes, which the bridge
+# reads. Shiny's and bslib's own inputs work too; these need neither.
 
-#' Mark an element as an MCP input
+#' Mark an element as an input of an app's tools
 #'
-#' Stamps `data-shinymcp-input` on a tag or its first form-element descendant.
-#' Use this as an escape hatch when auto-detection by tool argument name doesn't
-#' work (e.g., custom widgets or elements whose `id` doesn't match the tool
-#' argument name).
+#' In an app built with [mcp_app()], a tool's argument takes its value from
+#' the input whose id matches the argument's name. Shiny's and bslib's
+#' inputs are found that way on their own. `mcp_input()` marks anything
+#' else: an element whose id differs from the argument name, or a form
+#' element shinymcp doesn't recognize.
 #'
-#' @param tag An [htmltools::tag] object (e.g., from `shiny::selectInput()`
-#'   or `bslib::input_select()`).
-#' @param id The input ID to register. If `NULL` (the default), reads the
-#'   element's existing `id` attribute.
-#' @return The modified [htmltools::tag] with `data-shinymcp-input` stamped.
+#' @param tag A tag or tag list. The mark goes on the tag if it is a form
+#'   element or an input group (radio buttons, a date input), otherwise on
+#'   the first one inside it.
+#' @param id The tool argument the element feeds. Defaults to the element's
+#'   own id.
+#' @return `tag`, marked.
+#' @family components
 #' @export
+#' @examples
+#' mcp_input(htmltools::tags$input(id = "q", type = "search"), id = "query")
 mcp_input <- function(tag, id = NULL) {
-  form_selectors <- c("input", "select", "textarea", "button")
-  tag_name <- tag$name %||% ""
-
-  if (tolower(tag_name) %in% form_selectors) {
-    # Tag itself is a form element - stamp directly
-    resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
-    if (is.null(resolved_id)) {
-      rlang::abort(
-        cli::format_inline(
-          "Cannot determine input ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
-        ),
-        class = "shinymcp_error_validation"
-      )
-    }
-    tag <- htmltools::tagAppendAttributes(
-      tag,
-      `data-shinymcp-input` = resolved_id
-    )
-    return(tag)
+  if (inherits(tag, "shiny.tag") && is_input_element(tag)) {
+    return(stamp_input(tag, id %||% htmltools::tagGetAttribute(tag, "id")))
   }
 
-  # Find the first form-element descendant using tagQuery
+  # Otherwise the first input inside it. Groups (radio buttons, checkbox
+  # groups, date inputs) are matched as a whole, before the <input>s inside
+  # them.
   tq <- htmltools::tagQuery(tag)
-  for (sel in form_selectors) {
-    found <- tq$find(sel)
+  for (selector in c(
+    INPUT_GROUP_SELECTORS,
+    "select",
+    "input",
+    "textarea",
+    "button"
+  )) {
+    found <- tq$find(selector)
     if (found$length() > 0) {
-      first_el <- found$selectedTags()[[1]]
-      el_id <- htmltools::tagGetAttribute(first_el, "id")
-      resolved_id <- id %||% el_id
-      if (is.null(resolved_id)) {
-        rlang::abort(
-          cli::format_inline(
-            "Cannot determine input ID. Provide {.arg id} or ensure the element has an {.field id} attribute."
-          ),
-          class = "shinymcp_error_validation"
-        )
-      }
-      # Target just the first element to avoid stamping siblings
-      if (!is.null(el_id) && found$length() > 1) {
-        tq$find(paste0("#", el_id))$addAttrs(
-          `data-shinymcp-input` = resolved_id
-        )
-      } else if (found$length() > 1) {
-        # First element has no id and there are siblings - stamp manually
-        stamped <- htmltools::tagAppendAttributes(
-          first_el,
-          `data-shinymcp-input` = resolved_id
-        )
-        # Rebuild the tree: replace children of the parent tag
-        result_tag <- tag
-        result_tag$children <- lapply(tag$children, function(child) {
-          if (identical(child, first_el)) stamped else child
-        })
-        return(result_tag)
-      } else {
-        found$addAttrs(`data-shinymcp-input` = resolved_id)
-      }
+      first <- found$selectedTags()[[1]]
+      resolved <- id %||% htmltools::tagGetAttribute(first, "id")
+      check_input_id(resolved)
+      found$filter(function(x, i) i == 1)$addAttrs(
+        `data-shinymcp-input` = resolved
+      )
       return(tq$allTags())
     }
   }
 
-  # No form element found - stamp the tag itself (e.g., radio group container)
-  resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
-  if (is.null(resolved_id)) {
-    rlang::abort(
-      cli::format_inline(
-        "Cannot determine input ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
-      ),
+  if (!inherits(tag, "shiny.tag")) {
+    shinymcp_abort(
+      "Couldn't find an input in {.arg tag}.",
       class = "shinymcp_error_validation"
     )
   }
-  htmltools::tagAppendAttributes(tag, `data-shinymcp-input` = resolved_id)
+  stamp_input(tag, id %||% htmltools::tagGetAttribute(tag, "id"))
 }
 
-#' Mark an element as an MCP output
+#' Shiny inputs whose value belongs to a container, not an <input>
+#' @noRd
+INPUT_GROUP_SELECTORS <- c(
+  ".shiny-input-radiogroup",
+  ".shiny-input-checkboxgroup",
+  ".shiny-date-input",
+  ".shiny-date-range-input",
+  ".shiny-tab-input"
+)
+
+#' @noRd
+is_input_element <- function(tag) {
+  if (
+    tolower(tag$name %||% "") %in% c("input", "select", "textarea", "button")
+  ) {
+    return(TRUE)
+  }
+  classes <- strsplit(
+    htmltools::tagGetAttribute(tag, "class") %||% "",
+    "\\s+"
+  )[[1]]
+  any(sub("^\\.", "", INPUT_GROUP_SELECTORS) %in% classes)
+}
+
+#' @noRd
+stamp_input <- function(tag, id) {
+  check_input_id(id)
+  htmltools::tagAppendAttributes(tag, `data-shinymcp-input` = id)
+}
+
+#' @noRd
+check_input_id <- function(id, call = rlang::caller_env()) {
+  if (!is_string(id)) {
+    shinymcp_abort(
+      "Can't tell which input this is. Supply {.arg id}, or give the element an {.field id} attribute.",
+      class = "shinymcp_error_validation",
+      call = call
+    )
+  }
+  invisible(id)
+}
+
+#' Mark an element as an output of an app's tools
 #'
-#' Stamps `data-shinymcp-output` and `data-shinymcp-output-type` on a tag.
-#' Use this to turn any container element into a target for tool result output.
+#' A tool fills the outputs whose ids match the names of the list it
+#' returns. [mcp_text()], [mcp_plot()] and the other output functions make
+#' those elements; `mcp_output()` turns any element into one.
 #'
-#' @param tag An [htmltools::tag] object.
-#' @param id The output ID. If `NULL` (the default), reads the element's
-#'   existing `id` attribute.
-#' @param type Output type: `"text"`, `"html"`, `"plot"`, or `"table"`.
-#' @return The modified [htmltools::tag] with output attributes stamped.
+#' @param tag A tag.
+#' @param id The output id. Defaults to the element's own id.
+#' @param type How to show the value: `"text"`, `"html"`, `"plot"`,
+#'   `"table"`, `"image"`, or `"widget"`.
+#' @return `tag`, marked.
+#' @family components
 #' @export
+#' @examples
+#' mcp_output(htmltools::div(class = "summary-card"), id = "summary", type = "html")
 mcp_output <- function(
   tag,
   id = NULL,
-  type = c("text", "html", "plot", "table")
+  type = c("text", "html", "plot", "table", "image", "widget")
 ) {
   type <- rlang::arg_match(type)
   resolved_id <- id %||% htmltools::tagGetAttribute(tag, "id")
-  if (is.null(resolved_id)) {
-    rlang::abort(
-      cli::format_inline(
-        "Cannot determine output ID. Provide {.arg id} or ensure the tag has an {.field id} attribute."
-      ),
+  if (!is_string(resolved_id)) {
+    shinymcp_abort(
+      "Can't tell which output this is. Supply {.arg id}, or give the element an {.field id} attribute.",
       class = "shinymcp_error_validation"
     )
   }
@@ -124,17 +135,37 @@ mcp_output <- function(
   )
 }
 
-#' Create an MCP select input
+#' Inputs for apps built from tools
 #'
-#' Generates a dropdown select element with MCP data attributes.
+#' @description
+#' Small form controls for [mcp_app()] UIs, drawn by the page itself.
+#' Shiny's and bslib's inputs work just as well in an MCP App; these need
+#' neither package and keep the page light.
 #'
-#' @param id Input ID
-#' @param label Display label
-#' @param choices Character vector of choices. If named, names are used as
-#'   display labels and values as the option values.
-#' @param selected The initially selected value. Defaults to the first choice.
-#' @return An [htmltools::tag] object
+#' * `mcp_select()`: a drop-down list.
+#' * `mcp_text_input()`: a line of text.
+#' * `mcp_numeric_input()`: a number.
+#' * `mcp_checkbox()`: `TRUE` or `FALSE`.
+#' * `mcp_slider()`: a number on a range.
+#' * `mcp_radio()`: one of a few choices.
+#' * `mcp_action_button()`: a button; a tool taking its id runs when it's
+#'   pressed.
+#'
+#' @param id The input id, which is the name of the tool argument it feeds.
+#' @param label The label shown with the input.
+#' @param choices The values to choose from. Names, if any, are shown in
+#'   their place.
+#' @param selected The value selected at first. Defaults to the first
+#'   choice.
+#' @return A tag.
+#' @family components
 #' @export
+#' @examples
+#' htmltools::tagList(
+#'   mcp_select("species", "Species", c("Adelie", "Gentoo", "Chinstrap")),
+#'   mcp_slider("alpha", "Opacity", min = 0, max = 1, value = 0.7, step = 0.1),
+#'   mcp_checkbox("smooth", "Add a trend line")
+#' )
 mcp_select <- function(id, label, choices, selected = choices[[1]]) {
   choice_names <- names(choices) %||% unname(choices)
   choice_values <- unname(choices)
@@ -165,15 +196,9 @@ mcp_select <- function(id, label, choices, selected = choices[[1]]) {
   )
 }
 
-#' Create an MCP text input
-#'
-#' Generates a text input element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param value Initial value
-#' @param placeholder Placeholder text
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
+#' @param value The value at first.
+#' @param placeholder Text shown while the input is empty.
 #' @export
 mcp_text_input <- function(id, label, value = "", placeholder = NULL) {
   htmltools::tags$div(
@@ -190,17 +215,9 @@ mcp_text_input <- function(id, label, value = "", placeholder = NULL) {
   )
 }
 
-#' Create an MCP numeric input
-#'
-#' Generates a numeric input element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param value Initial value
-#' @param min Minimum allowed value
-#' @param max Maximum allowed value
-#' @param step Step increment
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
+#' @param min,max The smallest and largest values allowed.
+#' @param step The step between values.
 #' @export
 mcp_numeric_input <- function(id, label, value, min = NA, max = NA, step = NA) {
   attrs <- list(
@@ -227,14 +244,7 @@ mcp_numeric_input <- function(id, label, value, min = NA, max = NA, step = NA) {
   )
 }
 
-#' Create an MCP checkbox input
-#'
-#' Generates a checkbox input element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param value Initial checked state
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_checkbox <- function(id, label, value = FALSE) {
   input_tag <- htmltools::tags$input(
@@ -254,17 +264,7 @@ mcp_checkbox <- function(id, label, value = FALSE) {
   )
 }
 
-#' Create an MCP slider input
-#'
-#' Generates a range slider element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param min Minimum value
-#' @param max Maximum value
-#' @param value Initial value
-#' @param step Step increment
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_slider <- function(id, label, min, max, value = min, step = 1) {
   htmltools::tags$div(
@@ -283,16 +283,7 @@ mcp_slider <- function(id, label, min, max, value = min, step = 1) {
   )
 }
 
-#' Create MCP radio button inputs
-#'
-#' Generates a set of radio buttons with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Display label
-#' @param choices Character vector of choices. If named, names are used as
-#'   display labels and values as the radio values.
-#' @param selected The initially selected value. Defaults to the first choice.
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_radio <- function(id, label, choices, selected = choices[[1]]) {
   choice_names <- names(choices) %||% unname(choices)
@@ -325,13 +316,7 @@ mcp_radio <- function(id, label, choices, selected = choices[[1]]) {
   )
 }
 
-#' Create an MCP action button
-#'
-#' Generates a button element with MCP data attributes.
-#'
-#' @param id Input ID
-#' @param label Button label
-#' @return An [htmltools::tag] object
+#' @rdname mcp_select
 #' @export
 mcp_action_button <- function(id, label) {
   htmltools::tags$div(
@@ -342,5 +327,28 @@ mcp_action_button <- function(id, label) {
       `data-shinymcp-type` = "button",
       label
     )
+  )
+}
+
+#' An apply button for apps that wait for it
+#'
+#' In an app made with `mcp_app(trigger = "submit")`, input changes wait
+#' until the user presses an apply button. Without one in the UI, the page
+#' adds its own at the bottom; use `mcp_submit_button()` to choose where it
+#' goes and what it says. The button is disabled until something changes.
+#'
+#' @param label Button text.
+#' @param class CSS classes for the button.
+#' @return An htmltools `<button>` tag.
+#' @family components
+#' @export
+#' @examples
+#' mcp_submit_button("Run analysis")
+mcp_submit_button <- function(label = "Apply", class = "btn btn-primary") {
+  htmltools::tags$button(
+    type = "button",
+    class = class,
+    `data-shinymcp-submit` = "",
+    label
   )
 }

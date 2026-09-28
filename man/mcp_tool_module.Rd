@@ -2,11 +2,11 @@
 % Please edit documentation in R/mcp-tool-module.R
 \name{mcp_tool_module}
 \alias{mcp_tool_module}
-\title{Create an MCP App from a Shiny module}
+\title{Serve a Shiny module as an MCP App}
 \usage{
 mcp_tool_module(
   module_ui,
-  module_server,
+  module_server = NULL,
   name,
   description,
   handler = NULL,
@@ -16,79 +16,98 @@ mcp_tool_module(
 )
 }
 \arguments{
-\item{module_ui}{A Shiny module UI function that accepts an \code{id} argument
-(e.g., \code{function(id) { ns <- NS(id); tagList(...) }}).}
+\item{module_ui}{A module UI function, \verb{function(id)}.}
 
-\item{module_server}{A Shiny module server function. Currently stored as
-metadata for future headless Shiny session support, which will allow the
-module server to execute reactively when tools are called.}
+\item{module_server}{A module server function, \verb{function(id, ...)},
+that calls \code{\link[shiny:moduleServer]{shiny::moduleServer()}}. Not needed with \code{handler}.}
 
-\item{name}{Tool/app name. Used in \verb{ui://} resource URIs.}
+\item{name}{App and tool name.}
 
-\item{description}{Human-readable description of what the tool does.}
+\item{description}{What the module does, for the model.}
 
-\item{handler}{Optional tool handler function. If provided, this function
-is called when the MCP tool is invoked. Its arguments should match the
-module's input IDs. If \code{NULL}, a stub handler is generated.}
+\item{handler}{Optional function to use instead of running
+\code{module_server}.}
 
-\item{arguments}{Optional list of \code{\link[ellmer:type_boolean]{ellmer::type_string()}}, \code{\link[ellmer:type_boolean]{ellmer::type_number()}},
-etc. for the tool's input schema. If \code{NULL}, arguments are auto-detected
-from the rendered module UI.}
+\item{arguments}{With \code{handler}, optional \code{\link[ellmer:tool]{ellmer::tool()}} argument types.
+Without them, the input schema is guessed from the handler's defaults.}
 
 \item{version}{App version string.}
 
-\item{...}{Additional arguments stored as module metadata (e.g., shared
-reactive values to pass to the module server when headless support lands).}
+\item{...}{Extra arguments passed to \code{module_server}.}
 }
 \value{
-An \link{McpApp} object.
+An \link{McpApp}.
 }
 \description{
-Wraps a standard Shiny module (UI function + server function) as an
-\link{McpApp}. The module UI is rendered with MCP-compatible attributes, and
-a tool definition is created that maps to the module's inputs and outputs.
-If a \code{handler} is provided, the tool is fully functional; otherwise, a stub
-handler is generated as a placeholder.
+Wraps a Shiny module (a UI function, and a server function, that take an
+\code{id}) as an \link{McpApp}. The module's UI is the page.
+
+With \code{handler}, a function of your own computes the module's outputs, as
+tools for \code{\link[=mcp_app]{mcp_app()}} do: its arguments are the module's input ids,
+without the namespace, and it returns a list named by output ids.
+
+Without it, the module's server function runs live, as with
+\code{\link[=as_mcp_app]{as_mcp_app()}}, and the tool the model calls takes the module's inputs by
+their un-namespaced ids.
+
+The same module can be shown in a shinychat conversation with
+\code{shinychat::chat_tool_module()} and served here to MCP clients.
 }
-\details{
-This mirrors \code{shinychat::chat_tool_module()} for the MCP runtime — the
-same module can be used in both contexts.
+\section{Shiny's own MCP support}{
+
+Shiny is gaining MCP support of its own
+(\url{https://github.com/rstudio/shiny/pull/4407}). Once it is released, it
+will be the way to put a live Shiny app in a chat, and shinymcp will stop
+serving live apps. \code{\link[=as_mcp_app]{as_mcp_app()}}, \code{\link[=mcp_endpoint]{mcp_endpoint()}}, and
+\code{\link[=mcp_tool_module]{mcp_tool_module()}} will take only apps built from tools, and \code{\link[=bindMcp]{bindMcp()}}
+and the helpers for server functions (\code{\link[=mcp_model_context]{mcp_model_context()}},
+\code{\link[=mcp_host_context]{mcp_host_context()}}, and the rest) will be removed. For something the
+model should be able to use on its own, rewrite that part of the app as
+tools with \code{\link[=mcp_app]{mcp_app()}}; see \code{vignette("rewriting-as-tools")}.
 }
+
 \examples{
 \dontrun{
 library(shiny)
 
-# Define a standard Shiny module
 hist_ui <- function(id) {
   ns <- NS(id)
   tagList(
-    sliderInput(ns("bins"), "Bins:", min = 5, max = 50, value = 25),
+    sliderInput(ns("bins"), "Bins", min = 5, max = 50, value = 20),
     plotOutput(ns("plot"), height = "250px")
   )
 }
 
-hist_server <- function(id, dataset) {
-  moduleServer(id, function(input, output, session) {
-    output$plot <- renderPlot({
-      hist(dataset(), breaks = input$bins, col = "#007bc2")
-    })
-  })
-}
-
-# Create and serve as MCP App
+# The module's UI, with a function in place of its server.
 app <- mcp_tool_module(
-  hist_ui, hist_server,
-  name = "histogram",
-  description = "Show an interactive histogram",
-  handler = function(bins = 25) {
-    tmp <- tempfile(fileext = ".png")
-    grDevices::png(tmp, width = 600, height = 250)
-    hist(faithful$eruptions, breaks = bins, col = "#007bc2")
-    grDevices::dev.off()
-    list(plot = base64enc::base64encode(tmp))
+  hist_ui,
+  name = "eruptions",
+  description = "Histogram of Old Faithful eruption times.",
+  handler = function(bins = 20) {
+    list(plot = mcp_result_plot(function() hist(faithful$eruptions, breaks = bins)))
   }
 )
-serve(app)
-}
+preview_app(app)
 
+# The module's own server function, running live.
+hist_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    output$plot <- renderPlot(hist(faithful$eruptions, breaks = input$bins))
+  })
 }
+app <- mcp_tool_module(
+  hist_ui,
+  hist_server,
+  name = "eruptions",
+  description = "Histogram of Old Faithful eruption times."
+)
+}
+}
+\seealso{
+Other apps:
+\code{\link{McpApp}},
+\code{\link[=as_mcp_app]{as_mcp_app()}},
+\code{\link[=bindMcp]{bindMcp()}},
+\code{\link[=mcp_app]{mcp_app()}}
+}
+\concept{apps}

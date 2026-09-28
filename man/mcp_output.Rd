@@ -2,22 +2,38 @@
 % Please edit documentation in R/components-input.R
 \name{mcp_output}
 \alias{mcp_output}
-\title{Mark an element as an MCP output}
+\title{Mark an element as an output of an app's tools}
 \usage{
-mcp_output(tag, id = NULL, type = c("text", "html", "plot", "table"))
+mcp_output(
+  tag,
+  id = NULL,
+  type = c("text", "html", "plot", "table", "image", "widget")
+)
 }
 \arguments{
-\item{tag}{An \link[htmltools:builder]{htmltools::tag} object.}
+\item{tag}{A tag.}
 
-\item{id}{The output ID. If \code{NULL} (the default), reads the element's
-existing \code{id} attribute.}
+\item{id}{The output id. Defaults to the element's own id.}
 
-\item{type}{Output type: \code{"text"}, \code{"html"}, \code{"plot"}, or \code{"table"}.}
+\item{type}{How to show the value: \code{"text"}, \code{"html"}, \code{"plot"},
+\code{"table"}, \code{"image"}, or \code{"widget"}.}
 }
 \value{
-The modified \link[htmltools:builder]{htmltools::tag} with output attributes stamped.
+\code{tag}, marked.
 }
 \description{
-Stamps \code{data-shinymcp-output} and \code{data-shinymcp-output-type} on a tag.
-Use this to turn any container element into a target for tool result output.
+A tool fills the outputs whose ids match the names of the list it
+returns. \code{\link[=mcp_text]{mcp_text()}}, \code{\link[=mcp_plot]{mcp_plot()}} and the other output functions make
+those elements; \code{mcp_output()} turns any element into one.
 }
+\examples{
+mcp_output(htmltools::div(class = "summary-card"), id = "summary", type = "html")
+}
+\seealso{
+Other components:
+\code{\link[=mcp_input]{mcp_input()}},
+\code{\link[=mcp_plot]{mcp_plot()}},
+\code{\link[=mcp_select]{mcp_select()}},
+\code{\link[=mcp_submit_button]{mcp_submit_button()}}
+}
+\concept{components}

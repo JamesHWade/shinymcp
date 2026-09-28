@@ -1,64 +1,80 @@
-# Local browser preview for MCP Apps
+# preview_app(): a local MCP Apps host in the browser
 
-#' Preview an MCP App in a web browser
+#' Preview an MCP App in a browser
 #'
-#' Starts a local HTTP server and opens the MCP App in a browser. A lightweight
-#' host page emulates the MCP Apps postMessage protocol so that tools are fully
-#' functional - inputs trigger tool calls, and outputs update in real time, just
-#' like they would inside Claude Desktop.
+#' @description
+#' `preview_app()` serves the app over MCP on a local port and opens a page
+#' that hosts it the way a chat client does: the app runs in a sandboxed
+#' iframe under the same Content Security Policy a client would apply, and
+#' every message goes through the app's real MCP endpoint. Alongside the app
+#' the page shows what the model would see (the text and structured content
+#' of each tool result), the context the app publishes for the model, and a
+#' log of the protocol messages.
 #'
-#' @param app An [McpApp] object, or a path to a directory containing an MCP
-#'   App `app.R` (which will be [source()]d to obtain the app object).
-#' @param port Port for the local server. `NULL` (the default) picks a random
-#'   available port.
-#' @param launch Whether to open the browser automatically (default `TRUE`).
-#' @return Invisibly, a list with `url` (the preview URL) and `stop()` (a
-#'   function to shut down the server).
+#' When the page opens it calls the app's first tool (or `tool`) with
+#' `arguments`, as a model would, and shows the app with the result. Use
+#' the arguments box on the page to call it again with other values.
 #'
+#' @param app An [McpApp], a list of apps, a Shiny app, or a path to one.
+#' @param arguments Named list of arguments for the first call, as a
+#'   client would send them. A vector of one value is one value; write an
+#'   array of one as `list(x)`.
+#' @param tool Name of the tool to call first. Defaults to the first tool
+#'   the model can call.
+#' @param port Port to listen on. `NULL` picks a free one.
+#' @param launch Whether to open the page in a browser.
+#' @return Invisibly, a list with the preview's `url` and a `stop()`
+#'   function.
+#' @family serving
+#' @export
 #' @examples
 #' \dontrun{
-#' app <- mcp_app(
-#'   ui = htmltools::tags$div(
-#'     mcp_text_input("name", "Your name"),
-#'     mcp_text("greeting")
-#'   ),
-#'   tools = list(
-#'     list(
-#'       name = "greet",
-#'       fun = function(name = "world") {
-#'         list(greeting = paste0("Hello, ", name, "!"))
-#'       }
-#'     )
-#'   )
-#' )
-#'
-#' # Opens in browser with working inputs/outputs
-#' srv <- preview_app(app)
-#'
-#' # Stop when done
-#' srv$stop()
+#' preview <- preview_app(app, arguments = list(species = "Gentoo"))
+#' preview$stop()
 #' }
-#' @export
-preview_app <- function(app, port = NULL, launch = TRUE) {
-  rlang::check_installed("httpuv", reason = "to preview MCP Apps in a browser")
-
-  app <- coerce_preview_mcp_app(app)
-
-  warn_host_only_trigger(app, "preview_app()")
-
+preview_app <- function(
+  app,
+  arguments = NULL,
+  tool = NULL,
+  port = NULL,
+  launch = interactive()
+) {
+  rlang::check_installed("httpuv", reason = "to preview MCP Apps in a browser.")
+  server <- McpServer$new(app)
+  for (a in server$apps) {
+    warn_host_only_trigger(a, "preview_app()")
+  }
   host <- "127.0.0.1"
+  handler <- mcp_http_handler(server, path = "/mcp", local = TRUE)
+  entry <- tool %||% unlist(lapply(server$apps, default_entry_tool))[1]
+  page <- preview_page(server, entry, arguments)
 
-  # Pre-render the host HTML with the app name baked in
-  host_html <- preview_host_html(app$name)
-  app_html <- app$html_resource()
-
-  server_info <- preview_start_server(
-    host = host,
-    port = port,
-    app = list(
+  started <- start_local_server(
+    host,
+    port,
+    list(
       call = function(req) {
         tryCatch(
-          preview_route(req, app, host_html, app_html),
+          {
+            path <- req$PATH_INFO %||% "/"
+            if (path %in% c("/", "/index.html")) {
+              list(
+                status = 200L,
+                headers = list(
+                  `Content-Type` = "text/html; charset=utf-8",
+                  `Cache-Control` = "no-store"
+                ),
+                body = page
+              )
+            } else {
+              handler(req) %||%
+                list(
+                  status = 404L,
+                  headers = list(`Content-Type` = "text/plain"),
+                  body = "Not found"
+                )
+            }
+          },
           error = function(e) {
             list(
               status = 500L,
@@ -70,55 +86,94 @@ preview_app <- function(app, port = NULL, launch = TRUE) {
       }
     )
   )
-  server <- server_info$server
-  port <- server_info$port
 
-  stop_server <- function() {
-    httpuv::stopServer(server)
-    cli::cli_inform("Preview server stopped.")
+  url <- sprintf("http://%s:%d/", host, started$port)
+  cli::cli_inform(
+    c(
+      "i" = "Previewing at {.url {url}}",
+      " " = "Call {.code $stop()} on the result to stop."
+    ),
+    class = "shinymcp_message"
+  )
+  if (isTRUE(launch)) {
+    utils::browseURL(url)
   }
-
-  url <- sprintf("http://%s:%d", host, port)
-  cli::cli_inform(c(
-    "i" = "Preview running at {.url {url}}",
-    "i" = "Press {.kbd Ctrl+C} or call {.code $stop()} to stop."
-  ))
-
-  if (launch) {
-    tryCatch(
-      utils::browseURL(url),
-      error = function(e) {
-        cli::cli_warn("Could not open browser: {e$message}")
+  invisible(list(
+    url = url,
+    port = started$port,
+    stop = function() {
+      httpuv::stopServer(started$server)
+      for (a in server$apps) {
+        a$close()
       }
+      invisible(NULL)
+    }
+  ))
+}
+
+#' The first tool of an app the model may call, or NULL
+#' @noRd
+default_entry_tool <- function(app) {
+  tools <- app$tools("model")
+  if (length(tools)) tools[[1]]$name
+}
+
+#' The preview host page
+#' @noRd
+preview_page <- function(server, entry = NULL, arguments = NULL) {
+  config <- list(
+    title = if (length(server$apps) == 1) {
+      server$apps[[1]]$title %||% server$apps[[1]]$name
+    } else {
+      "shinymcp"
+    },
+    endpoint = "mcp",
+    entryTool = entry,
+    arguments = arguments %||% json_object(),
+    protocolVersion = SHINYMCP_MODERN_VERSIONS[[1]],
+    appsProtocolVersion = SHINYMCP_APPS_PROTOCOL_VERSION,
+    version = as.character(utils::packageVersion("shinymcp"))
+  )
+  fill_template(
+    read_package_file("preview", "host.html"),
+    list(
+      TITLE = htmltools::htmlEscape(config$title),
+      HOST_JS = escape_inline_close(
+        read_package_file("js", "shinymcp-host.js"),
+        "script"
+      ),
+      CONFIG = json_for_script(config)
     )
-  }
-
-  result <- list(url = url, stop = stop_server)
-  invisible(result)
+  )
 }
 
-#' Start a preview server on an explicit or discovered local port
+#' Replace `{{KEY}}` placeholders in one pass
 #'
-#' @param host Host interface.
-#' @param port Optional explicit port.
-#' @param app httpuv app object.
-#' @return A list with `server` and `port`.
+#' Text inserted for one placeholder is never scanned for others.
 #' @noRd
-coerce_preview_mcp_app <- function(x) {
-  as_mcp_app(x)
+fill_template <- function(template, values) {
+  matches <- gregexpr("\\{\\{[A-Z_]+\\}\\}", template, perl = TRUE)
+  found <- regmatches(template, matches)[[1]]
+  regmatches(template, matches) <- list(vapply(
+    found,
+    function(p) values[[substr(p, 3, nchar(p) - 2)]] %||% p,
+    character(1),
+    USE.NAMES = FALSE
+  ))
+  template
 }
 
+#' Start an httpuv server on a given or free port
 #' @noRd
-preview_start_server <- function(host, port = NULL, app) {
+start_local_server <- function(host, port, app) {
   candidates <- if (!is.null(port)) {
     port
   } else {
     unique(c(
-      tryCatch(httpuv::randomPort(), error = function(...) integer()),
-      sample(3000:9000, 25)
+      tryCatch(httpuv::randomPort(), error = function(e) integer()),
+      sample(3000:9000, 20)
     ))
   }
-
   last_error <- NULL
   for (candidate in candidates) {
     server <- tryCatch(
@@ -132,160 +187,10 @@ preview_start_server <- function(host, port = NULL, app) {
       return(list(server = server, port = candidate))
     }
   }
-
-  stop(last_error %||% simpleError("Could not bind a preview server port."))
-}
-
-
-#' Read and populate the host HTML template
-#'
-#' @param app_name App name to embed in the template.
-#' @return Character string of complete HTML.
-#' @noRd
-preview_host_html <- function(app_name) {
-  template_path <- system.file(
-    "preview",
-    "host.html",
-    package = "shinymcp",
-    mustWork = TRUE
-  )
-  template <- paste(readLines(template_path, warn = FALSE), collapse = "\n")
-  host_js <- paste(
-    readLines(system_file("js", "shinymcp-host.js"), warn = FALSE),
-    collapse = "\n"
-  )
-
-  rendered <- gsub(
-    "{{APP_NAME}}",
-    htmltools::htmlEscape(app_name),
-    template,
-    fixed = TRUE
-  )
-  gsub("{{HOST_JS}}", host_js, rendered, fixed = TRUE)
-}
-
-
-#' Route an HTTP request to the right handler
-#'
-#' @param req A Rook request object.
-#' @param app The McpApp.
-#' @param host_html Pre-rendered host page HTML.
-#' @param app_html Pre-rendered app HTML.
-#' @return A Rook response list.
-#' @noRd
-preview_route <- function(req, app, host_html, app_html) {
-  path <- req$PATH_INFO
-
-  if (path == "/" || path == "") {
-    return(list(
-      status = 200L,
-      headers = list(`Content-Type` = "text/html; charset=utf-8"),
-      body = host_html
-    ))
-  }
-
-  if (path == "/app.html") {
-    return(list(
-      status = 200L,
-      headers = list(`Content-Type` = "text/html; charset=utf-8"),
-      body = app_html
-    ))
-  }
-
-  if (path == "/tool" && identical(req$REQUEST_METHOD, "POST")) {
-    return(preview_handle_tool(req, app))
-  }
-
-  if (path == "/resource" && identical(req$REQUEST_METHOD, "POST")) {
-    return(preview_handle_resource(req, app, app_html))
-  }
-
-  list(
-    status = 404L,
-    headers = list(`Content-Type` = "text/plain"),
-    body = "Not found"
-  )
-}
-
-
-#' Handle a tool call from the preview host page
-#'
-#' @param req A Rook request object (POST to /tool).
-#' @param app The McpApp.
-#' @return A Rook response with JSON body.
-#' @noRd
-preview_handle_tool <- function(req, app) {
-  body <- rawToChar(req$rook.input$read())
-  params <- from_json(body)
-
-  tool_name <- params$name
-  arguments <- params$arguments %||% list()
-
-  result <- tryCatch(
-    {
-      raw_result <- app$call_tool(tool_name, arguments)
-      format_tool_result(raw_result)
-    },
-    error = function(e) {
-      list(
-        content = list(list(type = "text", text = paste("Error:", e$message))),
-        isError = TRUE
-      )
-    }
-  )
-
-  list(
-    status = 200L,
-    headers = list(`Content-Type` = "application/json"),
-    body = to_json(result)
-  )
-}
-
-
-#' Handle a resources/read from the preview host page
-#'
-#' @param req A Rook request object (POST to /resource).
-#' @param app The McpApp.
-#' @param app_html Pre-rendered app HTML for the app's own ui:// resource.
-#' @return A Rook response with a JSON `contents` payload, or an `error`.
-#' @noRd
-preview_handle_resource <- function(req, app, app_html) {
-  body <- rawToChar(req$rook.input$read())
-  params <- tryCatch(from_json(body), error = function(e) NULL)
-  uri <- params$uri
-
-  if (is.null(uri)) {
-    return(list(
-      status = 400L,
-      headers = list(`Content-Type` = "application/json"),
-      body = to_json(list(error = "Missing required parameter: uri"))
-    ))
-  }
-
-  result <- tryCatch(
-    {
-      if (identical(uri, app$resource_uri())) {
-        list(
-          contents = list(compact_list(list(
-            uri = uri,
-            mimeType = SHINYMCP_UI_MIME_TYPE,
-            text = app_html,
-            `_meta` = app$resource_meta()
-          )))
-        )
-      } else {
-        list(contents = list(app$read_extra_resource(uri)))
-      }
-    },
-    error = function(e) {
-      list(error = conditionMessage(e))
-    }
-  )
-
-  status <- if (is.null(result$error)) 200L else 404L
-  list(
-    status = status,
-    headers = list(`Content-Type` = "application/json"),
-    body = to_json(result)
+  shinymcp_abort(
+    c(
+      "Couldn't start a local server.",
+      "x" = "{conditionMessage(last_error %||% simpleError('no free port'))}"
+    )
   )
 }
