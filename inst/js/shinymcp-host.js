@@ -895,11 +895,17 @@
   };
 
   // ---------------------------------------------------------------------------
-  // Shiny: hosts whose MCP server is an R process behind the Shiny session
+  // Shiny: hosts whose MCP connection is in R, behind the Shiny session
   // ---------------------------------------------------------------------------
+  //
+  // Each card or pane carries a descriptor (instance, source, tool,
+  // arguments, and the result when there is one), not the page. The host
+  // sends it to R to attach; R answers with the page and what to send it.
+  // A card restored with a saved conversation attaches the same way. The
+  // page's requests go to R, which passes them to the app's server.
 
   var EVENT_INPUT = "shinymcp_host_event";
-  var hosts = {}; // instance id -> {host, container}
+  var hosts = {}; // instance id -> {host, container, queued}
   var waiting = {}; // request key -> {resolve, reject}
   var requestSeq = 0;
   var DETACH_GRACE_MS = 1000;
@@ -908,24 +914,44 @@
     return !!(window.Shiny && typeof window.Shiny.setInputValue === "function");
   }
 
+  // R answers only once the session has started: shiny.js sets
+  // shinyapp.config when the server's first message arrives.
+  function sessionReady() {
+    return hasShiny() && !!(window.Shiny.shinyapp && window.Shiny.shinyapp.config);
+  }
+
   function shinyEvent(event) {
     if (!hasShiny()) return false;
     window.Shiny.setInputValue(EVENT_INPUT, event, { priority: "event" });
     return true;
   }
 
+  // Send an event that R answers, and wait for the answer.
+  function ask(instanceId, event) {
+    return new Promise(function (resolve, reject) {
+      var requestId = "r" + ++requestSeq;
+      var key = instanceId + "|" + requestId;
+      waiting[key] = { resolve: resolve, reject: reject };
+      event.instanceId = instanceId;
+      event.requestId = requestId;
+      if (!shinyEvent(event)) {
+        delete waiting[key];
+        reject(new Error("The Shiny session isn't connected."));
+      }
+    });
+  }
+
+  function answer(msg, value) {
+    var key = msg.instanceId + "|" + msg.requestId;
+    var entry = waiting[key];
+    if (!entry) return;
+    delete waiting[key];
+    entry.resolve(value);
+  }
+
   function shinySend(instanceId) {
     return function (message) {
-      return new Promise(function (resolve, reject) {
-        var requestId = "r" + ++requestSeq;
-        var key = instanceId + "|" + requestId;
-        waiting[key] = { resolve: resolve, reject: reject };
-        var sent = shinyEvent({ instanceId: instanceId, requestId: requestId, type: "request", message: message });
-        if (!sent) {
-          delete waiting[key];
-          reject(new Error("The Shiny session isn't connected."));
-        }
-      });
+      return ask(instanceId, { type: "request", message: message });
     };
   }
 
@@ -948,60 +974,91 @@
     else el.setAttribute("hidden", "");
   }
 
+  function showFallback(container) {
+    var el = container.querySelector("[data-shinymcp-host-fallback]");
+    if (el) el.removeAttribute("hidden");
+    var frame = container.querySelector("iframe[data-shinymcp-host-frame]");
+    if (frame) frame.setAttribute("hidden", "");
+  }
+
+  function setBusy(container, busy) {
+    var busyEl = container.querySelector("[data-shinymcp-host-busy]");
+    if (busyEl) busyEl.hidden = !busy;
+    if (busy) container.setAttribute("data-shinymcp-busy", "");
+    else container.removeAttribute("data-shinymcp-busy");
+  }
+
   function startShinyHost(container, config) {
-    if (!config || !config.instanceId || typeof config.html !== "string") return;
-    var existing = hosts[config.instanceId];
+    if (!config || !config.instanceId) return;
+    var instanceId = config.instanceId;
+    var existing = hosts[instanceId];
     if (existing) {
       if (existing.container === container) return;
       // The same app re-rendered in a new place: replace the old view.
-      existing.host.dispose();
+      if (existing.host) existing.host.dispose();
     }
-    var iframe = container.querySelector("iframe[data-shinymcp-host-frame]");
-    var instanceId = config.instanceId;
-    var send = shinySend(instanceId);
-    var appTools = Array.isArray(config.appTools) ? config.appTools : null;
-
-    var toolResult = null;
-    if (config.initialResult) {
-      toolResult = config.initialResult;
-    } else if (config.entryTool) {
-      toolResult = function () {
-        return send({
-          jsonrpc: "2.0",
-          id: "host-open",
-          method: "tools/call",
-          params: { name: config.entryTool, arguments: config.initialArguments || {} }
-        }).then(function (response) {
-          if (response && response.error) throw new Error(response.error.message);
-          return response ? response.result : null;
-        });
-      };
-    }
+    var entry = { host: null, container: container, config: config, queued: [], detachedAt: null };
+    hosts[instanceId] = entry;
+    container.setAttribute("data-shinymcp-started", "");
 
     var titleEl = container.querySelector(".shinymcp-host-title");
     if (titleEl && !titleEl.textContent && config.title) titleEl.textContent = config.title;
-    var busyEl = container.querySelector("[data-shinymcp-host-busy]");
     var runButton = container.querySelector('[data-shinymcp-action="execute"]');
-    var fullButton = container.querySelector('[data-shinymcp-action="fullscreen"]');
+    if (runButton) runButton.hidden = config.trigger !== "manual";
+    setBusy(container, true);
 
+    ask(instanceId, { type: "attach", descriptor: config }).then(
+      function (reply) {
+        if (hosts[instanceId] !== entry) return;
+        if (!reply || !reply.ok) {
+          setBusy(container, false);
+          setHostError(container, (reply && reply.error) || "This app couldn't be shown.");
+          showFallback(container);
+          return;
+        }
+        createShinyHost(entry, instanceId, reply);
+      },
+      function (err) {
+        if (hosts[instanceId] !== entry) return;
+        setBusy(container, false);
+        setHostError(container, errorMessage(err));
+        showFallback(container);
+      }
+    );
+  }
+
+  function createShinyHost(entry, instanceId, reply) {
+    var container = entry.container;
+    var config = entry.config;
+    var page = reply.page || {};
+    var iframe = container.querySelector("iframe[data-shinymcp-host-frame]");
+    var appTools = Array.isArray(reply.appTools) ? reply.appTools : [];
+    var fullButton = container.querySelector('[data-shinymcp-action="fullscreen"]');
+    var runButton = container.querySelector('[data-shinymcp-action="execute"]');
+    var titleEl = container.querySelector(".shinymcp-host-title");
+    if (reply.title) {
+      if (titleEl) titleEl.textContent = reply.title;
+      if (iframe) iframe.setAttribute("title", reply.title);
+    }
+    if (page.prefersBorder === false) container.setAttribute("data-shinymcp-border", "false");
+
+    var hasResult = reply.toolResult !== undefined && reply.toolResult !== null;
     var host = create({
       container: container,
       iframe: iframe,
-      html: config.html,
-      csp: config.csp,
-      permissions: config.permissions,
+      html: page.html,
+      csp: page.csp,
+      permissions: page.permissions,
       height: config.height || "auto",
-      title: config.title,
-      tool: config.tool,
-      toolInput: config.entryTool || config.initialResult ? config.initialArguments || {} : undefined,
-      toolResult: toolResult,
+      title: reply.title || config.title,
+      tool: reply.tool,
+      toolInput: reply.toolInput || {},
+      toolResult: hasResult ? reply.toolResult : undefined,
       hostInfo: { name: "shinymcp-shiny", version: config.version || "0" },
-      send: send,
-      canCallTool: appTools
-        ? function (name) {
-            return appTools.indexOf(name) >= 0;
-          }
-        : null,
+      send: shinySend(instanceId),
+      canCallTool: function (name) {
+        return appTools.indexOf(name) >= 0;
+      },
       onEvent: function (type, detail) {
         switch (type) {
           case "model-context":
@@ -1010,10 +1067,11 @@
           case "message":
             shinyEvent({ instanceId: instanceId, type: "notification", method: "ui/message", params: detail });
             break;
+          case "size":
+            shinyEvent({ instanceId: instanceId, type: "notification", method: "ui/notifications/size-changed", params: detail });
+            break;
           case "busy":
-            if (busyEl) busyEl.hidden = !detail;
-            if (detail) container.setAttribute("data-shinymcp-busy", "");
-            else container.removeAttribute("data-shinymcp-busy");
+            setBusy(container, detail);
             break;
           case "error":
             setHostError(container, detail.message);
@@ -1033,9 +1091,11 @@
         }
       }
     });
+    entry.host = host;
+    setBusy(container, !hasResult && !reply.cancelled);
+    if (reply.cancelled) host.toolCancelled(reply.cancelled);
 
     if (runButton) {
-      runButton.hidden = config.trigger !== "manual";
       runButton.onclick = function () {
         host.execute();
       };
@@ -1045,15 +1105,45 @@
         host.toggleFullscreen();
       };
     }
-    hosts[instanceId] = { host: host, container: container, detachedAt: null };
-    container.setAttribute("data-shinymcp-started", "");
+    var queued = entry.queued;
+    entry.queued = [];
+    each(queued, function (msg) {
+      runCommand(entry, msg);
+    });
+  }
+
+  function runCommand(entry, msg) {
+    var host = entry.host;
+    if (!host) {
+      entry.queued.push(msg);
+      return;
+    }
+    switch (msg.command) {
+      case "tool-result":
+        setBusy(entry.container, false);
+        host.toolResult(msg.result);
+        break;
+      case "tool-cancelled":
+        setBusy(entry.container, false);
+        host.toolCancelled(msg.reason);
+        setHostError(entry.container, msg.reason);
+        break;
+      case "execute":
+        host.execute(msg.inputs || null);
+        break;
+      case "reset":
+        host.reset();
+        break;
+      default:
+        break;
+    }
   }
 
   function stopShinyHost(instanceId, tellServer) {
     var entry = hosts[instanceId];
     if (!entry) return;
     delete hosts[instanceId];
-    entry.host.dispose();
+    if (entry.host) entry.host.dispose();
     if (tellServer) shinyEvent({ instanceId: instanceId, type: "dispose" });
     each(keys(waiting), function (key) {
       if (key.indexOf(instanceId + "|") === 0) {
@@ -1061,6 +1151,24 @@
         delete waiting[key];
       }
     });
+  }
+
+  // Load the app again, from a new attach: after the pane's tool is called
+  // with other arguments.
+  function reopenShinyHost(instanceId) {
+    var entry = hosts[instanceId];
+    if (!entry) return;
+    var container = entry.container;
+    var config = entry.config;
+    var done = function () {
+      if (hosts[instanceId] !== entry) return;
+      delete hosts[instanceId];
+      container.removeAttribute("data-shinymcp-started");
+      setHostError(container, "");
+      startShinyHost(container, config);
+    };
+    if (entry.host) entry.host.teardown("The app is opening again.").then(done, done);
+    else done();
   }
 
   function scan(root) {
@@ -1094,14 +1202,16 @@
   }
 
   function startObserving() {
-    scan(document);
+    if (sessionReady()) scan(document);
     if (typeof MutationObserver === "undefined") return;
     new MutationObserver(function (mutations) {
       var removed = false;
       each(mutations, function (m) {
-        each(m.addedNodes, function (node) {
-          if (node.nodeType === 1) scan(node);
-        });
+        if (sessionReady()) {
+          each(m.addedNodes, function (node) {
+            if (node.nodeType === 1) scan(node);
+          });
+        }
         if (m.removedNodes && m.removedNodes.length) removed = true;
       });
       if (removed) prune();
@@ -1128,31 +1238,32 @@
       startShinyHost(container, msg.config || {});
     });
 
+    window.Shiny.addCustomMessageHandler("shinymcp-host-attached", function (msg) {
+      answer(msg, msg);
+    });
+
     window.Shiny.addCustomMessageHandler("shinymcp-host-response", function (msg) {
-      var key = msg.instanceId + "|" + msg.requestId;
-      var entry = waiting[key];
-      if (!entry) return;
-      delete waiting[key];
-      entry.resolve(msg.response || {});
+      answer(msg, msg.response || {});
     });
 
     window.Shiny.addCustomMessageHandler("shinymcp-host-command", function (msg) {
       var entry = hosts[msg.instanceId];
       if (!entry) return;
       switch (msg.command) {
-        case "execute":
-          entry.host.execute(msg.arguments || null);
-          break;
-        case "reset":
-          entry.host.reset();
-          break;
         case "dispose":
+          if (!entry.host) {
+            stopShinyHost(msg.instanceId, false);
+            break;
+          }
           entry.host.teardown().then(function () {
             stopShinyHost(msg.instanceId, false);
           });
           break;
-        default:
+        case "reopen":
+          reopenShinyHost(msg.instanceId);
           break;
+        default:
+          runCommand(entry, msg);
       }
     });
 
@@ -1168,9 +1279,15 @@
     return true;
   }
 
+  // Cards and panes attach once the session has started: R answers them.
   function boot() {
-    if (!registerShinyHandlers() && window.jQuery) {
-      window.jQuery(document).one("shiny:connected", registerShinyHandlers);
+    registerShinyHandlers();
+    if (window.jQuery) {
+      window.jQuery(document).on("shiny:connected", registerShinyHandlers);
+      window.jQuery(document).on("shiny:sessioninitialized", function () {
+        registerShinyHandlers();
+        scan(document);
+      });
     }
     startObserving();
   }

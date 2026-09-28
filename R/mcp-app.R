@@ -289,44 +289,18 @@ McpApp <- R6::R6Class(
     #' @param name Tool name.
     #' @param arguments Named list of arguments.
     #' @param context Request context. `caller = "app"` marks calls from the
-    #'   app's own UI, which get no image blocks for the model.
-    run_tool = function(name, arguments = list(), context = list()) {
-      tool <- private$find_tool(name)
-      context <- utils::modifyList(
-        list(caller = "model", transport = "in-process"),
-        context %||% list()
-      )
-      if (!private$.images) {
-        context$images <- FALSE
-      }
-      # Results never carry a library the page was built with.
-      context$skip_deps <- union(
-        as.character(unlist(context$skip_deps)),
-        private$page_dep_names()
-      )
-      raw <- tryCatch(
-        with_request_context(
-          context,
-          tool$handler(arguments %||% list(), context)
-        ),
-        error = function(e) e
-      )
-      if (inherits(raw, "error")) {
-        return(tool_error_result(raw))
-      }
-      if (inherits(raw, "shinymcp_wire_result")) {
-        return(unclass(raw))
-      }
-      tryCatch(
-        build_tool_result(
-          raw,
-          images = private$.images && !identical(context$caller, "app"),
-          skip_deps = context$skip_deps %||% character(),
-          view = list(tool = name),
-          output_types = private$ui_outputs()
-        ),
-        error = tool_error_result
-      )
+    #'   app's own UI, and `images = FALSE` asks for a result without image
+    #'   blocks for the model.
+    #' @param raw If `TRUE`, return a list with the `result` and the `raw`
+    #'   value the tool function returned (`NULL` if it failed).
+    run_tool = function(
+      name,
+      arguments = list(),
+      context = list(),
+      raw = FALSE
+    ) {
+      result <- private$run_tool_parts(name, arguments, context)
+      if (raw) result else result$result
     },
 
     #' @description Does the app have a tool with this name?
@@ -404,6 +378,50 @@ McpApp <- R6::R6Class(
   ),
 
   private = list(
+    # Run a tool: its MCP result, and the R value its function returned.
+    run_tool_parts = function(name, arguments, context) {
+      tool <- private$find_tool(name)
+      context <- utils::modifyList(
+        list(caller = "model", transport = "in-process"),
+        context %||% list()
+      )
+      images <- private$.images &&
+        !isFALSE(context$images) &&
+        !identical(context$caller, "app")
+      if (!images) {
+        context$images <- FALSE
+      }
+      # Results never carry a library the page was built with.
+      context$skip_deps <- union(
+        as.character(unlist(context$skip_deps)),
+        private$page_dep_names()
+      )
+      raw <- tryCatch(
+        with_request_context(
+          context,
+          tool$handler(arguments %||% list(), context)
+        ),
+        error = function(e) e
+      )
+      if (inherits(raw, "error")) {
+        return(list(result = tool_error_result(raw), raw = NULL))
+      }
+      if (inherits(raw, "shinymcp_wire_result")) {
+        return(list(result = unclass(raw), raw = raw))
+      }
+      result <- tryCatch(
+        build_tool_result(
+          raw,
+          images = images,
+          skip_deps = context$skip_deps %||% character(),
+          view = list(tool = name),
+          output_types = private$ui_outputs()
+        ),
+        error = tool_error_result
+      )
+      list(result = result, raw = raw)
+    },
+
     .ui = NULL,
     .tools = list(),
     .csp = NULL,

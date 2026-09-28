@@ -4,13 +4,13 @@
 \alias{mcp_host_ui}
 \alias{mcp_host_server}
 \alias{mcp_embed}
-\title{Host shell for an MCP App in a Shiny app}
+\title{Host an MCP App in a Shiny app}
 \usage{
 mcp_host_ui(id, height = "auto")
 
 mcp_host_server(
   id,
-  app,
+  source,
   tool = NULL,
   arguments = NULL,
   trigger = NULL,
@@ -19,7 +19,7 @@ mcp_host_server(
 )
 
 mcp_embed(
-  app,
+  source,
   id = NULL,
   tool = NULL,
   arguments = NULL,
@@ -33,16 +33,17 @@ mcp_embed(
 
 \item{height}{\code{"auto"} to follow the app's size, or a CSS height.}
 
-\item{app}{An \link{McpApp}, or anything \code{\link[=as_mcp_app]{as_mcp_app()}} accepts.}
+\item{source}{Where the app comes from: an \link{McpApp} (or a list of
+them), or an \link{McpClient} from \code{\link[=mcp_client]{mcp_client()}}.}
 
-\item{tool}{The tool to call when the app opens. Defaults to the app's
-first tool the model can call.}
+\item{tool}{The tool that opens the app. Defaults to the first tool the
+model may call that shows an app.}
 
 \item{arguments}{Named list of arguments for that call.}
 
-\item{trigger, debounce_ms}{Override the app's own \code{trigger} and
-\code{debounce_ms}. \code{trigger = "manual"} shows a Run button and calls tools
-only when it's pressed or when \code{execute()} is called.}
+\item{trigger, debounce_ms}{For apps made with shinymcp in this process:
+override the app's own \code{trigger} and \code{debounce_ms}. \code{trigger = "manual"} shows a Run button and calls tools only when it's pressed or
+when \code{execute()} is called.}
 }
 \value{
 \code{mcp_host_ui()} and \code{mcp_embed()} return UI. \code{mcp_host_server()}
@@ -54,22 +55,30 @@ model.
 \code{arguments}, and \code{result} (the MCP result).
 \item \code{last_result()}: the MCP result of the latest tool call.
 \item \code{messages()}: messages the app asked to post to the chat.
-\item \code{execute(arguments = NULL)}: call the app's tools now, optionally
-with new input values.
+\item \code{open(arguments = NULL, tool = NULL)}: open the app again, calling
+the tool with new arguments.
+\item \code{execute(inputs = NULL)}: for apps made with shinymcp, call the
+app's tools now, optionally setting inputs first.
 \item \code{dispose()}: shut the app down.
 }
 }
 \description{
-\code{mcp_host_ui()} and \code{mcp_host_server()} show an \link{McpApp} inside a Shiny
-app as a chat client would: the app runs in a sandboxed iframe
-and its tool calls are answered in R. Use it to review an app, to build a
-dashboard around one, or to react in Shiny to what the user does in it.
+\code{mcp_host_ui()} and \code{mcp_host_server()} show an MCP App in a pane of a
+Shiny app, as a chat client would: the app's page runs in a sandboxed
+frame, and its tool calls go through R to the app's server. Use it to
+reuse an app built for chat clients as part of a dashboard, to react in
+Shiny to what someone does in it, or to see what an app tells the model
+before you give it to one.
 
-\code{mcp_embed()} does both halves at once for UI created on the server, such
-as inside \code{\link[shiny:renderUI]{shiny::renderUI()}}.
+The app can come from anywhere: an \link{McpApp} in the same R process, or
+any MCP server through \code{\link[=mcp_client]{mcp_client()}}, including Shiny apps served with
+Shiny's own MCP support.
 
-When the app opens, the host calls its first tool (or \code{tool}) with
-\code{arguments}, as if the model had, and passes the result to the app.
+\code{mcp_embed()} does both halves at once, for UI created on the server,
+such as inside \code{\link[shiny:renderUI]{shiny::renderUI()}}.
+
+When the pane opens, R calls the app's tool with \code{arguments}, as a model
+would, and passes the result to the app.
 }
 \examples{
 \dontrun{
@@ -80,10 +89,18 @@ server <- function(input, output, session) {
   observe(print(host$model_context()))
 }
 shinyApp(ui, server)
+
+# An app on a remote server
+server <- function(input, output, session) {
+  sales <- mcp_client("https://connect.example.com/sales/mcp")
+  mcp_host_server("explorer", sales, arguments = list(region = "West"))
+}
 }
 }
 \seealso{
 Other hosting:
-\code{\link[=as_shinychat_tool]{as_shinychat_tool()}}
+\code{\link[=as_shinychat_tool]{as_shinychat_tool()}},
+\code{\link[=mcp_chat_host]{mcp_chat_host()}},
+\code{\link[=mcp_client]{mcp_client()}}
 }
 \concept{hosting}

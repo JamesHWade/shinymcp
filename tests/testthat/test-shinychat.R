@@ -235,9 +235,9 @@ test_that("chat cards open on the same result the app would render", {
     name = "drawing"
   )
 
-  card <- as_shinychat_tool(app)()
+  card <- helper_value(as_shinychat_tool(app)())
   config <- helper_markup_config(as.character(card@extra$display$html))
-  view <- config$initialResult[["_meta"]][["shinymcp/view"]]
+  view <- config$result[["_meta"]][["shinymcp/view"]]
   expect_equal(view$outputs$chart$kind, "image")
   expect_equal(view$tool, "draw")
 })
@@ -271,9 +271,12 @@ test_that("inside a Shiny session the card shows the live app", {
   session <- shiny::MockShinySession$new()
   local_mocked_bindings(active_shiny_session = function() session)
 
-  result <- as_shinychat_tool(card_app(), tool = "greet", title = "Card")(
+  # In a session the tool doesn't block: it returns a promise.
+  pending <- as_shinychat_tool(card_app(), tool = "greet", title = "Card")(
     name = "Ada"
   )
+  expect_true(promises::is.promising(pending))
+  result <- helper_value(pending)
   display <- result@extra$display
   html <- as.character(display$html)
   config <- helper_markup_config(html)
@@ -286,15 +289,95 @@ test_that("inside a Shiny session the card shows the live app", {
   expect_false(grepl("shinymcp-host-toolbar", html, fixed = TRUE))
   expect_length(instances, 1)
   expect_equal(config$instanceId, instances)
-  expect_equal(config$entryTool, "greet")
-  expect_equal(config$initialArguments, list(name = "Ada"))
+  expect_equal(config$source, "greeting-card")
+  expect_equal(config$tool, "greet")
+  expect_equal(config$arguments, list(name = "Ada"))
   # The card opens on the result the model got, without calling the tool
-  # again.
-  expect_equal(
-    config$initialResult$structuredContent,
-    list(message = "Hello Ada")
-  )
+  # again, and carries no page: it reads the page when it attaches.
+  expect_equal(config$result$structuredContent, list(message = "Hello Ada"))
+  expect_null(config$html)
   expect_equal(result@value, list(message = "Hello Ada"))
+  state <- session$userData$.shinymcp_hosts$instances[[instances]]
+  expect_equal(state$kind, "card")
+  # Its text is there for where the app can't be shown.
+  expect_match(html, "data-shinymcp-host-fallback", fixed = TRUE)
+})
+
+test_that("a tool that fails gives the model an error", {
+  skip_if_not_installed("ellmer")
+  app <- mcp_app(
+    htmltools::div(),
+    tools = list(list(name = "boom", fun = function() stop("kaboom"))),
+    name = "broken"
+  )
+  result <- as_shinychat_tool(app)()
+
+  expect_s3_class(result, "ellmer::ContentToolResult")
+  expect_equal(result@error, "Error: kaboom")
+})
+
+test_that("tools that show no app return their result without a card", {
+  skip_if_not_installed("ellmer")
+  source <- new_host_source("fake", "plain", "Plain")
+  source$tools <- function(refresh = FALSE) {
+    list(list(
+      name = "add",
+      description = "Add.",
+      inputSchema = list(
+        type = "object",
+        properties = list(a = list(type = "number"), b = list(type = "number"))
+      )
+    ))
+  }
+  source$call <- function(name, arguments = NULL, context = list()) {
+    list(
+      result = list(
+        content = list(list(type = "text", text = "3")),
+        structuredContent = list(sum = arguments$a + arguments$b)
+      ),
+      raw = NULL
+    )
+  }
+
+  result <- as_shinychat_tool(source)(a = 1, b = 2)
+  expect_equal(result@value, list(sum = 3))
+  expect_null(result@extra$display)
+})
+
+# ---- Remote servers ----
+
+test_that("a remote server's tools become cards", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  fx <- serving_client(
+    McpServer$new(serving_app(name = "fx")),
+    name = "remote-fx"
+  )
+
+  wrapped <- as_shinychat_tool(fx$client)
+  # The tool only the page may call isn't offered to the model.
+  expect_equal(names(wrapped), c("echo", "boom"))
+  expect_equal(names(formals(wrapped$echo)), "x")
+
+  outside <- wrapped$echo(x = "hi")
+  expect_equal(outside@value, list(out = "hi"))
+  expect_equal(outside@extra$display$text, "out: hi")
+
+  session <- shiny::MockShinySession$new()
+  local_mocked_bindings(active_shiny_session = function() session)
+  card <- helper_value(wrapped$echo(x = "live"))
+  config <- helper_markup_config(as.character(card@extra$display$html))
+  expect_equal(config$source, "remote-fx")
+  expect_equal(config$tool, "echo")
+  expect_equal(config$result$structuredContent, list(out = "live"))
+  registry <- session$userData$.shinymcp_hosts
+  expect_true(inherits(
+    registry$sources[["remote-fx"]],
+    "shinymcp_host_source_remote"
+  ))
+
+  failed <- helper_value(wrapped$boom())
+  expect_match(failed@error, "kaboom")
 })
 
 # ---- mcp_content_result() ----
@@ -361,10 +444,14 @@ test_that("mcp_content_result() in a Shiny session embeds the app", {
   )
   config <- helper_markup_config(as.character(result@extra$display$html))
 
-  expect_equal(config$entryTool, "greet")
-  expect_equal(config$initialArguments, list(name = "Ada"))
-  # No result yet: the page calls the tool when it opens.
-  expect_null(config$initialResult)
+  expect_equal(config$tool, "greet")
+  expect_equal(config$arguments, list(name = "Ada"))
+  # No result yet: R calls the tool, and the card gets the result when it
+  # attaches.
+  expect_null(config$result)
+  helper_drain()
+  state <- session$userData$.shinymcp_hosts$instances[[config$instanceId]]
+  expect_equal(state$result$structuredContent, list(message = "Hello Ada"))
 })
 
 test_that("cards render in shinychat", {
@@ -385,7 +472,9 @@ test_that("cards render in shinychat", {
   expect_equal(rendered$value_type, "html")
 
   # ellmer attaches the request when the model calls the tool.
-  tool_result <- as_shinychat_tool(card_app(), tool = "greet")(name = "Ada")
+  tool_result <- helper_value(
+    as_shinychat_tool(card_app(), tool = "greet")(name = "Ada")
+  )
   tool_result@request <- ellmer::ContentToolRequest(
     id = "call-1",
     name = "greet",

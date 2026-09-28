@@ -273,7 +273,7 @@ returned it. Useful in tests.
   Run a tool and return an MCP \code{tools/call} result.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{McpApp$run_tool(name, arguments = list(), context = list())}
+    \preformatted{McpApp$run_tool(name, arguments = list(), context = list(), raw = FALSE)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
@@ -282,7 +282,10 @@ returned it. Useful in tests.
       \item{\code{name}}{Tool name.}
       \item{\code{arguments}}{Named list of arguments.}
       \item{\code{context}}{Request context. \code{caller = "app"} marks calls from the
-app's own UI, which get no image blocks for the model.}
+app's own UI, and \code{images = FALSE} asks for a result without image
+blocks for the model.}
+      \item{\code{raw}}{If \code{TRUE}, return a list with the \code{result} and the \code{raw}
+value the tool function returned (\code{NULL} if it failed).}
     }
     \if{html}{\out{</div>}}
   }

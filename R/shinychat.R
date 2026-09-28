@@ -1,28 +1,33 @@
 # shinychat integration: MCP Apps as live tool cards
 
-#' Use an MCP App as a shinychat tool
+#' Use an MCP App's tools in a shinychat conversation
 #'
 #' @description
-#' `as_shinychat_tool()` turns an app's tools into [ellmer::tool()] objects
-#' for a chat built with shinychat. When the model calls one, the tool runs
-#' and shinychat shows the app, live, in the tool's card. The model gets the
-#' tool's structured result (or the text, if there is none); the person
-#' gets the app.
+#' `as_shinychat_tool()` turns the tools of an app, or of a remote MCP
+#' server, into [ellmer::tool()] objects for a chat built with shinychat.
+#' When the model calls one that shows an app, shinychat shows the app,
+#' live, in the tool's card. The model gets the tool's structured result
+#' (or the text, if there is none); the person gets the app.
 #'
-#' `mcp_content_result()` builds the same kind of card by hand, for a
-#' result you append to the chat yourself.
+#' [mcp_chat_host()] does this for you and also passes what the person does
+#' in the cards on to the model. Use `as_shinychat_tool()` on its own for
+#' cards without that.
 #'
-#' @param app An [McpApp], or anything [as_mcp_app()] accepts.
-#' @param tool Names of the app's tools to wrap. Defaults to every tool the
-#'   model may call.
+#' `mcp_content_result()` builds a card by hand, for a result you append to
+#' the chat yourself.
+#'
+#' @param source Where the tools come from: an [McpApp] (or a list of
+#'   them), or an [McpClient] from [mcp_client()].
+#' @param tool Names of the tools to wrap. Defaults to every tool the model
+#'   may call.
 #' @param value_fn Optional function computing the value returned to the
-#'   model. It can take any of `raw_result` (what the tool function
-#'   returned), `result` (the MCP result), and `arguments`.
+#'   model. It can take any of `result` (the MCP result), `arguments`, and,
+#'   for apps in this process, `raw_result` (what the tool function
+#'   returned).
 #' @param summary Optional text shown in the card when it can't show the
 #'   app, or a function taking the same arguments as `value_fn`.
 #' @param title,icon Card title and icon (a string or tag, or a function
-#'   taking the same arguments as `value_fn`). Default to the tool's title
-#'   annotation.
+#'   taking the same arguments as `value_fn`). Default to the tool's title.
 #' @param open Whether the card starts expanded.
 #' @param show_request Whether the card shows the call's arguments.
 #' @param full_screen Whether the card offers a full-screen view.
@@ -36,7 +41,7 @@
 #' chat$register_tool(as_shinychat_tool(app, title = "Penguins"))
 #' }
 as_shinychat_tool <- function(
-  app,
+  source,
   tool = NULL,
   value_fn = NULL,
   summary = NULL,
@@ -48,52 +53,74 @@ as_shinychat_tool <- function(
 ) {
   rlang::check_installed(
     "ellmer",
-    reason = "to wrap MCP Apps as shinychat tools."
+    reason = "to use MCP Apps in a shinychat conversation."
   )
-  app <- as_mcp_app(app)
-  tools <- app$tools("model")
-  if (!is.null(tool)) {
-    unknown <- setdiff(tool, names(tools))
-    if (length(unknown)) {
-      shinymcp_abort(
-        "App {.val {app$name}} has no tool the model can call named {.val {unknown}}.",
-        class = "shinymcp_error_validation"
-      )
-    }
-    tools <- tools[tool]
-  }
-  if (length(tools) == 0) {
-    shinymcp_abort("App {.val {app$name}} has no tools for the model to call.")
-  }
-
-  wrapped <- lapply(tools, function(t) {
-    wrapper <- shinychat_tool_function(
-      app = app,
-      tool = t,
+  source <- as_host_source(source)
+  tools <- shinychat_tools(
+    source,
+    tool = tool,
+    session = NULL,
+    card = list(
       value_fn = value_fn,
       summary = summary,
-      title = title %||% t$title,
+      title = title,
       icon = icon,
       open = open,
       show_request = show_request,
       full_screen = full_screen
     )
+  )
+  if (length(tools) == 1) tools[[1]] else tools
+}
+
+#' ellmer tools for a source's tools the model may call
+#'
+#' @param session The Shiny session cards are shown in, or `NULL` for the
+#'   one active when the tool is called.
+#' @noRd
+shinychat_tools <- function(
+  source,
+  tool = NULL,
+  session = NULL,
+  card = list()
+) {
+  definitions <- Filter(
+    function(t) tool_wire_visible_to(t, "model"),
+    source$tools()
+  )
+  names(definitions) <- vapply(definitions, function(t) t$name, character(1))
+  if (!is.null(tool)) {
+    unknown <- setdiff(tool, names(definitions))
+    if (length(unknown)) {
+      shinymcp_abort(
+        "{.val {source$key}} has no tool the model can call named {.val {unknown}}.",
+        class = "shinymcp_error_validation"
+      )
+    }
+    definitions <- definitions[tool]
+  }
+  if (length(definitions) == 0) {
+    shinymcp_abort(
+      "{.val {source$key}} has no tools for the model to call.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  lapply(definitions, function(definition) {
     ellmer::tool(
-      wrapper,
-      name = t$name,
-      description = t$description,
-      arguments = schema_to_ellmer_types(t$input_schema),
-      annotations = shinychat_annotations(t, title)
+      shinychat_tool_function(source, definition, session, card),
+      name = definition$name,
+      description = definition$description %||% definition$title %||% "",
+      arguments = schema_to_ellmer_types(definition$inputSchema %||% list()),
+      annotations = shinychat_annotations(definition, card$title)
     )
   })
-  if (length(wrapped) == 1) wrapped[[1]] else wrapped
 }
 
 #' @noRd
-shinychat_annotations <- function(tool, title) {
-  ann <- tool$annotations %||% list()
+shinychat_annotations <- function(definition, title = NULL) {
+  ann <- definition$annotations %||% list()
   args <- compact_list(list(
-    title = if (is.character(title)) title else tool$title,
+    title = if (is.character(title)) title else definition$title %||% ann$title,
     read_only_hint = ann$readOnlyHint,
     destructive_hint = ann$destructiveHint,
     idempotent_hint = ann$idempotentHint,
@@ -104,18 +131,8 @@ shinychat_annotations <- function(tool, title) {
 
 #' Build the function behind a shinychat tool
 #' @noRd
-shinychat_tool_function <- function(
-  app,
-  tool,
-  value_fn,
-  summary,
-  title,
-  icon,
-  open,
-  show_request,
-  full_screen
-) {
-  arg_names <- tool_argument_names(tool)
+shinychat_tool_function <- function(source, definition, session, card) {
+  arg_names <- names(definition$inputSchema$properties %||% list())
   fun <- function() {
     env <- environment()
     arguments <- list()
@@ -127,96 +144,73 @@ shinychat_tool_function <- function(
         }
       }
     }
-    run_shinychat_tool(
-      app = app,
-      tool = tool,
-      arguments = arguments,
-      value_fn = value_fn,
-      summary = summary,
-      title = title,
-      icon = icon,
-      open = open,
-      show_request = show_request,
-      full_screen = full_screen
-    )
+    run_shinychat_tool(source, definition, arguments, session, card)
   }
   formals(fun) <- rlang::rep_named(arg_names, list(rlang::missing_arg()))
   fun
 }
 
+#' Call a tool for the model and make its card
+#'
+#' In a Shiny session the call is asynchronous (the tool returns a promise,
+#' which ellmer waits for); outside one it blocks.
 #' @noRd
-run_shinychat_tool <- function(
-  app,
-  tool,
-  arguments,
-  value_fn,
-  summary,
-  title,
-  icon,
-  open,
-  show_request,
-  full_screen
-) {
-  run <- function() {
-    raw <- app$call_tool(
-      tool$name,
-      arguments,
-      list(caller = "model", transport = "shinychat")
-    )
-    result <- if (inherits(raw, "shinymcp_wire_result")) {
-      unclass(raw)
-    } else {
-      build_tool_result(
-        raw,
-        images = FALSE,
-        view = list(tool = tool$name),
-        output_types = app$output_types()
-      )
-    }
-    context <- list(raw_result = raw, result = result, arguments = arguments)
-    value <- if (is.function(value_fn)) {
-      call_with_supported_args(value_fn, context)
-    } else {
-      default_model_value(result)
-    }
-    card_title <- if (is.function(title)) {
-      call_with_supported_args(title, context)
-    } else {
-      title
-    }
-    card_icon <- if (is.function(icon)) {
-      call_with_supported_args(icon, context)
-    } else {
-      icon
-    }
-    text <- if (is.function(summary)) {
-      call_with_supported_args(summary, context)
-    } else {
-      summary %||% result_text(result)
-    }
-    live_card_result(
-      app = app,
-      value = value,
-      title = card_title,
-      icon = card_icon,
-      open = open,
-      show_request = show_request,
-      full_screen = full_screen,
-      text = text,
-      tool = tool$name,
-      arguments = arguments,
-      result = result
-    )
+run_shinychat_tool <- function(source, definition, arguments, session, card) {
+  session <- session %||% active_shiny_session()
+  context <- list(transport = "shinychat")
+  finish <- function(call) {
+    shinychat_card(source, definition, arguments, call, session, card)
   }
-  # A Shiny app served live runs its own reactive session, which can't
-  # flush while another flush is running; leave the current one first.
-  if (!is.null(app$runtime()) && !is.null(shiny::getDefaultReactiveDomain())) {
-    rlang::check_installed("promises", reason = "to run live apps from a chat.")
-    return(promises::promise(function(resolve, reject) {
-      later::later(function() tryCatch(resolve(run()), error = reject))
-    }))
+  if (is.null(session)) {
+    return(finish(source$call(definition$name, arguments, context)))
   }
-  run()
+  rlang::check_installed(
+    c("promises", "later"),
+    reason = "to call MCP App tools from a Shiny chat."
+  )
+  context <- utils::modifyList(host_call_context(session), context)
+  promises::then(
+    source$call_async(definition$name, arguments, context),
+    finish
+  )
+}
+
+#' The tool result the model gets, with the card shinychat shows
+#' @noRd
+shinychat_card <- function(source, definition, arguments, call, session, card) {
+  result <- call$result
+  context <- list(raw_result = call$raw, result = result, arguments = arguments)
+  if (isTRUE(result$isError)) {
+    text <- result_text(result)
+    return(ellmer::ContentToolResult(
+      error = if (nzchar(text)) text else "The tool failed."
+    ))
+  }
+  value <- if (is.function(card$value_fn)) {
+    call_with_supported_args(card$value_fn, context)
+  } else {
+    default_model_value(result)
+  }
+  if (is.null(tool_resource_uri(definition))) {
+    return(ellmer::ContentToolResult(value = value))
+  }
+  resolve <- function(x) {
+    if (is.function(x)) call_with_supported_args(x, context) else x
+  }
+  live_card_result(
+    source = source,
+    value = value,
+    title = resolve(card$title) %||% definition$title,
+    icon = resolve(card$icon),
+    open = card$open %||% TRUE,
+    show_request = card$show_request %||% FALSE,
+    full_screen = card$full_screen %||% TRUE,
+    text = resolve(card$summary) %||% result_text(result),
+    tool = definition$name,
+    arguments = arguments,
+    result = result,
+    session = session
+  )
 }
 
 #' The value the model sees for a tool result
@@ -260,9 +254,13 @@ call_with_supported_args <- function(fn, args) {
 }
 
 #' A tool result that shows a live app in a shinychat card
+#'
+#' In a Shiny session the card carries a descriptor of the app's instance;
+#' the host script attaches it and loads the page. Outside one, it shows
+#' `text`.
 #' @noRd
 live_card_result <- function(
-  app,
+  source,
   value,
   title = NULL,
   icon = NULL,
@@ -273,7 +271,8 @@ live_card_result <- function(
   tool = NULL,
   arguments = NULL,
   result = NULL,
-  request = NULL
+  request = NULL,
+  session = NULL
 ) {
   rlang::check_installed("ellmer", reason = "for shinychat tool results.")
   display <- compact_list(list(
@@ -283,19 +282,25 @@ live_card_result <- function(
     show_request = show_request,
     full_screen = full_screen
   ))
-  session <- active_shiny_session()
+  session <- session %||% active_shiny_session()
   if (!is.null(session)) {
     registered <- register_shiny_host_instance(
       session = session,
-      app = app,
+      source = source,
       tool = tool,
       arguments = arguments,
-      result = result
+      result = result,
+      kind = "card",
+      title = if (is.character(title)) title
     )
+    if (is.null(result)) {
+      start_host_call(root_shiny_session(session), registered$state)
+    }
     display$html <- mcp_host_markup(
       sanitize_dom_id(registered$state$instance_id),
       config = registered$config,
-      toolbar = FALSE
+      toolbar = FALSE,
+      fallback = if (is_string(text) && nzchar(text)) text
     )
   } else {
     display$text <- text %||% result_text(result)
@@ -309,13 +314,14 @@ live_card_result <- function(
 
 #' @rdname as_shinychat_tool
 #' @param value For `mcp_content_result()`, the value for the model.
-#' @param arguments For `mcp_content_result()`, arguments for the app's
-#'   first tool, called when the card opens.
+#' @param arguments For `mcp_content_result()`, arguments for the tool that
+#'   opens the app, called when the card is shown.
 #' @param text Plain-text fallback shown where the app can't render.
 #' @export
 mcp_content_result <- function(
-  app,
+  source,
   value,
+  tool = NULL,
   arguments = NULL,
   title = NULL,
   icon = NULL,
@@ -324,15 +330,16 @@ mcp_content_result <- function(
   full_screen = TRUE,
   text = NULL
 ) {
-  app <- as_mcp_app(app)
-  tool <- default_entry_tool(app)
+  rlang::check_installed("ellmer", reason = "for shinychat tool results.")
+  source <- as_host_source(source)
+  tool <- tool %||% default_source_tool(source)
   request <- ellmer::ContentToolRequest(
     id = unique_id("call"),
-    name = tool %||% app$name,
+    name = tool %||% source$key,
     arguments = arguments %||% list()
   )
   live_card_result(
-    app = app,
+    source = source,
     value = value,
     title = title,
     icon = icon,

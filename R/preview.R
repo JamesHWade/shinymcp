@@ -109,6 +109,13 @@ preview_app <- function(
   ))
 }
 
+#' The first tool of an app the model may call, or NULL
+#' @noRd
+default_entry_tool <- function(app) {
+  tools <- app$tools("model")
+  if (length(tools)) tools[[1]]$name
+}
+
 #' The preview host page
 #' @noRd
 preview_page <- function(server, entry = NULL, arguments = NULL) {

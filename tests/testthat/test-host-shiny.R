@@ -15,13 +15,26 @@ host_app <- function(...) {
       list(name = "approve", description = "Approve.", fun = function() {
         "approved"
       }),
+      list(name = "peek", description = "For the model.", fun = function() {
+        "peeked"
+      }),
       list(name = "boom", description = "Fails.", fun = function() {
         stop("kaboom")
       })
     ),
     name = "greeter",
-    tool_visibility = list(approve = "app"),
+    tool_visibility = list(approve = "app", peek = "model"),
     ...
+  )
+}
+
+# The attach event the host script sends for a card or pane.
+host_attach_event <- function(descriptor, request_id = "a1") {
+  list(
+    type = "attach",
+    instanceId = descriptor$instanceId,
+    requestId = request_id,
+    descriptor = descriptor
   )
 }
 
@@ -64,9 +77,9 @@ test_that("mcp_host_ui() renders the host shell", {
     '<iframe class="shinymcp-host-frame" data-shinymcp-host-frame="" title="MCP App"></iframe>',
     fixed = TRUE
   )
-  # The server half sends the configuration later.
+  # The server half sends the descriptor later.
   expect_null(helper_markup_config(html))
-  expect_false(grepl("data-shinymcp-border", html, fixed = TRUE))
+  expect_false(grepl("data-shinymcp-host-fallback", html, fixed = TRUE))
 
   deps <- htmltools::findDependencies(ui)
   expect_equal(vapply(deps, `[[`, character(1), "name"), "shinymcp-host")
@@ -83,14 +96,13 @@ test_that("mcp_host_ui() follows the app's size by default", {
   )
 })
 
-test_that("host markup carries the configuration and title", {
-  config <- list(
-    instanceId = "i1",
-    title = "Greeter <1>",
-    prefersBorder = FALSE,
-    html = "<p>page</p>"
-  )
-  html <- as.character(mcp_host_markup("i1", config = config))
+test_that("host markup carries the descriptor, title, and text fallback", {
+  config <- list(instanceId = "i1", source = "greeter", title = "Greeter <1>")
+  html <- as.character(mcp_host_markup(
+    "i1",
+    config = config,
+    fallback = "Hello <b>"
+  ))
 
   expect_match(
     html,
@@ -98,8 +110,13 @@ test_that("host markup carries the configuration and title", {
     fixed = TRUE
   )
   expect_match(html, 'title="Greeter &lt;1&gt;"', fixed = TRUE)
-  expect_match(html, 'data-shinymcp-border="false"', fixed = TRUE)
   expect_equal(helper_markup_config(html), config)
+  # Shown only when the app can't be.
+  expect_match(
+    html,
+    'data-shinymcp-host-fallback="" hidden>Hello &lt;b&gt;</div>',
+    fixed = TRUE
+  )
 
   bare <- as.character(mcp_host_markup(
     "i2",
@@ -109,14 +126,6 @@ test_that("host markup carries the configuration and title", {
   ))
   expect_false(grepl("shinymcp-host-toolbar", bare, fixed = TRUE))
   expect_match(bare, 'title="Own title"', fixed = TRUE)
-})
-
-test_that("host markup leaves out the border attribute unless the app declines one", {
-  html <- as.character(mcp_host_markup(
-    "i1",
-    config = list(prefersBorder = TRUE)
-  ))
-  expect_false(grepl("data-shinymcp-border", html, fixed = TRUE))
 })
 
 test_that("DOM ids are made safe", {
@@ -150,78 +159,12 @@ test_that("there is no active session outside Shiny", {
   expect_null(active_shiny_session())
 })
 
-# ---- mcp_embed() ----
-
-test_that("mcp_embed() needs a session or an id", {
-  skip_if_not_installed("shiny")
-  app <- mcp_app(htmltools::tags$div("test"), name = "embed-test")
-
-  expect_error(
-    mcp_embed(app),
-    "inside a running Shiny session",
-    class = "shinymcp_error"
-  )
-
-  ui <- mcp_embed(app, id = "emb", height = "300px")
-  expect_equal(
-    as.character(ui),
-    as.character(mcp_host_ui("emb", height = "300px"))
-  )
-})
-
-test_that("mcp_embed() in a session registers the app and embeds its configuration", {
-  skip_if_not_installed("shiny")
-  session <- shiny::MockShinySession$new()
-  local_mocked_bindings(active_shiny_session = function() session)
-  app <- host_app(title = "Greeter")
-
-  ui <- mcp_embed(
-    app,
-    arguments = list(name = "Ada"),
-    trigger = "manual",
-    height = "300px"
-  )
-  html <- as.character(ui)
-  config <- helper_markup_config(html)
-  instances <- ls(session$userData$.shinymcp_hosts$instances)
-
-  expect_length(instances, 1)
-  expect_equal(config$instanceId, instances)
-  expect_match(instances, "^host-greeter-")
-  expect_match(
-    html,
-    paste0('<div id="', instances, '" class="shinymcp-host"'),
-    fixed = TRUE
-  )
-  expect_match(html, 'data-shinymcp-height="300px"', fixed = TRUE)
-  expect_match(
-    html,
-    '<span class="shinymcp-host-title">Greeter</span>',
-    fixed = TRUE
-  )
-  expect_equal(config$trigger, "manual")
-  expect_equal(config$height, "300px")
-  expect_equal(config$entryTool, "greet")
-  expect_equal(config$initialArguments, list(name = "Ada"))
-
-  second <- as.character(mcp_embed(app, id = "1st"))
-  expect_match(second, '<div id="shinymcp-1st"', fixed = TRUE)
-  expect_length(ls(session$userData$.shinymcp_hosts$instances), 2)
-})
-
 # ---- Registering instances ----
 
-test_that("registering an instance builds the host configuration", {
+test_that("registering an instance keeps its source and builds a descriptor", {
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
-  app <- host_app(
-    title = "Greeter",
-    csp = list(connect_domains = "https://api.example.com"),
-    permissions = "clipboard_write",
-    prefers_border = FALSE,
-    trigger = "submit",
-    debounce_ms = 400
-  )
+  app <- host_app(title = "Greeter", trigger = "submit", debounce_ms = 400)
 
   registered <- register_shiny_host_instance(
     session,
@@ -230,56 +173,53 @@ test_that("registering an instance builds the host configuration", {
     height = "320px"
   )
   config <- registered$config
+  state <- registered$state
+  registry <- session$userData$.shinymcp_hosts
 
-  expect_true(is.environment(registered$state))
-  expect_identical(
-    session$userData$.shinymcp_hosts$instances$i1,
-    registered$state
-  )
-  expect_equal(config$instanceId, "i1")
-  expect_equal(config$title, "Greeter")
-  expect_equal(config$version, as.character(utils::packageVersion("shinymcp")))
+  expect_identical(registry$instances$i1, state)
+  expect_identical(registry$sources$greeter, state$source)
+  expect_equal(state$kind, "pane")
   expect_equal(
-    as.character(config$csp$connectDomains),
-    "https://api.example.com"
+    config[c("instanceId", "source", "tool", "title", "height", "trigger")],
+    list(
+      instanceId = "i1",
+      source = "greeter",
+      tool = "greet",
+      title = "Greeter",
+      height = "320px",
+      trigger = "submit"
+    )
   )
-  expect_equal(names(config$permissions), "clipboardWrite")
-  expect_false(config$prefersBorder)
-  expect_equal(config$height, "320px")
-  expect_equal(config$trigger, "submit")
-  # The first tool the model may call opens the app.
-  expect_equal(config$entryTool, "greet")
-  expect_equal(config$tool$name, "greet")
-  expect_equal(config$tool[["_meta"]][["ui"]]$resourceUri, "ui://greeter")
-  expect_equal(as.character(config$appTools), c("greet", "approve", "boom"))
-  expect_null(config$initialResult)
-  expect_equal(as.character(to_json(config$initialArguments)), "{}")
-
-  # The page inside carries the interaction settings.
-  page <- helper_page_config(config$html)
-  expect_equal(page$trigger, "submit")
-  expect_equal(page$debounceMs, 400)
+  expect_equal(as.character(to_json(config$arguments)), "{}")
+  expect_null(config$result)
+  expect_equal(config$version, as.character(utils::packageVersion("shinymcp")))
+  # The page isn't in the descriptor; it's read when the card attaches.
+  expect_null(config$html)
+  expect_equal(state$config, list(trigger = "submit", debounceMs = 400))
 })
 
-test_that("registration takes an explicit entry tool, arguments, and result", {
+test_that("registration takes a tool, arguments, a result, and a kind", {
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
   app <- host_app()
   result <- app$run_tool("greet", list(name = "Ada"))
 
-  config <- register_shiny_host_instance(
+  registered <- register_shiny_host_instance(
     session,
     app,
     instance_id = "i1",
     tool = "approve",
     arguments = list(id = 3),
-    result = result
-  )$config
+    result = result,
+    kind = "card",
+    title = "Approvals"
+  )
 
-  expect_equal(config$entryTool, "approve")
-  expect_equal(config$tool$name, "approve")
-  expect_equal(config$initialArguments, list(id = 3))
-  expect_equal(config$initialResult, result)
+  expect_equal(registered$config$tool, "approve")
+  expect_equal(registered$config$arguments, list(id = 3))
+  expect_equal(registered$config$result, result)
+  expect_equal(registered$config$title, "Approvals")
+  expect_equal(registered$state$kind, "card")
 })
 
 test_that("host settings override the app's interaction defaults", {
@@ -287,18 +227,18 @@ test_that("host settings override the app's interaction defaults", {
   session <- shiny::MockShinySession$new()
   app <- host_app(trigger = "submit", debounce_ms = 400)
 
-  config <- register_shiny_host_instance(
+  registered <- register_shiny_host_instance(
     session,
     app,
     instance_id = "i1",
     trigger = "change",
     debounce_ms = 50
-  )$config
-
-  expect_equal(config$trigger, "change")
-  page <- helper_page_config(config$html)
-  expect_equal(page$trigger, "change")
-  expect_equal(page$debounceMs, 50)
+  )
+  expect_equal(registered$config$trigger, "change")
+  expect_equal(
+    registered$state$config,
+    list(trigger = "change", debounceMs = 50)
+  )
 
   expect_error(register_shiny_host_instance(
     session,
@@ -324,7 +264,7 @@ test_that("resolve_host_interaction() falls back to debounce at 250 ms", {
   )
 })
 
-test_that("the default entry tool is the first one the model may call", {
+test_that("the default tool is the first the model may call that shows an app", {
   app <- mcp_app(
     htmltools::div(),
     tools = list(
@@ -332,57 +272,26 @@ test_that("the default entry tool is the first one the model may call", {
       list(name = "open", fun = function() 1)
     )
   )
-  expect_equal(default_entry_tool(app), "open")
-  expect_null(default_entry_tool(mcp_app(htmltools::div())))
-
-  expect_equal(tool_definition_for(app, "open")$name, "open")
-  expect_null(tool_definition_for(app, "missing"))
+  expect_equal(default_source_tool(as_host_source(app)), "open")
+  expect_null(default_source_tool(as_host_source(mcp_app(htmltools::div()))))
 })
 
-test_that("apps without tools have no entry tool", {
-  skip_if_not_installed("shiny")
-  session <- shiny::MockShinySession$new()
-  config <- register_shiny_host_instance(
-    session,
-    mcp_app(htmltools::div()),
-    instance_id = "i1"
-  )$config
-
-  expect_null(config$entryTool)
-  expect_null(config$tool)
-  expect_length(config$appTools, 0)
-})
-
-test_that("registration refuses a tool the app doesn't have", {
+test_that("registration refuses a tool the source doesn't have, or no tool", {
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
 
   expect_error(
-    register_shiny_host_instance(
-      session,
-      host_app(),
-      instance_id = "i1",
-      tool = "nope"
-    ),
+    register_shiny_host_instance(session, host_app(), "i1", tool = "nope"),
+    "has no tool called",
     class = "shinymcp_error_validation"
   )
-})
-
-test_that("a failed registration leaves no instance behind", {
-  skip_if_not_installed("shiny")
-  session <- shiny::MockShinySession$new()
-
-  try(
-    register_shiny_host_instance(
-      session,
-      host_app(),
-      instance_id = "i1",
-      tool = "nope"
-    ),
-    silent = TRUE
+  expect_error(
+    register_shiny_host_instance(session, mcp_app(htmltools::div()), "i2"),
+    "has no tool to open",
+    class = "shinymcp_error_validation"
   )
   hosts <- session$userData$.shinymcp_hosts
-  expect_true(is.null(hosts) || length(ls(hosts$instances)) == 0)
+  expect_length(ls(hosts$instances), 0)
 })
 
 test_that("a session keeps one registry for all its hosted apps", {
@@ -395,22 +304,15 @@ test_that("a session keeps one registry for all its hosted apps", {
 
   expect_identical(ensure_shiny_host_registry(session), first)
   expect_setequal(ls(first$instances), c("i1", "i2"))
+  expect_setequal(ls(first$sources), "greeter")
   expect_error(ensure_shiny_host_registry(NULL), "running Shiny session")
 })
 
 test_that("hosted apps are disposed when the session ends", {
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
-  one <- register_shiny_host_instance(
-    session,
-    host_app(),
-    instance_id = "i1"
-  )$state
-  two <- register_shiny_host_instance(
-    session,
-    host_app(),
-    instance_id = "i2"
-  )$state
+  one <- register_shiny_host_instance(session, host_app(), "i1")$state
+  two <- register_shiny_host_instance(session, host_app(), "i2")$state
 
   expect_false(one$disposed)
   session$close()
@@ -418,32 +320,242 @@ test_that("hosted apps are disposed when the session ends", {
   expect_true(two$disposed)
 })
 
-test_that("host configurations with HTML comments stay valid JSON", {
+test_that("descriptors with HTML comments stay valid JSON in the markup", {
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
-  app <- mcp_app(
-    htmltools::tagList(htmltools::HTML("<!-- a note -->"), mcp_text("x")),
-    name = "commented"
-  )
+  app <- host_app()
+  result <- list(content = list(list(type = "text", text = "<!-- a -->")))
 
   config <- register_shiny_host_instance(
     session,
     app,
-    instance_id = "i1"
+    instance_id = "i1",
+    result = result
   )$config
   parsed <- helper_markup_config(as.character(mcp_host_markup(
     "i1",
     config = config
   )))
-  expect_equal(parsed$instanceId, "i1")
+  expect_equal(parsed$result$content[[1]]$text, "<!-- a -->")
 })
 
-# ---- Answering the page ----
+# ---- Opening: the tool call and attaching ----
 
-test_that("requests are answered after the reactive flush, over a custom message", {
+test_that("a pane's tool is called in R and its result reaches the page", {
   skip_if_not_installed("later")
   session <- helper_fake_session(user = "ada")
-  state <- new_mcp_host_state(host_app(), instance_id = "i1")
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  state$arguments <- list(name = "Bo")
+  registry <- helper_host_registry(i1 = state)
+
+  start_host_call(session, state)
+  helper_drain()
+  expect_equal(
+    state$result$structuredContent,
+    list(message = "Hello Bo (for ada)")
+  )
+  expect_equal(state$last_tool_call$name, "greet")
+  # Not attached yet: the result waits for the attach.
+  expect_length(session$sent, 0)
+
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state))
+  )
+  helper_drain()
+  attached <- helper_sent(session, "shinymcp-host-attached")
+  expect_length(attached, 1)
+  reply <- attached[[1]]
+  expect_true(reply$ok)
+  expect_equal(reply$instanceId, "i1")
+  expect_equal(reply$requestId, "a1")
+  expect_equal(reply$toolResult, state$result)
+  expect_equal(reply$toolInput, list(name = "Bo"))
+  expect_equal(reply$tool$name, "greet")
+  expect_match(reply$page$html, "<!DOCTYPE html>", fixed = TRUE)
+  expect_equal(as.character(reply$appTools), c("greet", "approve", "boom"))
+  expect_true(state$attached)
+})
+
+test_that("a result that arrives after the attach is sent to the page", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  registry <- helper_host_registry(i1 = state)
+
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state))
+  )
+  helper_drain()
+  expect_null(helper_sent(session, "shinymcp-host-attached")[[1]]$toolResult)
+
+  start_host_call(session, state)
+  helper_drain()
+  commands <- helper_sent(session, "shinymcp-host-command")
+  expect_length(commands, 1)
+  expect_equal(commands[[1]]$command, "tool-result")
+  expect_equal(commands[[1]]$result, state$result)
+})
+
+test_that("a failed call cancels the tool call in the page", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  state$source$call_async <- function(...) {
+    promises::promise_reject(simpleError("no route"))
+  }
+  state$attached <- TRUE
+
+  start_host_call(session, state)
+  helper_drain()
+  commands <- helper_sent(session, "shinymcp-host-command")
+  expect_equal(commands[[1]]$command, "tool-cancelled")
+  expect_equal(commands[[1]]$reason, "no route")
+  expect_equal(state$call_error, "no route")
+})
+
+test_that("a newer call replaces one still running", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  state$arguments <- list(name = "first")
+  start_host_call(session, state)
+  state$arguments <- list(name = "second")
+  start_host_call(session, state)
+  helper_drain()
+
+  expect_equal(
+    state$result$structuredContent$message,
+    "Hello second (for nobody)"
+  )
+})
+
+test_that("the page is read once per session, with the pane's settings", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  app <- host_app()
+  reads <- 0
+  one <- new_mcp_host_state(
+    app,
+    "i1",
+    tool = "greet",
+    config = list(trigger = "manual")
+  )
+  page <- one$source$page_async
+  one$source$page_async <- function(...) {
+    reads <<- reads + 1
+    page(...)
+  }
+  two <- new_mcp_host_state(
+    one$source,
+    "i2",
+    tool = "greet",
+    config = list(trigger = "manual")
+  )
+  registry <- helper_host_registry(i1 = one, i2 = two)
+
+  handle_host_event(session, registry, host_attach_event(host_descriptor(one)))
+  handle_host_event(session, registry, host_attach_event(host_descriptor(two)))
+  helper_drain()
+
+  attached <- helper_sent(session, "shinymcp-host-attached")
+  expect_length(attached, 2)
+  expect_equal(reads, 1)
+  expect_equal(helper_page_config(attached[[1]]$page$html)$trigger, "manual")
+})
+
+test_that("a restored card attaches from its descriptor without calling the tool", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  app <- host_app()
+  calls <- 0
+  source <- as_host_source(app)
+  call <- source$call
+  source$call <- function(...) {
+    calls <<- calls + 1
+    call(...)
+  }
+  registry <- new_host_registry()
+  register_host_source(registry, source)
+  saved <- list(content = list(list(type = "text", text = "saved")))
+  descriptor <- list(
+    instanceId = "old-card",
+    source = "greeter",
+    tool = "greet",
+    arguments = list(name = "Ada"),
+    result = saved
+  )
+
+  handle_host_event(session, registry, host_attach_event(descriptor))
+  helper_drain()
+
+  reply <- helper_sent(session, "shinymcp-host-attached")[[1]]
+  expect_true(reply$ok)
+  expect_equal(reply$toolResult, saved)
+  expect_equal(reply$toolInput, list(name = "Ada"))
+  expect_equal(calls, 0)
+  state <- registry$instances[["old-card"]]
+  expect_equal(state$kind, "card")
+  expect_equal(state$tool, "greet")
+})
+
+test_that("cards whose source or tool isn't here can't attach", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  registry <- new_host_registry()
+  register_host_source(registry, host_app())
+
+  for (descriptor in list(
+    list(instanceId = "c1", source = "elsewhere", tool = "greet"),
+    list(instanceId = "c2", source = "greeter", tool = "nope"),
+    list(instanceId = "c3", source = "greeter"),
+    list(source = "greeter", tool = "greet")
+  )) {
+    handle_host_event(session, registry, host_attach_event(descriptor))
+  }
+  helper_drain()
+
+  replies <- helper_sent(session, "shinymcp-host-attached")
+  expect_length(replies, 4)
+  for (reply in replies) {
+    expect_false(reply$ok)
+    expect_equal(reply$error, "This app isn't available any more.")
+  }
+  expect_length(ls(registry$instances), 0)
+})
+
+test_that("a page that can't be read fails the attach", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  state$source$page_async <- function(...) {
+    promises::promise_reject(simpleError("gone"))
+  }
+  registry <- helper_host_registry(i1 = state)
+
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state))
+  )
+  helper_drain()
+
+  reply <- helper_sent(session, "shinymcp-host-attached")[[1]]
+  expect_false(reply$ok)
+  expect_equal(reply$error, "Couldn't load the app: gone")
+  # A failed read isn't kept.
+  expect_length(ls(registry$pages), 0)
+})
+
+# ---- Requests from the page ----
+
+test_that("requests are answered over a custom message, as the session's user", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session(user = "ada")
+  state <- new_mcp_host_state(host_app(), instance_id = "i1", tool = "greet")
   registry <- helper_host_registry(i1 = state)
 
   handle_host_event(
@@ -458,7 +570,7 @@ test_that("requests are answered after the reactive flush, over a custom message
   )
   expect_length(session$sent, 0)
 
-  later::run_now()
+  helper_drain()
   expect_length(session$sent, 1)
   sent <- session$sent[[1]]
   expect_equal(sent$type, "shinymcp-host-response")
@@ -479,7 +591,7 @@ test_that("requests are answered after the reactive flush, over a custom message
   expect_equal(state$last_tool_call$result, response$result)
 })
 
-test_that("tool calls from the page run in process as the session's user", {
+test_that("tool calls from the page run in process with the session's user and groups", {
   skip_if_not_installed("later")
   seen <- NULL
   app <- mcp_app(
@@ -491,33 +603,125 @@ test_that("tool calls from the page run in process as the session's user", {
     name = "who"
   )
   session <- helper_fake_session(user = "ada", groups = c("staff", "admins"))
-  registry <- helper_host_registry(i1 = new_mcp_host_state(app, "i1"))
+  registry <- helper_host_registry(
+    i1 = new_mcp_host_state(app, "i1", tool = "who")
+  )
 
   handle_host_event(
     session,
     registry,
     helper_host_request("i1", "tools/call", list(name = "who"))
   )
-  later::run_now()
+  helper_drain()
 
   expect_equal(seen$transport, "in-process")
   expect_equal(seen$user, "ada")
   expect_equal(seen$groups, c("staff", "admins"))
-  expect_equal(seen$caller, "model")
+})
+
+test_that("the page can call only the tools it may", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  registry <- helper_host_registry(i1 = state)
+
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(
+      "i1",
+      "tools/call",
+      list(name = "approve"),
+      id = 1,
+      request_id = "r1"
+    )
+  )
+  # Visible to the model only.
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(
+      "i1",
+      "tools/call",
+      list(name = "peek"),
+      id = 2,
+      request_id = "r2"
+    )
+  )
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(
+      "i1",
+      "tools/call",
+      list(name = "nope"),
+      id = 3,
+      request_id = "r3"
+    )
+  )
+  helper_drain()
+
+  responses <- lapply(
+    helper_sent(session, "shinymcp-host-response"),
+    `[[`,
+    "response"
+  )
+  by_id <- stats::setNames(responses, vapply(responses, function(r) r$id, 0))
+  expect_equal(by_id[["1"]]$result$content[[1]]$text, "approved")
+  expect_equal(by_id[["2"]]$error$code, RPC_INVALID_PARAMS)
+  expect_equal(
+    by_id[["2"]]$error$message,
+    "The app can't call the tool \"peek\"."
+  )
+  expect_equal(by_id[["3"]]$error$code, RPC_INVALID_PARAMS)
+  expect_equal(state$last_tool_call$name, "approve")
+})
+
+test_that("the host passes on only the requests a page may make", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  registry <- helper_host_registry(
+    i1 = new_mcp_host_state(host_app(), "i1", tool = "greet")
+  )
+
+  for (method in c("initialize", "tools/list", "sampling/createMessage")) {
+    handle_host_event(session, registry, helper_host_request("i1", method))
+  }
+  handle_host_event(
+    session,
+    registry,
+    list(instanceId = "i1", requestId = "r9", message = list(id = 10))
+  )
+
+  responses <- lapply(
+    helper_sent(session, "shinymcp-host-response"),
+    `[[`,
+    "response"
+  )
+  expect_length(responses, 4)
+  for (response in responses) {
+    expect_equal(response$error$code, RPC_METHOD_NOT_FOUND)
+  }
+  expect_equal(
+    responses[[1]]$error$message,
+    "The host doesn't pass on initialize."
+  )
 })
 
 test_that("the page can read the app's resources", {
   skip_if_not_installed("later")
   app <- host_app()
   session <- helper_fake_session()
-  registry <- helper_host_registry(i1 = new_mcp_host_state(app, "i1"))
+  registry <- helper_host_registry(
+    i1 = new_mcp_host_state(app, "i1", tool = "greet")
+  )
 
   handle_host_event(
     session,
     registry,
     helper_host_request("i1", "resources/read", list(uri = "ui://greeter"))
   )
-  later::run_now()
+  helper_drain()
 
   contents <- session$sent[[1]]$message$response$result$contents[[1]]
   expect_equal(contents$uri, "ui://greeter")
@@ -526,7 +730,7 @@ test_that("the page can read the app's resources", {
 
 test_that("requests for an app that's gone get an error at once", {
   session <- helper_fake_session()
-  registry <- helper_host_registry()
+  registry <- new_host_registry()
 
   handle_host_event(
     session,
@@ -542,54 +746,10 @@ test_that("requests for an app that's gone get an error at once", {
   expect_equal(response$error$message, "This app is no longer running.")
 })
 
-test_that("bad requests and unknown tools get JSON-RPC errors", {
-  skip_if_not_installed("later")
-  session <- helper_fake_session()
-  state <- new_mcp_host_state(host_app(), "i1")
-  registry <- helper_host_registry(i1 = state)
-
-  handle_host_event(
-    session,
-    registry,
-    list(
-      instanceId = "i1",
-      requestId = "r1",
-      message = list(id = 10, method = "tools/call")
-    )
-  )
-  handle_host_event(
-    session,
-    registry,
-    helper_host_request(
-      "i1",
-      "tools/call",
-      list(name = "nope"),
-      id = 11,
-      request_id = "r2"
-    )
-  )
-  later::run_now()
-
-  expect_equal(
-    session$sent[[1]]$message$response$error$code,
-    RPC_INVALID_REQUEST
-  )
-  expect_equal(session$sent[[2]]$message$requestId, "r2")
-  expect_equal(
-    session$sent[[2]]$message$response$error$code,
-    RPC_INVALID_PARAMS
-  )
-  expect_match(
-    session$sent[[2]]$message$response$error$message,
-    "Unknown tool: nope"
-  )
-  expect_null(state$last_tool_call)
-})
-
 test_that("tool errors are answered as error results and recorded", {
   skip_if_not_installed("later")
   session <- helper_fake_session()
-  state <- new_mcp_host_state(host_app(), "i1")
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
   registry <- helper_host_registry(i1 = state)
 
   handle_host_event(
@@ -597,7 +757,7 @@ test_that("tool errors are answered as error results and recorded", {
     registry,
     helper_host_request("i1", "tools/call", list(name = "boom"))
   )
-  later::run_now()
+  helper_drain()
 
   result <- session$sent[[1]]$message$response$result
   expect_true(result$isError)
@@ -605,55 +765,59 @@ test_that("tool errors are answered as error results and recorded", {
   expect_true(state$last_tool_call$result$isError)
 })
 
-test_that("notifications update the host state", {
+test_that("notifications update the host state; card messages reach the chat host", {
   session <- helper_fake_session()
-  state <- new_mcp_host_state(host_app(), "i1")
-  registry <- helper_host_registry(i1 = state)
-  notify <- function(method, params) {
+  pane <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  card <- new_mcp_host_state(host_app(), "i2", tool = "greet", kind = "card")
+  registry <- helper_host_registry(i1 = pane, i2 = card)
+  posted <- list()
+  registry$on_card_message <- function(state, params) {
+    posted[[length(posted) + 1]] <<- list(
+      id = state$instance_id,
+      params = params
+    )
+  }
+  notify <- function(id, method, params) {
     handle_host_event(
       session,
       registry,
       list(
-        instanceId = "i1",
+        instanceId = id,
         type = "notification",
         method = method,
         params = params
       )
     )
   }
+  message <- list(
+    role = "user",
+    content = list(list(type = "text", text = "hi"))
+  )
 
   notify(
+    "i1",
     "ui/update-model-context",
     list(content = list(list(type = "text", text = "ctx")))
   )
-  notify(
-    "ui/message",
-    list(role = "user", content = list(list(type = "text", text = "hi")))
-  )
-  notify("ui/notifications/size-changed", list(width = 320, height = 240))
+  notify("i1", "ui/message", message)
+  notify("i2", "ui/message", message)
+  notify("i1", "ui/notifications/size-changed", list(width = 320, height = 240))
 
-  expect_equal(state$model_context$content[[1]]$text, "ctx")
-  expect_length(state$messages, 1)
-  expect_equal(state$messages[[1]]$role, "user")
-  expect_equal(state$last_size, list(width = 320, height = 240))
+  expect_equal(pane$model_context$content[[1]]$text, "ctx")
+  expect_true(is.numeric(pane$context_time))
+  expect_length(pane$messages, 1)
+  expect_equal(pane$last_size, list(width = 320, height = 240))
+  # Only cards post to the chat.
+  expect_equal(posted, list(list(id = "i2", params = message)))
   expect_length(session$sent, 0)
 
   # Notifications for unknown instances are ignored.
-  expect_no_error(handle_host_event(
-    session,
-    registry,
-    list(
-      instanceId = "gone",
-      type = "notification",
-      method = "ui/message",
-      params = list()
-    )
-  ))
+  expect_no_error(notify("gone", "ui/message", list()))
 })
 
 test_that("dispose events shut the instance down and forget it", {
   session <- helper_fake_session()
-  state <- new_mcp_host_state(host_app(), "i1")
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
   registry <- helper_host_registry(i1 = state)
 
   handle_host_event(
@@ -675,16 +839,20 @@ test_that("dispose events shut the instance down and forget it", {
 
 test_that("new host state starts empty", {
   app <- host_app()
-  state <- new_mcp_host_state(app, instance_id = "i1")
+  state <- new_mcp_host_state(app, instance_id = "i1", tool = "greet")
 
-  expect_identical(state$app, app)
-  expect_s3_class(state$server, "McpServer")
-  expect_true(is.environment(state$session))
+  expect_s3_class(state$source, "shinymcp_host_source")
+  expect_equal(state$source$key, "greeter")
   expect_equal(state$instance_id, "i1")
+  expect_equal(state$kind, "pane")
+  expect_equal(state$tool, "greet")
+  expect_equal(as.character(to_json(state$arguments)), "{}")
+  expect_null(state$result)
   expect_null(state$model_context)
   expect_null(state$last_tool_call)
   expect_null(state$last_size)
   expect_equal(state$messages, list())
+  expect_false(state$attached)
   expect_false(state$disposed)
   expect_match(new_mcp_host_state(app)$instance_id, "^host-")
 })
@@ -796,22 +964,14 @@ test_that("disposing a host closes the Shiny sessions it opened", {
   )
   app <- as_mcp_app(shiny_app, name = "live")
   session <- helper_fake_session()
-  state <- new_mcp_host_state(app, "i1")
+  state <- new_mcp_host_state(app, "i1", tool = "live")
+  state$arguments <- list(name = "Ada")
   registry <- helper_host_registry(i1 = state)
 
-  handle_host_event(
-    session,
-    registry,
-    helper_host_request(
-      "i1",
-      "tools/call",
-      list(name = "live", arguments = list(name = "Ada"))
-    )
-  )
-  later::run_now()
+  start_host_call(session, state)
+  helper_drain()
 
-  result <- session$sent[[1]]$message$response$result
-  expect_match(result$content[[1]]$text, "Hi Ada", fixed = TRUE)
+  expect_match(state$result$content[[1]]$text, "Hi Ada", fixed = TRUE)
   expect_length(state$views, 1)
   expect_equal(app$runtime()$instance_count(), 1)
 
@@ -823,10 +983,25 @@ test_that("disposing a host closes the Shiny sessions it opened", {
   expect_equal(app$runtime()$instance_count(), 0)
 })
 
+test_that("the text of what an app sends is its text blocks and structured content", {
+  params <- list(
+    content = list(
+      list(type = "text", text = "one"),
+      list(type = "image", data = "x"),
+      list(type = "text", text = "two")
+    ),
+    structuredContent = list(n = 3)
+  )
+  expect_equal(host_content_text(params), "one\ntwo\n{\"n\":3}")
+  expect_equal(host_content_text(params, limit = 6), "one...")
+  expect_equal(host_content_text(list()), "")
+})
+
 # ---- mcp_host_server() ----
 
-test_that("mcp_host_server() sends the app to the page once the UI is flushed", {
+test_that("mcp_host_server() opens the app and sends the page its descriptor", {
   skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
   capture <- helper_capture_session()
   app <- host_app(title = "Greeter")
 
@@ -845,6 +1020,7 @@ test_that("mcp_host_server() sends the app to the page once the UI is flushed", 
           "last_result",
           "messages",
           "instance_id",
+          "open",
           "execute",
           "reset",
           "dispose"
@@ -859,11 +1035,20 @@ test_that("mcp_host_server() sends the app to the page once the UI is flushed", 
       config <- init[[1]]$config
       expect_equal(config$instanceId, session$returned$instance_id())
       expect_match(config$instanceId, "^host-greeter-")
+      expect_equal(config$source, "greeter")
+      expect_equal(config$tool, "greet")
       expect_equal(config$title, "Greeter")
       expect_equal(config$height, "250px")
-      expect_equal(config$entryTool, "greet")
-      expect_equal(config$initialArguments, list(name = "Ada"))
-      expect_match(config$html, "<!DOCTYPE html>", fixed = TRUE)
+      expect_equal(config$arguments, list(name = "Ada"))
+
+      # The tool is called as soon as the pane is set up.
+      helper_drain()
+      session$flushReact()
+      expect_equal(session$returned$last_tool_call()$name, "greet")
+      expect_equal(
+        session$returned$last_result()$structuredContent,
+        list(message = "Hello Ada (for nobody)")
+      )
 
       # Only once.
       session$flushReact()
@@ -886,7 +1071,7 @@ test_that("mcp_host_server() answers the page and exposes what happened", {
       host <- session$returned
       root <- session$rootScope()
       id <- host$instance_id()
-      expect_null(host$last_tool_call())
+      helper_drain()
       expect_null(host$model_context())
       expect_equal(host$messages(), list())
 
@@ -897,13 +1082,12 @@ test_that("mcp_host_server() answers the page and exposes what happened", {
           list(name = "greet", arguments = list(name = "Grace"))
         )
       )
-      later::run_now()
+      helper_drain()
       session$flushReact()
 
       responses <- capture$messages("shinymcp-host-response")
       expect_length(responses, 1)
       expect_equal(responses[[1]]$instanceId, id)
-      expect_equal(host$last_tool_call()$name, "greet")
       expect_equal(host$last_tool_call()$arguments, list(name = "Grace"))
       expect_equal(
         host$last_result()$structuredContent,
@@ -942,6 +1126,40 @@ test_that("mcp_host_server() answers the page and exposes what happened", {
   )
 })
 
+test_that("mcp_host_server() opens the app again with other arguments", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  capture <- helper_capture_session()
+
+  shiny::testServer(
+    function(id) {
+      mcp_host_server(id, host_app(), arguments = list(name = "Ada"))
+    },
+    args = list(id = "h"),
+    session = capture$session,
+    {
+      host <- session$returned
+      id <- host$instance_id()
+      helper_drain()
+
+      host$open(list(name = "Bo"))
+      commands <- capture$messages("shinymcp-host-command")
+      expect_equal(commands[[1]], list(instanceId = id, command = "reopen"))
+      helper_drain()
+      session$flushReact()
+      expect_equal(
+        host$last_result()$structuredContent,
+        list(message = "Hello Bo (for nobody)")
+      )
+
+      expect_error(
+        host$open(tool = "nope"),
+        class = "shinymcp_error_validation"
+      )
+    }
+  )
+})
+
 test_that("mcp_host_server() commands reach the page", {
   skip_if_not_installed("shiny")
   capture <- helper_capture_session()
@@ -962,11 +1180,7 @@ test_that("mcp_host_server() commands reach the page", {
       commands <- capture$messages("shinymcp-host-command")
       expect_equal(
         commands[[1]],
-        list(
-          instanceId = id,
-          command = "execute",
-          arguments = list(name = "Zed")
-        )
+        list(instanceId = id, command = "execute", inputs = list(name = "Zed"))
       )
       expect_equal(commands[[2]], list(instanceId = id, command = "execute"))
       expect_equal(commands[[3]], list(instanceId = id, command = "reset"))
@@ -977,7 +1191,7 @@ test_that("mcp_host_server() commands reach the page", {
   )
 })
 
-test_that("mcp_host_server() refuses an entry tool the app doesn't have", {
+test_that("mcp_host_server() refuses a tool the app doesn't have", {
   skip_if_not_installed("shiny")
   expect_error(
     shiny::testServer(
@@ -989,4 +1203,267 @@ test_that("mcp_host_server() refuses an entry tool the app doesn't have", {
     ),
     class = "shinymcp_error_validation"
   )
+})
+
+# ---- mcp_embed() ----
+
+test_that("mcp_embed() needs a session or an id", {
+  skip_if_not_installed("shiny")
+  app <- host_app()
+
+  expect_error(
+    mcp_embed(app),
+    "inside a running Shiny session",
+    class = "shinymcp_error"
+  )
+
+  ui <- mcp_embed(app, id = "emb", height = "300px")
+  expect_equal(
+    as.character(ui),
+    as.character(mcp_host_ui("emb", height = "300px"))
+  )
+})
+
+test_that("mcp_embed() in a session registers the app and calls its tool", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  session <- shiny::MockShinySession$new()
+  local_mocked_bindings(active_shiny_session = function() session)
+  app <- host_app(title = "Greeter")
+
+  ui <- mcp_embed(
+    app,
+    arguments = list(name = "Ada"),
+    trigger = "manual",
+    height = "300px"
+  )
+  html <- as.character(ui)
+  config <- helper_markup_config(html)
+  registry <- session$userData$.shinymcp_hosts
+  instances <- ls(registry$instances)
+
+  expect_length(instances, 1)
+  expect_equal(config$instanceId, instances)
+  expect_match(instances, "^host-greeter-")
+  expect_match(
+    html,
+    paste0('<div id="', instances, '" class="shinymcp-host"'),
+    fixed = TRUE
+  )
+  expect_match(html, 'data-shinymcp-height="300px"', fixed = TRUE)
+  expect_match(
+    html,
+    '<span class="shinymcp-host-title">Greeter</span>',
+    fixed = TRUE
+  )
+  expect_equal(config$trigger, "manual")
+  expect_equal(config$tool, "greet")
+  expect_equal(config$arguments, list(name = "Ada"))
+
+  helper_drain()
+  expect_equal(
+    registry$instances[[instances]]$result$structuredContent,
+    list(message = "Hello Ada (for nobody)")
+  )
+
+  second <- as.character(mcp_embed(app, id = "1st"))
+  expect_match(second, '<div id="shinymcp-1st"', fixed = TRUE)
+  expect_length(ls(registry$instances), 2)
+})
+
+# ---- Apps from a remote server ----
+
+test_that("a remote server's app attaches with its page and tools", {
+  skip_if_not_installed("later")
+  app <- serving_app(
+    name = "fx",
+    csp = list(connect_domains = "https://api.example.com"),
+    prefers_border = FALSE
+  )
+  fx <- serving_client(McpServer$new(app), name = "remote")
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(fx$client, "r1", tool = "echo")
+  state$arguments <- list(x = "hi")
+  registry <- helper_host_registry(r1 = state)
+
+  start_host_call(session, state)
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state))
+  )
+  helper_drain()
+
+  expect_equal(state$result$structuredContent, list(out = "hi"))
+  reply <- helper_sent(session, "shinymcp-host-attached")[[1]]
+  expect_true(reply$ok)
+  expect_equal(reply$page$html, app$html_resource())
+  expect_equal(
+    unlist(reply$page$csp$connectDomains),
+    "https://api.example.com"
+  )
+  expect_false(reply$page$prefersBorder)
+  expect_equal(reply$tool$name, "echo")
+  expect_equal(as.character(reply$appTools), c("echo", "boom", "refresh"))
+  expect_equal(reply$toolResult, state$result)
+})
+
+test_that("a remote app's page calls go through the client, within its visibility", {
+  skip_if_not_installed("later")
+  app <- serving_app(
+    name = "fx",
+    tools = list(
+      serving_echo_tool(),
+      list(name = "refresh", visibility = "app", fun = function() {
+        list(out = "refreshed")
+      }),
+      list(name = "secret", visibility = "model", fun = function() {
+        list(out = "secret")
+      })
+    )
+  )
+  fx <- serving_client(McpServer$new(app), name = "remote")
+  session <- helper_fake_session()
+  registry <- helper_host_registry(
+    r1 = new_mcp_host_state(fx$client, "r1", tool = "echo")
+  )
+
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(
+      "r1",
+      "tools/call",
+      list(name = "refresh"),
+      id = "p-1",
+      request_id = "q1"
+    )
+  )
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(
+      "r1",
+      "tools/call",
+      list(name = "secret"),
+      id = "p-2",
+      request_id = "q2"
+    )
+  )
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(
+      "r1",
+      "resources/read",
+      list(uri = "ui://fx"),
+      id = "p-3",
+      request_id = "q3"
+    )
+  )
+  helper_drain()
+
+  responses <- lapply(
+    helper_sent(session, "shinymcp-host-response"),
+    `[[`,
+    "response"
+  )
+  by_id <- stats::setNames(responses, vapply(responses, function(r) r$id, ""))
+  expect_equal(by_id[["p-1"]]$result$structuredContent, list(out = "refreshed"))
+  expect_equal(by_id[["p-2"]]$error$code, RPC_INVALID_PARAMS)
+  expect_equal(by_id[["p-3"]]$result$contents[[1]]$uri, "ui://fx")
+  # The page's own ids come back; the server saw the client's.
+  methods <- vapply(
+    fx$requests(),
+    function(r) jsonlite::parse_json(rawToChar(r$body))$method,
+    ""
+  )
+  expect_false(
+    "p-1" %in%
+      vapply(
+        fx$requests(),
+        function(r) {
+          as.character(jsonlite::parse_json(rawToChar(r$body))$id %||% "")
+        },
+        ""
+      )
+  )
+  expect_equal(sum(methods == "tools/call"), 1)
+})
+
+test_that("a remote server that fails answers the page with an error", {
+  skip_if_not_installed("later")
+  client <- McpClient$new(
+    "http://127.0.0.1:1/mcp",
+    name = "down",
+    transport = function(request, async = FALSE, timeout = 60) {
+      promises::promise_reject(simpleError("Connection refused"))
+    }
+  )
+  source <- as_host_source(client)
+  source$tools_async <- function(refresh = FALSE) {
+    promises::promise_resolve(list(list(
+      name = "open",
+      `_meta` = list(ui = list(resourceUri = "ui://down"))
+    )))
+  }
+  session <- helper_fake_session()
+  registry <- helper_host_registry(
+    d1 = new_mcp_host_state(source, "d1", tool = "open")
+  )
+
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request("d1", "tools/call", list(name = "open"), id = 4)
+  )
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(list(instanceId = "d1", source = "down", tool = "open"))
+  )
+  helper_drain()
+
+  response <- helper_sent(session, "shinymcp-host-response")[[1]]$response
+  expect_equal(response$id, 4)
+  expect_equal(response$error$code, RPC_INTERNAL_ERROR)
+  expect_match(response$error$message, "Couldn't reach")
+  attached <- helper_sent(session, "shinymcp-host-attached")[[1]]
+  expect_false(attached$ok)
+  expect_match(attached$error, "^Couldn't load the app")
+})
+
+test_that("an instance without a title of its own takes its page's", {
+  expect_equal(
+    html_page_title("<html><head><title> A &amp; B </title></head></html>"),
+    "A & B"
+  )
+  expect_null(html_page_title("<html><head></head></html>"))
+  expect_null(html_page_title("<title></title>"))
+  expect_null(html_page_title(NULL))
+
+  skip_if_not_installed("later")
+  fx <- serving_client(
+    McpServer$new(serving_app(name = "fx", title = "Effects")),
+    name = "remote"
+  )
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(fx$client, "r1", tool = "echo")
+  expect_equal(state$title, "remote")
+  registry <- helper_host_registry(r1 = state)
+
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state))
+  )
+  helper_drain()
+  expect_equal(
+    helper_sent(session, "shinymcp-host-attached")[[1]]$title,
+    "Effects"
+  )
+  expect_equal(state$title, "Effects")
+
+  named <- new_mcp_host_state(fx$client, "r2", tool = "echo", title = "Mine")
+  expect_false(named$default_title)
 })

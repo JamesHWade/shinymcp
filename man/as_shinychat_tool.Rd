@@ -3,10 +3,10 @@
 \name{as_shinychat_tool}
 \alias{as_shinychat_tool}
 \alias{mcp_content_result}
-\title{Use an MCP App as a shinychat tool}
+\title{Use an MCP App's tools in a shinychat conversation}
 \usage{
 as_shinychat_tool(
-  app,
+  source,
   tool = NULL,
   value_fn = NULL,
   summary = NULL,
@@ -18,8 +18,9 @@ as_shinychat_tool(
 )
 
 mcp_content_result(
-  app,
+  source,
   value,
+  tool = NULL,
   arguments = NULL,
   title = NULL,
   icon = NULL,
@@ -30,21 +31,22 @@ mcp_content_result(
 )
 }
 \arguments{
-\item{app}{An \link{McpApp}, or anything \code{\link[=as_mcp_app]{as_mcp_app()}} accepts.}
+\item{source}{Where the tools come from: an \link{McpApp} (or a list of
+them), or an \link{McpClient} from \code{\link[=mcp_client]{mcp_client()}}.}
 
-\item{tool}{Names of the app's tools to wrap. Defaults to every tool the
-model may call.}
+\item{tool}{Names of the tools to wrap. Defaults to every tool the model
+may call.}
 
 \item{value_fn}{Optional function computing the value returned to the
-model. It can take any of \code{raw_result} (what the tool function
-returned), \code{result} (the MCP result), and \code{arguments}.}
+model. It can take any of \code{result} (the MCP result), \code{arguments}, and,
+for apps in this process, \code{raw_result} (what the tool function
+returned).}
 
 \item{summary}{Optional text shown in the card when it can't show the
 app, or a function taking the same arguments as \code{value_fn}.}
 
 \item{title, icon}{Card title and icon (a string or tag, or a function
-taking the same arguments as \code{value_fn}). Default to the tool's title
-annotation.}
+taking the same arguments as \code{value_fn}). Default to the tool's title.}
 
 \item{open}{Whether the card starts expanded.}
 
@@ -54,24 +56,27 @@ annotation.}
 
 \item{value}{For \code{mcp_content_result()}, the value for the model.}
 
-\item{arguments}{For \code{mcp_content_result()}, arguments for the app's
-first tool, called when the card opens.}
+\item{arguments}{For \code{mcp_content_result()}, arguments for the tool that
+opens the app, called when the card is shown.}
 
 \item{text}{Plain-text fallback shown where the app can't render.}
 }
 \value{
-For one tool, an \code{\link[ellmer:tool]{ellmer::tool()}}; for several, a named list of
-them.
+For one tool, an \code{\link[ellmer:tool]{ellmer::tool()}}; for several, a list of them.
 }
 \description{
-\code{as_shinychat_tool()} turns an app's tools into \code{\link[ellmer:tool]{ellmer::tool()}} objects
-for a chat built with shinychat. When the model calls one, the tool runs
-and shinychat shows the app, live, in the tool's card. The model gets the
-tool's structured result (or the text, if there is none); the person
-gets the app.
+\code{as_shinychat_tool()} turns the tools of an app, or of a remote MCP
+server, into \code{\link[ellmer:tool]{ellmer::tool()}} objects for a chat built with shinychat.
+When the model calls one that shows an app, shinychat shows the app,
+live, in the tool's card. The model gets the tool's structured result
+(or the text, if there is none); the person gets the app.
 
-\code{mcp_content_result()} builds the same kind of card by hand, for a
-result you append to the chat yourself.
+\code{\link[=mcp_chat_host]{mcp_chat_host()}} does this for you and also passes what the person does
+in the cards on to the model. Use \code{as_shinychat_tool()} on its own for
+cards without that.
+
+\code{mcp_content_result()} builds a card by hand, for a result you append to
+the chat yourself.
 }
 \examples{
 \dontrun{
@@ -81,6 +86,8 @@ chat$register_tool(as_shinychat_tool(app, title = "Penguins"))
 }
 \seealso{
 Other hosting:
+\code{\link[=mcp_chat_host]{mcp_chat_host()}},
+\code{\link[=mcp_client]{mcp_client()}},
 \code{\link[=mcp_host_ui]{mcp_host_ui()}}
 }
 \concept{hosting}

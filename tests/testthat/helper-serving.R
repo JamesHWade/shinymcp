@@ -320,3 +320,68 @@ serving_preview_config <- function(page) {
   }
   jsonlite::fromJSON(match[[2]], simplifyVector = FALSE)
 }
+
+# ---- A client connected in process ----
+
+# A transport for McpClient that answers from a shinymcp endpoint in this
+# process, without a network. `legacy = TRUE` refuses `server/discover`, as
+# servers of the handshake era do; `sse = TRUE` answers in server-sent
+# events, with a notification before the response. `$requests` records
+# every request; `$expire()` makes the server forget its sessions.
+serving_transport <- function(server, legacy = FALSE, sse = FALSE) {
+  state <- new.env(parent = emptyenv())
+  state$handler <- mcp_http_handler(server, local = TRUE)
+  state$requests <- list()
+  transport <- function(request, async = FALSE, timeout = 60) {
+    state$requests[[length(state$requests) + 1]] <- request
+    body_text <- if (!is.null(request$body)) rawToChar(request$body) else ""
+    message <- if (nzchar(body_text)) jsonlite::parse_json(body_text)
+    if (legacy && identical(message$method, "server/discover")) {
+      response <- list(
+        status = 400L,
+        headers = list(`content-type` = "application/json"),
+        body = '{"jsonrpc":"2.0","id":null,"error":{"code":-32000,"message":"Bad Request: Server not initialized"}}'
+      )
+    } else {
+      req <- serving_request(
+        body = if (nzchar(body_text)) body_text,
+        method = request$method,
+        headers = request$headers
+      )
+      req$HTTP_HOST <- "127.0.0.1"
+      out <- state$handler(req)
+      headers <- out$headers %||% list()
+      names(headers) <- tolower(names(headers))
+      body <- out$body %||% ""
+      if (sse && nzchar(body)) {
+        body <- paste0(
+          "event: message\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n",
+          "event: message\ndata: ",
+          body,
+          "\n\n"
+        )
+        headers[["content-type"]] <- "text/event-stream"
+      }
+      response <- list(status = out$status, headers = headers, body = body)
+    }
+    if (async) promises::promise_resolve(response) else response
+  }
+  list(
+    transport = transport,
+    requests = function() state$requests,
+    expire = function() {
+      state$handler <- mcp_http_handler(server, local = TRUE)
+    }
+  )
+}
+
+serving_client <- function(server, ..., headers = NULL, name = NULL) {
+  fake <- serving_transport(server, ...)
+  client <- McpClient$new(
+    "http://127.0.0.1/mcp",
+    headers = headers,
+    name = name,
+    transport = fake$transport
+  )
+  list(client = client, requests = fake$requests, expire = fake$expire)
+}

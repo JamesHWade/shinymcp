@@ -110,15 +110,33 @@ helper_fake_session <- function(user = NULL, groups = NULL) {
   session
 }
 
-# A registry like the one ensure_shiny_host_registry() keeps per session.
+# A registry like the one ensure_shiny_host_registry() keeps per session,
+# holding the given instance states (and their sources).
 helper_host_registry <- function(...) {
-  registry <- new.env(parent = emptyenv())
-  registry$instances <- new.env(parent = emptyenv())
+  registry <- new_host_registry()
   states <- list(...)
   for (id in names(states)) {
     registry$instances[[id]] <- states[[id]]
+    register_host_source(registry, states[[id]]$source)
   }
   registry
+}
+
+# Run later() callbacks until none are left, so promise chains settle.
+helper_drain <- function(max = 200) {
+  for (i in seq_len(max)) {
+    if (later::loop_empty()) {
+      break
+    }
+    later::run_now(0.01)
+  }
+  invisible()
+}
+
+# The messages of one type a helper_fake_session() was sent.
+helper_sent <- function(session, type) {
+  sent <- Filter(function(m) identical(m$type, type), session$sent)
+  lapply(sent, `[[`, "message")
 }
 
 # A JSON-RPC request from a hosted page, as the host script sends it.
@@ -149,4 +167,33 @@ helper_png_file <- function(width = 20, height = 20) {
   graphics::plot.new()
   grDevices::dev.off()
   path
+}
+
+# The value of `x`, or of the promise `x` once it settles.
+helper_value <- function(x) {
+  if (!promises::is.promising(x)) {
+    return(x)
+  }
+  out <- NULL
+  err <- NULL
+  done <- FALSE
+  promises::then(
+    x,
+    onFulfilled = function(value) {
+      out <<- value
+      done <<- TRUE
+    },
+    onRejected = function(e) {
+      err <<- e
+      done <<- TRUE
+    }
+  )
+  helper_drain()
+  if (!done) {
+    stop("The promise didn't settle.")
+  }
+  if (!is.null(err)) {
+    stop(err)
+  }
+  out
 }

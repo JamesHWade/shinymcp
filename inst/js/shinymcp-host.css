@@ -87,6 +87,17 @@
   display: none;
 }
 
+.shinymcp-host-fallback {
+  padding: 8px 12px;
+  font-size: 0.875rem;
+  white-space: pre-wrap;
+}
+
+.shinymcp-host-fallback[hidden],
+.shinymcp-host-frame[hidden] {
+  display: none;
+}
+
 .shinymcp-host-frame {
   display: block;
   width: 100%;
