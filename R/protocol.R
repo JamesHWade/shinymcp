@@ -223,7 +223,18 @@ McpServer <- R6::R6Class(
           status = 400L
         ))
       }
-      is_notification <- is.null(message$id)
+      # A notification has no id at all. An id that's there must be a
+      # string or a number (MCP doesn't allow null); a request with any
+      # other id gets an error it can't be matched to.
+      is_notification <- !"id" %in% names(message)
+      if (!is_notification && is.null(request_id(message))) {
+        return(jsonrpc_error(
+          NULL,
+          RPC_INVALID_REQUEST,
+          "Invalid Request: id must be a string or a number.",
+          status = 400L
+        ))
+      }
       params <- message$params
       if (!is.null(params) && !is_json_object(params)) {
         return(

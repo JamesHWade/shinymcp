@@ -427,6 +427,28 @@ test_that("responses sent by the client get no response", {
   )))
 })
 
+test_that("a request whose id is null or not a string or number is refused", {
+  server <- McpServer$new(serving_app())
+  for (json in c(
+    '{"jsonrpc":"2.0","id":null,"method":"ping"}',
+    '{"jsonrpc":"2.0","id":true,"method":"ping"}',
+    '{"jsonrpc":"2.0","id":{"a":1},"method":"ping"}',
+    '{"jsonrpc":"2.0","id":[1],"method":"ping"}'
+  )) {
+    response <- server$handle(from_json(json))
+    expect_false(is.null(response), info = json)
+    expect_null(response$id, info = json)
+    expect_equal(response$error$code, -32600L, info = json)
+    expect_match(
+      serving_json_text(strip_http_status(response)),
+      '"id":null',
+      fixed = TRUE
+    )
+  }
+  # Without an id at all, it's a notification: no answer.
+  expect_null(server$handle(from_json('{"jsonrpc":"2.0","method":"ping"}')))
+})
+
 test_that("a message that is neither request nor response is refused", {
   server <- McpServer$new(serving_app())
   for (json in c(

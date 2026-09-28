@@ -432,9 +432,18 @@ test_that("async requests to a server that never answers time out", {
   skip_if_not_installed("httpuv")
   skip_if_not_installed("httr2")
   skip_if_not_installed("later")
-  # A socket that takes connections and never answers them.
-  port <- httpuv::randomPort()
-  silent <- serverSocket(port)
+  # A socket that takes connections and never answers them. A port another
+  # test has just let go of may not be free to bind yet, so try a few.
+  silent <- NULL
+  for (i in 1:10) {
+    port <- httpuv::randomPort()
+    silent <- tryCatch(
+      suppressWarnings(serverSocket(port)),
+      error = function(e) NULL
+    )
+    if (!is.null(silent)) break
+  }
+  skip_if(is.null(silent), "No port free for a silent server.")
   on.exit(close(silent), add = TRUE)
   client <- mcp_client(sprintf("http://127.0.0.1:%d/mcp", port), timeout = 1)
 
