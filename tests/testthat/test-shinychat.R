@@ -422,6 +422,27 @@ test_that("mcp_content_result() shows text where the app can't render", {
   expect_equal(mcp_content_result(app, value = 1)@request@arguments, list())
 })
 
+test_that("mcp_content_result() needs a remote server's tool named", {
+  skip_if_not_installed("ellmer")
+  blocking <- 0
+  client <- McpClient$new(
+    "http://127.0.0.1:1/mcp",
+    name = "remote",
+    transport = function(request, async = FALSE, timeout = 60) {
+      blocking <<- blocking + !async
+      stop("no request should be sent")
+    }
+  )
+  expect_error(
+    mcp_content_result(client, value = "shown"),
+    "Name the `tool`",
+    class = "shinymcp_error_validation"
+  )
+  result <- mcp_content_result(client, value = "shown", tool = "open_app")
+  expect_equal(result@request@name, "open_app")
+  expect_equal(blocking, 0)
+})
+
 test_that("mcp_content_result() for an app without tools is named after the app", {
   skip_if_not_installed("ellmer")
   result <- mcp_content_result(

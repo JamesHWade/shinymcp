@@ -35,7 +35,9 @@ mcp_content_result(
 them), or an \link{McpClient} from \code{\link[=mcp_client]{mcp_client()}}.}
 
 \item{tool}{Names of the tools to wrap. Defaults to every tool the model
-may call.}
+may call. For \code{mcp_content_result()}, the tool that opens the app: by
+default the first the model may call that shows one. Name it for a
+remote server.}
 
 \item{value_fn}{Optional function computing the value returned to the
 model. It can take any of \code{result} (the MCP result), \code{arguments}, and,

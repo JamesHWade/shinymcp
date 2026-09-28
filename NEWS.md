@@ -69,6 +69,7 @@ section.
   `mcp_content_result()` take a `source`, an app or an `mcp_client()`,
   where they took `app`. A pane's `execute()` takes `inputs`, and
   `value_fn`'s `raw_result` is there only for apps in the same process.
+  `mcp_content_result()` needs its `tool` named for a remote server.
 * A host passes on only the requests an app's page may make: tools visible
   to the app, resource reads, and `ping`.
 * `preview_app()` shows the app as a chat client does, with panels for what

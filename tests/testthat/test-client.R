@@ -255,6 +255,27 @@ test_that("HTTP errors without a JSON-RPC body are errors", {
   expect_equal(response$error$code, -32020L)
 })
 
+test_that("a null result is a result, in JSON and in server-sent events", {
+  body <- '{"jsonrpc":"2.0","id":"c-3","result":null}'
+  for (response in list(
+    list(
+      status = 200L,
+      headers = list(`content-type` = "application/json"),
+      body = body
+    ),
+    list(
+      status = 200L,
+      headers = list(`content-type` = "text/event-stream"),
+      body = paste0("event: message\ndata: ", body, "\n\n")
+    )
+  )) {
+    answer <- read_client_response(response, "c-3")
+    expect_null(answer$error)
+    expect_true("result" %in% names(answer))
+    expect_null(client_result(answer, "custom/method"))
+  }
+})
+
 test_that("a server that can't be reached is an error that names it", {
   client <- McpClient$new(
     "http://127.0.0.1:1/mcp",

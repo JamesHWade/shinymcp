@@ -1892,23 +1892,29 @@
   }
 
   var pendingTools = {};
+  var toolCalls = {};
 
   function callTools(tools) {
     each(tools, function (tool) {
+      // Only the latest call to a tool may fill its outputs: an answer for
+      // older inputs that arrives after it (a slow server, or one of
+      // several behind a load balancer) is dropped.
+      var call = (toolCalls[tool.name] || 0) + 1;
+      toolCalls[tool.name] = call;
       pendingTools[tool.name] = (pendingTools[tool.name] || 0) + 1;
       var done = function () {
         pendingTools[tool.name] -= 1;
-        markRecalculating(tool.outputs, false);
+        var latest = call === toolCalls[tool.name];
+        if (latest) markRecalculating(tool.outputs, false);
+        return latest;
       };
       markRecalculating(tool.outputs, true);
       callTool(tool.name, toolArguments(tool)).then(
         function (result) {
-          done();
-          handleResult(result, {});
+          if (done()) handleResult(result, {});
         },
         function (err) {
-          done();
-          showError("The " + tool.name + " tool failed: " + err.message);
+          if (done()) showError("The " + tool.name + " tool failed: " + err.message);
         }
       );
     });

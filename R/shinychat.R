@@ -19,7 +19,9 @@
 #' @param source Where the tools come from: an [McpApp] (or a list of
 #'   them), or an [McpClient] from [mcp_client()].
 #' @param tool Names of the tools to wrap. Defaults to every tool the model
-#'   may call.
+#'   may call. For `mcp_content_result()`, the tool that opens the app: by
+#'   default the first the model may call that shows one. Name it for a
+#'   remote server.
 #' @param value_fn Optional function computing the value returned to the
 #'   model. It can take any of `result` (the MCP result), `arguments`, and,
 #'   for apps in this process, `raw_result` (what the tool function
@@ -332,6 +334,17 @@ mcp_content_result <- function(
 ) {
   rlang::check_installed("ellmer", reason = "for shinychat tool results.")
   source <- as_host_source(source)
+  # The card is saved naming its tool. Picking a remote server's default
+  # would mean listing its tools here, holding up the session.
+  if (is.null(tool) && !in_process_source(source)) {
+    shinymcp_abort(
+      c(
+        "Name the {.arg tool} that opens the app.",
+        "i" = "{.val {source$key}} is a remote server; listing its tools here would hold up the Shiny session."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
   tool <- tool %||% default_source_tool(source)
   request <- ellmer::ContentToolRequest(
     id = unique_id("call"),

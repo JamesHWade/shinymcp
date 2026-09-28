@@ -711,10 +711,11 @@ read_client_response <- function(response, id) {
     list()
   }
   for (message in messages) {
+    # A result can be null, so look for the field, not its value.
     if (
       is.list(message) &&
         identical(as.character(message$id), as.character(id)) &&
-        (!is.null(message$result) || !is.null(message$error))
+        any(c("result", "error") %in% names(message))
     ) {
       return(message)
     }
