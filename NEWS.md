@@ -27,8 +27,9 @@ section.
   nesting two pages.
 * Plots are drawn at the size of their output. The page tells each tool
   call how big its plot outputs are and how dense the screen is, and calls
-  again when an output changes size; `mcp_result_plot()`'s `width`,
-  `height`, and `scale` set a size and density of their own.
+  again when an output changes size; an `mcp_plot()` without a height keeps
+  the plot's shape. `mcp_result_plot()`'s `width`, `height`, and `scale`
+  set a size and density of their own.
 
 ## Protocol and serving
 
@@ -63,6 +64,10 @@ section.
 * `mcp_host_ui()` and `mcp_host_server()` host an app in a pane of any
   Shiny app. The pane's tool is called in R, and `open()` calls it again
   with other arguments. `as_shinychat_tool()` makes the cards on their own.
+* `mcp_host_server()`, `mcp_embed()`, `as_shinychat_tool()`, and
+  `mcp_content_result()` take a `source`, an app or an `mcp_client()`,
+  where they took `app`. A pane's `execute()` takes `inputs`, and
+  `value_fn`'s `raw_result` is there only for apps in the same process.
 * A host passes on only the requests an app's page may make: tools visible
   to the app, resource reads, and `ping`.
 * `preview_app()` shows the app as a chat client does, with panels for what
@@ -131,7 +136,7 @@ section.
 
 ## Documentation
 
-* New articles: building an app from tools, running an app, apps in
-  shinychat and Shiny, rewriting a Shiny app as tools, serving a Shiny app
-  as it is, how shinymcp works, and troubleshooting. The README and "Get
+* New articles: building an app from tools, running an app, hosting MCP
+  Apps in Shiny, rewriting a Shiny app as tools, serving a Shiny app as it
+  is, how shinymcp works, and troubleshooting. The README and "Get
   started" build an app from a tool.

@@ -30,7 +30,7 @@ ui <- page_fillable(
     card(
       card_header("Sample size"),
       mcp_text("answer"),
-      mcp_plot("curve"),
+      mcp_plot("curve", height = 300),
       mcp_table("options")
     )
   )
@@ -65,8 +65,6 @@ sample_size <- ellmer::tool(
             xlab = "Participants per group", ylab = "Power", ylim = c(0, 1), las = 1)
           abline(h = power, v = n, lty = 2, col = "grey55")
         },
-        width = 640,
-        height = 300,
         text = "Power curve against participants per group."
       ),
       options = options,

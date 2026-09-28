@@ -120,3 +120,29 @@ The page tells the model through the client, which must support
 `ui/update-model-context`. The preview's Context tab shows what the app
 sent. `mcp_app(model_context = FALSE)` turns it off; in a live Shiny app,
 `mcp_model_context()` replaces the default summary.
+
+In a shinychat conversation, `mcp_chat_host()` passes it on before each
+message the person sends, as a message of its own; `as_shinychat_tool()`
+alone doesn't. Some providers, such as AWS Bedrock, refuse two user
+messages in a row. For those, set `context = FALSE` and put `host$context()`
+in the person's message yourself.
+
+## An app in a Shiny app doesn't show
+
+A card or pane that can't show its app says why, above where the app would
+be:
+
+* *Couldn't reach the app's server*, or *Couldn't load the app*: the URL
+  given to `mcp_client()` is wrong, the server isn't running, or it wants
+  credentials in `headers`. `client$tools()` in the console fails with the
+  same error, in more detail.
+* *This app isn't available any more*: a card restored with a saved
+  conversation, whose server this session doesn't host. Give
+  `mcp_chat_host()` the same sources in every session, with the same names.
+  A client is named after its URL unless you give it a `name`.
+* *The tool ... doesn't show an app*: the tool declares no page. The model
+  still gets its result.
+
+An app that holds requests open while it waits for changes, as a Shiny app
+served with Shiny's own MCP support can, needs a client `timeout` longer
+than that wait.

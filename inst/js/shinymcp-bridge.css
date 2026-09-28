@@ -167,9 +167,9 @@ pre.shinymcp-output:empty {
   object-fit: contain;
 }
 
-/* A tool draws its plot at a size of its own, so fit it into the box a
-   plotOutput() sets, as with a fixed-height mcp_plot(). (A live Shiny app
-   draws each plot at its box's size.) */
+/* Until a tool has drawn a plot at its box's size (the model's call that
+   opens the app can't know it), fit the plot into the box a plotOutput()
+   sets, as with a fixed-height mcp_plot(). */
 .shinymcp-tools .shiny-plot-output img {
   width: 100%;
   height: 100%;

@@ -345,10 +345,12 @@ resolve_table_output <- function(value) {
 resolve_plot_output <- function(value, size = NULL, pixel_ratio = NULL) {
   opts <- value$options
   # A plot without a size of its own follows its output's, and the page
-  # asks again when that changes.
+  # asks again when that changes. An output that takes its image's height
+  # gives only a width; the plot keeps its own shape.
   fit <- is.null(opts$width) || is.null(opts$height)
+  shape <- (opts$height %||% 500) / (opts$width %||% 800)
   width <- opts$width %||% size$width %||% 800
-  height <- opts$height %||% size$height %||% 500
+  height <- opts$height %||% size$height %||% round(width * shape)
   png <- render_plot_png(
     value$value,
     width = width,

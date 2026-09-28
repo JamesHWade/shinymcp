@@ -656,8 +656,9 @@ unclass_error <- function(x) {
 
 #' The sizes of the page's outputs, as a page reports them with a call
 #'
-#' A named list of `list(width, height)` in CSS pixels; anything else is
-#' left out.
+#' A named list of `list(width, height)` in CSS pixels. An output whose
+#' height follows its image (an `mcp_plot()` without a height) has only a
+#' width. Anything else is left out.
 #' @noRd
 output_sizes <- function(x) {
   if (!is_json_object(x) || length(x) == 0) {
@@ -667,9 +668,13 @@ output_sizes <- function(x) {
   sizes <- list()
   for (id in names(x)) {
     size <- x[[id]]
-    if (is.list(size) && ok(size$width) && ok(size$height)) {
-      sizes[[id]] <- list(width = size$width, height = size$height)
+    if (!is.list(size) || !ok(size$width)) {
+      next
     }
+    sizes[[id]] <- compact_list(list(
+      width = size$width,
+      height = if (ok(size$height)) size$height
+    ))
   }
   if (length(sizes)) sizes
 }

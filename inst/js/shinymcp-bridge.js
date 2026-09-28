@@ -1918,17 +1918,20 @@
   // drawn before the page could say (the model's call that opened it).
   function plotsToRefit() {
     var ids = [];
-    each(document.querySelectorAll(".shiny-plot-output[id]"), function (el) {
+    function off(outer, drawn) {
+      return Math.abs(outer - drawn) > Math.max(8, drawn * 0.05);
+    }
+    each(document.querySelectorAll(PLOT_OUTPUTS), function (el) {
       var img = el.querySelector("img[data-shinymcp-fit]");
       if (!img) return;
       var w = parseFloat(img.getAttribute("data-shinymcp-width") || 0);
       var h = parseFloat(img.getAttribute("data-shinymcp-height") || 0);
       var ow = el.clientWidth;
       var oh = el.clientHeight;
-      if (!w || !h || !ow || !oh) return;
-      if (Math.abs(ow - w) > Math.max(8, w * 0.05) || Math.abs(oh - h) > Math.max(8, h * 0.05)) {
-        ids.push(el.id);
-      }
+      if (!w || !ow) return;
+      // An output that takes its image's height only has a width to match.
+      var tall = !followsImageHeight(el) && h && oh && off(oh, h);
+      if (off(ow, w) || tall) ids.push(outputKey(el));
     });
     return ids;
   }
@@ -1978,7 +1981,7 @@
         if (tools.length) callTools(tools);
       }, 300);
     });
-    each(document.querySelectorAll(".shiny-plot-output[id]"), function (el) { observer.observe(el); });
+    each(document.querySelectorAll(PLOT_OUTPUTS), function (el) { observer.observe(el); });
   }
 
   function callTool(name, args) {
@@ -2013,12 +2016,38 @@
   var inFlight = false;
   var queued = null;
 
+  // Plot outputs a tool can draw to fit: Shiny's plotOutput() and
+  // mcp_plot().
+  var PLOT_OUTPUTS = '.shiny-plot-output[id], [data-shinymcp-output-type="plot"]';
+
+  // The id a tool's result uses for an output.
+  function outputKey(el) {
+    return el.getAttribute("data-shinymcp-output") || el.id;
+  }
+
+  // An mcp_plot() without a height takes its image's, so only its width
+  // is the output's to give.
+  function followsImageHeight(el) {
+    return hasClass(el, "shinymcp-plot") && !hasClass(el, "shinymcp-plot-fixed");
+  }
+
   function outputSizes() {
     var sizes = {};
-    each(document.querySelectorAll(".shiny-plot-output[id], .shiny-image-output[id]"), function (el) {
+    if (MODE !== "tools") {
+      each(document.querySelectorAll(".shiny-plot-output[id], .shiny-image-output[id]"), function (el) {
+        var w = el.clientWidth;
+        var h = el.clientHeight;
+        if (w > 0 && h > 0) sizes[el.id] = { width: w, height: h };
+      });
+      return sizes;
+    }
+    each(document.querySelectorAll(PLOT_OUTPUTS + ", .shiny-image-output[id]"), function (el) {
+      var key = outputKey(el);
       var w = el.clientWidth;
       var h = el.clientHeight;
-      if (w > 0 && h > 0) sizes[el.id] = { width: w, height: h };
+      if (!key || !(w > 0)) return;
+      if (followsImageHeight(el)) sizes[key] = { width: w };
+      else if (h > 0) sizes[key] = { width: w, height: h };
     });
     return sizes;
   }

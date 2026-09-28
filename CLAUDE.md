@@ -178,10 +178,12 @@ out; in results for the model, large ones go by name and the page fetches
 them through the view tool.
 
 Each call the page makes carries `_meta["shinymcp/sizes"]` (its plot
-outputs' sizes) and `_meta["shinymcp/pixelRatio"]`. A plot without a size
-of its own is drawn at its output's and marked `fit`; the page calls a
-tool again when its fitted plots don't match their outputs (after the
-model's call opens the app, and on resize).
+outputs' sizes: `plotOutput()` and `mcp_plot()`; an `mcp_plot()` without a
+height gives only its width) and `_meta["shinymcp/pixelRatio"]`. A plot
+without a size of its own is drawn at its output's (keeping its shape when
+only a width is given) and marked `fit`; the page calls a tool again when
+its fitted plots don't match their outputs (after the model's call opens
+the app, and on resize).
 
 ### Hosts
 
@@ -241,9 +243,9 @@ config (`#shinymcp-config`) at the end of `<body>`.
 
 **Core** (Imports): cli, htmltools, jsonlite, methods, R6, rlang,
 stats, tools, utils
-**Optional** (Suggests): base64enc, bslib, DT, ellmer, ggplot2, grDevices,
-htmlwidgets, httpuv, httr2, knitr, later, palmerpenguins, promises,
-rmarkdown, S7, shiny, shinychat, shinyWidgets, testthat, withr
+**Optional** (Suggests): base64enc, bslib, curl, DT, ellmer, ggplot2,
+grDevices, htmlwidgets, httpuv, httr2, knitr, later, palmerpenguins,
+promises, rmarkdown, S7, shiny, shinychat, shinyWidgets, testthat, withr
 
 Suggests must be guarded at every call site (`rlang::check_installed()` or
 `requireNamespace()`), since R CMD check builds without them.

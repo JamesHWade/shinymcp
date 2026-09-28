@@ -79,11 +79,11 @@ none, as it would from any MCP client. Then the person uses the app, and
 the host keeps the model in step with it:
 
 * **What the person does reaches the model.** An app tells its host what
-  the model should know about it: shinymcp apps report their inputs and
-  what they show. Before each message the person sends, the model is told
-  what every open app reports. It sees the apps as they are now, not as
-  they were a few messages ago, and the saved conversation keeps only what
-  the person and the model said.
+  the model should know about it; an app built with shinymcp reports the
+  values the person has set in it. Before each message the person sends,
+  the model is told what every open app reports. It sees the apps as they
+  are now, not as they were a few messages ago, and the saved conversation
+  keeps only what the person and the model said.
 * **Apps can suggest a message.** When an app asks to post one (a button
   such as "Ask about this"), it goes into the chat's input box for the
   person to read and send. `messages = "submit"` sends it at once, for apps

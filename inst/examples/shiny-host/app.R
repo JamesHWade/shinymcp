@@ -29,9 +29,7 @@ show_cars <- ellmer::tool(
           "Weight against fuel economy for the",
           cyl,
           "cylinder cars."
-        ),
-        width = 640,
-        height = 280
+        )
       ),
       count = paste(nrow(cars), "cars")
     )

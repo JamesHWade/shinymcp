@@ -103,6 +103,33 @@ test_that("a plot without a size of its own follows its output's", {
   expect_null(fixed$render$fit)
 })
 
+test_that("an output that gives only a width gets a plot in the plot's own shape", {
+  auto <- resolve_plot_output(
+    mcp_result_plot(draw_points),
+    size = list(width = 400),
+    pixel_ratio = 1
+  )
+  expect_equal(
+    auto$render[c("width", "height", "fit")],
+    list(width = 400, height = 250, fit = TRUE)
+  )
+  expect_equal(png_dims(auto$image$data), c(400, 250))
+
+  # A shape of its own: a height, or a width and height, set the ratio.
+  tall <- resolve_plot_output(
+    mcp_result_plot(draw_points, height = 600),
+    size = list(width = 400),
+    pixel_ratio = 1
+  )$render
+  expect_equal(c(tall$width, tall$height), c(400, 600))
+  wide <- resolve_plot_output(
+    mcp_result_plot(draw_points, width = 900),
+    size = list(width = 400),
+    pixel_ratio = 1
+  )$render
+  expect_equal(c(wide$width, wide$height), c(900, 500))
+})
+
 test_that("each plot in a result is drawn at its output's size", {
   result <- build_tool_result(
     list(a = mcp_result_plot(draw_points), b = mcp_result_plot(draw_points)),
@@ -164,9 +191,15 @@ test_that("output sizes and pixel ratios from a page are checked", {
       a = list(width = 10, height = 20),
       b = list(width = "x", height = 1),
       c = list(width = 0, height = 1),
-      d = list(width = 20000, height = 1)
+      d = list(width = 20000, height = 1),
+      e = list(width = 30),
+      f = list(width = 40, height = -1)
     )),
-    list(a = list(width = 10, height = 20))
+    list(
+      a = list(width = 10, height = 20),
+      e = list(width = 30),
+      f = list(width = 40)
+    )
   )
   expect_equal(pixel_ratio(2.5), 2.5)
   expect_equal(pixel_ratio(0.5), 1)

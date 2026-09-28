@@ -18,9 +18,10 @@ mcp_html(id)
 \arguments{
 \item{id}{Output id, matching a name in the tool's result.}
 
-\item{width, height}{CSS size of the plot area; numbers are pixels. With
-\code{height = NULL} the plot keeps its own aspect ratio; with a height, it's
-scaled to fit.}
+\item{width, height}{CSS size of the plot area; numbers are pixels. A
+plot from \code{\link[=mcp_result_plot]{mcp_result_plot()}} without a size of its own is drawn to fill
+it: at this size, or with \code{height = NULL}, at its width and in the
+plot's own shape (800 by 500 unless it says otherwise).}
 }
 \value{
 An htmltools tag.
