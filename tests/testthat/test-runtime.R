@@ -1653,8 +1653,9 @@ test_that("the download action returns the file with the current inputs", {
   expect_identical(download$filename, "faithful-2.csv")
   expect_identical(download$mimeType, "text/csv")
   body <- rawToChar(jsonlite::base64_dec(download$data))
+  # write.csv() ends lines with CRLF on Windows.
   expect_identical(
-    strsplit(body, "\n")[[1]],
+    strsplit(body, "\r?\n")[[1]],
     c('"eruptions","waiting"', "3.6,79", "1.8,54")
   )
 
