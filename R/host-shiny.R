@@ -635,6 +635,7 @@ host_attach <- function(session, registry, event) {
     fail("This app isn't available any more.")
     return(invisible())
   }
+  generation <- state$page_generation
 
   # The tool is checked before the page is read; the tools the page may
   # call come from the same list.
@@ -660,6 +661,7 @@ host_attach <- function(session, registry, event) {
             state$title <- html_page_title(page$html) %||% state$title
           }
           state$attached <- TRUE
+          state$attached_generation <- generation
           reply(compact_list(list(
             ok = TRUE,
             title = state$title,
@@ -754,6 +756,12 @@ handle_host_event <- function(session, registry, event) {
     ))
     return(invisible())
   }
+  # A request is the instance's own while the page that sent it is the
+  # latest. Once a pane's open() loads the app again, the old page's
+  # requests (one still running, or the call a live view makes to close
+  # itself as its page goes) are answered, but not recorded as its calls.
+  generation <- state$attached_generation
+  own <- function() identical(state$page_generation, generation)
   method <- json_field(message, "method")
   params <- json_field(message, "params")
   if (!is_string(method) || !method %in% HOST_PAGE_METHODS) {
@@ -803,12 +811,16 @@ handle_host_event <- function(session, registry, event) {
             return(invisible())
           }
           if (identical(method, "tools/call") && !is.null(response$result)) {
-            mcp_host_record_call(
-              state,
-              json_field(params, "name"),
-              json_field(params, "arguments"),
-              response$result
-            )
+            if (own()) {
+              mcp_host_record_call(
+                state,
+                json_field(params, "name"),
+                json_field(params, "arguments"),
+                response$result
+              )
+            } else {
+              mcp_host_track_views(state, response$result)
+            }
           }
           reply(response)
         },
@@ -968,6 +980,7 @@ mcp_host_server <- function(
           state$arguments <- arguments %||% json_object()
           state$result <- NULL
           state$attached <- FALSE
+          state$page_generation <- state$page_generation + 1L
           send_host_command(root, state, "reopen", trigger = switched$trigger)
           start_host_call(root, state)
           invisible()

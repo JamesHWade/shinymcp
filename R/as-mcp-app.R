@@ -136,14 +136,11 @@ as_mcp_app.shiny.appobj <- function(
   version = "0.1.0",
   ...
 ) {
-  rlang::check_installed(
-    "shiny",
-    reason = "to serve a Shiny app as an MCP App."
-  )
   # A Shiny app from mcp_endpoint() already carries its MCP App.
   if (inherits(x$mcpServer, "McpServer") && length(x$mcpServer$apps) == 1) {
     return(x$mcpServer$apps[[1]])
   }
+  check_live_runtime()
   name <- name %||% "shiny-app"
   # Start the app as runApp() would before building its UI: a shinyAppDir()
   # app's ui.R may use what its global.R defines.

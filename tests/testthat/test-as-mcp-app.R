@@ -418,6 +418,44 @@ test_that("apps from shinyAppDir() give up their UI", {
   expect_identical(res$structuredContent$outputs$greet, "Hi Bo")
 })
 
+test_that("serving a Shiny app live checks for later before starting it", {
+  skip_if_not_installed("shiny")
+  requested <- list()
+  local_mocked_bindings(
+    check_installed = function(pkg, reason = NULL, ..., version = NULL) {
+      versions <- version %||% rep(NA_character_, length(pkg))
+      requested <<- c(requested, as.list(stats::setNames(versions, pkg)))
+      if ("later" %in% pkg) {
+        rlang::abort("later is too old", class = "test_old_later")
+      }
+      invisible()
+    },
+    .package = "rlang"
+  )
+  started <- FALSE
+  app <- shiny::shinyApp(
+    cars_ui(),
+    cars_server,
+    onStart = function() started <<- TRUE
+  )
+
+  expect_error(as_mcp_app(app), class = "test_old_later")
+  expect_error(mcp_endpoint(app), class = "test_old_later")
+  expect_false(started)
+  expect_error(
+    mcp_tool_module(
+      function(id) shiny::textOutput(shiny::NS(id, "count")),
+      function(id) NULL,
+      name = "module",
+      description = "A module."
+    ),
+    class = "test_old_later"
+  )
+  later <- requested[names(requested) == "later"]
+  expect_length(later, 3)
+  expect_true(all(later == "1.4.0"))
+})
+
 test_that("the app's onStop runs when the runtime closes", {
   skip_if_not_installed("shiny")
   local_app_dir_side_effects()

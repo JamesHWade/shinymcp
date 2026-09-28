@@ -84,6 +84,7 @@ mcp_endpoint <- function(
     apps <- as_app_list(apps)
     base <- x
   } else if (inherits(x, "shiny.appobj")) {
+    check_live_runtime()
     # Start the app now, once, as runApp() would, so its UI can be built (a
     # shinyAppDir() app's ui.R may use what global.R defines), then change
     # back: other code shares the process. After that, starting it only

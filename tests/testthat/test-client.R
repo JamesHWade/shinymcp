@@ -182,6 +182,117 @@ test_that("a session the server forgot is started again, once", {
   expect_false(identical(first, second))
 })
 
+# A client of a server without discovery whose tool calls, made
+# asynchronously, are answered only when released, as a slow server's
+# answers are; other requests are answered at once.
+held_client <- function(server) {
+  fx <- serving_transport(server, legacy = TRUE)
+  held <- new.env(parent = emptyenv())
+  held$answers <- list()
+  transport <- function(request, async = FALSE, timeout = 60) {
+    response <- fx$transport(request, async = FALSE, timeout = timeout)
+    if (!async) {
+      return(response)
+    }
+    method <- jsonlite::parse_json(rawToChar(request$body))$method
+    if (!identical(method, "tools/call")) {
+      return(promises::promise_resolve(response))
+    }
+    promises::promise(function(resolve, reject) {
+      held$answers[[length(held$answers) + 1]] <- function() resolve(response)
+    })
+  }
+  list(
+    client = McpClient$new("http://127.0.0.1/mcp", transport = transport),
+    requests = fx$requests,
+    expire = fx$expire,
+    waiting = function() length(held$answers),
+    # Release the first `n` answers held, in order.
+    release = function(n = length(held$answers)) {
+      answers <- held$answers[seq_len(n)]
+      held$answers <- held$answers[-seq_len(n)]
+      for (answer in answers) {
+        answer()
+      }
+    }
+  )
+}
+
+test_that("requests in a session the server forgot go on in one new session", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("later")
+  # The second request's answer arrives while the client connects again
+  # after the first's, or once it has.
+  for (after in c(FALSE, TRUE)) {
+    fx <- held_client(client_server())
+    fx$client$call_tool("echo", list(x = "start"))
+    fx$expire()
+    results <- list()
+    for (x in c("a", "b")) {
+      local({
+        name <- x
+        promises::then(
+          fx$client$call_tool_async("echo", list(x = name)),
+          function(result) results[[name]] <<- result$structuredContent$out,
+          function(e) results[[name]] <<- conditionMessage(e)
+        )
+      })
+    }
+    helper_drain()
+    expect_equal(fx$waiting(), 2)
+
+    if (after) {
+      fx$release(1)
+      helper_drain()
+    }
+    while (fx$waiting() > 0) {
+      fx$release()
+      helper_drain()
+    }
+
+    expect_equal(results[c("a", "b")], list(a = "a", b = "b"))
+    requests <- fx$requests()
+    methods <- vapply(request_bodies(requests), `[[`, "", "method")
+    expect_equal(sum(methods == "initialize"), 2)
+    sessions <- vapply(
+      requests[methods == "tools/call"],
+      function(r) r$headers$`Mcp-Session-Id`,
+      ""
+    )
+    # The start and both requests in the first session; both again in one
+    # new session.
+    expect_length(sessions, 5)
+    expect_length(unique(sessions[1:3]), 1)
+    expect_length(unique(sessions[4:5]), 1)
+    expect_false(identical(sessions[[1]], sessions[[4]]))
+  }
+})
+
+test_that("a request answered after close() isn't sent again", {
+  skip_if_not_installed("promises")
+  skip_if_not_installed("later")
+  fx <- held_client(client_server())
+  fx$client$call_tool("echo", list(x = "start"))
+  fx$expire()
+  failed <- NULL
+  promises::then(
+    fx$client$call_tool_async("echo", list(x = "a")),
+    onRejected = function(e) failed <<- e
+  )
+  helper_drain()
+  fx$client$close()
+  fx$release()
+  helper_drain()
+
+  expect_s3_class(failed, "shinymcp_error_client")
+  methods <- vapply(
+    request_bodies(fx$requests()),
+    function(b) b$method %||% "",
+    ""
+  )
+  expect_equal(sum(methods == "initialize"), 1)
+})
+
 test_that("close() ends the session", {
   fx <- serving_client(client_server(), legacy = TRUE)
   fx$client$call_tool("echo", list(x = "a"))

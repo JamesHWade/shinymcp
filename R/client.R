@@ -290,6 +290,7 @@ McpClient <- R6::R6Class(
     era = NULL,
     version = NULL,
     session_id = NULL,
+    expired_session = NULL,
     server = NULL,
     connecting = NULL,
     next_id = 0L,
@@ -300,7 +301,21 @@ McpClient <- R6::R6Class(
       private$era <- NULL
       private$version <- NULL
       private$session_id <- NULL
+      private$expired_session <- NULL
       private$connecting <- NULL
+    },
+
+    # An answer says the session its request was sent in is gone. The first
+    # such answer forgets the session, so the next connect starts a new one;
+    # the answers to other requests sent in it wait for that connect instead
+    # of starting another, or of forgetting the new session. FALSE when the
+    # session ended otherwise (the client was closed).
+    session_expired = function(session) {
+      if (identical(private$session_id, session)) {
+        private$reset()
+        private$expired_session <- session
+      }
+      identical(private$expired_session, session)
     },
 
     user_headers = function() {
@@ -459,6 +474,7 @@ McpClient <- R6::R6Class(
     # new session, once.
     exchange = function(message, async, raw = FALSE, retried = FALSE) {
       original_id <- message$id
+      session <- if (identical(private$era, "legacy")) private$session_id
       wire <- message
       if (!is.null(original_id)) {
         wire$id <- private$new_id()
@@ -480,11 +496,9 @@ McpClient <- R6::R6Class(
       )
       finish <- function(response) {
         expired <- identical(as.integer(response$status), 404L) &&
-          identical(private$era, "legacy") &&
-          !is.null(private$session_id) &&
+          !is.null(session) &&
           !identical(message$method, "initialize")
-        if (expired && !retried) {
-          private$reset()
+        if (expired && !retried && private$session_expired(session)) {
           if (async) {
             return(promises::then(private$connect_async(), function(...) {
               private$exchange(message, async = TRUE, raw = raw, retried = TRUE)

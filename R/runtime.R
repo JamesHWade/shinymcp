@@ -56,6 +56,7 @@ ShinyRuntime <- R6::R6Class(
           class = "shinymcp_error_validation"
         )
       }
+      check_live_runtime()
       private$server_source <- server
       private$lifecycle <- lifecycle %||% app_lifecycle()
       private$ns_prefix <- ns
@@ -814,9 +815,7 @@ ShinyRuntime <- R6::R6Class(
     settle = function(inst) {
       # Callbacks that are due, such as a finished task's (ExtendedTask,
       # promises), run first, so the flush below sees their results.
-      if (rlang::is_installed("later")) {
-        run_due_callbacks()
-      }
+      run_due_callbacks()
       now <- as.numeric(Sys.time())
       elapsed <- max(0, (now - inst$clock) * 1000)
       inst$clock <- now
@@ -1338,6 +1337,18 @@ app_lifecycle <- function(on_start = NULL, on_stop = NULL) {
 }
 
 # ---- Session plumbing ----
+
+#' Check for what the live runtime needs
+#'
+#' Shiny, and later to run the event loop's callbacks and read outputs.
+#' @noRd
+check_live_runtime <- function() {
+  rlang::check_installed(
+    c("shiny", "later"),
+    version = c(NA, "1.4.0"),
+    reason = "to run a Shiny app as an MCP App."
+  )
+}
 
 #' An output's value from a mock session
 #'

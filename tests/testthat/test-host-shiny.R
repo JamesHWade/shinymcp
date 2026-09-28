@@ -1180,6 +1180,94 @@ test_that("mcp_host_server() opens the app again with other arguments", {
   )
 })
 
+test_that("a pane opened again doesn't take the old page's calls as its own", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  capture <- helper_capture_session()
+
+  shiny::testServer(
+    function(id) {
+      mcp_host_server(id, host_app(), arguments = list(name = "Ada"))
+    },
+    args = list(id = "h"),
+    session = capture$session,
+    {
+      host <- session$returned
+      root <- session$rootScope()
+      id <- host$instance_id()
+      state <- root$userData$.shinymcp_hosts$instances[[id]]
+      root$setInputs(
+        shinymcp_host_event = host_attach_event(host_descriptor(state))
+      )
+      helper_drain()
+
+      # The page's requests are answered when released, as by a slow server,
+      # and each opens a live view.
+      held <- list()
+      send <- state$source$send_async
+      state$source$send_async <- function(message, context = list()) {
+        view <- paste0("view-", message$params$arguments$name)
+        promises::promise(function(resolve, reject) {
+          held[[length(held) + 1]] <<- function() {
+            resolve(promises::then(send(message, context), function(response) {
+              response$result[["_meta"]] <- list(
+                "shinymcp/view" = list(instance = view)
+              )
+              response
+            }))
+          }
+        })
+      }
+      ask <- function(name, request_id) {
+        root$setInputs(
+          shinymcp_host_event = helper_host_request(
+            id,
+            "tools/call",
+            list(name = "greet", arguments = list(name = name)),
+            request_id = request_id
+          )
+        )
+        helper_drain()
+      }
+      release <- function() {
+        for (answer in held) {
+          answer()
+        }
+        held <<- list()
+        helper_drain()
+        session$flushReact()
+      }
+
+      # The old page's call is still running when the pane opens again, and
+      # the old page calls again as it goes (a live view closing itself).
+      ask("Old", "q1")
+      host$open(list(name = "Bo"))
+      helper_drain()
+      ask("Leaving", "q2")
+      release()
+
+      expect_equal(host$last_tool_call()$arguments, list(name = "Bo"))
+      # The old page still gets its answers, and its views close with the
+      # pane.
+      responses <- capture$messages("shinymcp-host-response")
+      expect_equal(
+        vapply(responses, function(r) r$requestId, ""),
+        c("q1", "q2")
+      )
+      expect_setequal(state$views, c("view-Old", "view-Leaving"))
+
+      # The new page's calls are the pane's.
+      root$setInputs(
+        shinymcp_host_event = host_attach_event(host_descriptor(state), "a2")
+      )
+      helper_drain()
+      ask("New", "q3")
+      release()
+      expect_equal(host$last_tool_call()$arguments, list(name = "New"))
+    }
+  )
+})
+
 test_that("opening another app's tool in a pane takes that app's trigger", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("later")

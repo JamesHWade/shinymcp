@@ -33,6 +33,10 @@ new_mcp_host_state <- function(
   state$call_seq <- 0L
   state$call_error <- NULL
   state$attached <- FALSE
+  # A pane's open() loads the app again in a new page; the requests of the
+  # page attached before are no longer the instance's own.
+  state$page_generation <- 0L
+  state$attached_generation <- 0L
   state$model_context <- NULL
   state$context_time <- NULL
   state$last_tool_call <- NULL
@@ -66,13 +70,20 @@ mcp_host_callback <- function(state, name, value) {
 #' Record a tool call made in a hosted app
 #' @noRd
 mcp_host_record_call <- function(state, name, arguments, result) {
+  mcp_host_track_views(state, result)
+  call <- list(name = name, arguments = arguments %||% list(), result = result)
+  state$last_tool_call <- call
+  mcp_host_callback(state, "on_tool_call", call)
+  invisible(state)
+}
+
+#' Remember the live view a tool call opened, to close it with the instance
+#' @noRd
+mcp_host_track_views <- function(state, result) {
   view <- result[["_meta"]][["shinymcp/view"]]$instance
   if (is_string(view)) {
     state$views <- unique(c(state$views, view))
   }
-  call <- list(name = name, arguments = arguments %||% list(), result = result)
-  state$last_tool_call <- call
-  mcp_host_callback(state, "on_tool_call", call)
   invisible(state)
 }
 
