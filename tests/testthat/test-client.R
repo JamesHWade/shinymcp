@@ -324,6 +324,19 @@ test_that("the tool list is kept for as long as the server allows", {
   expect_equal(sum(methods == "tools/list"), 2)
 })
 
+test_that("tools(wait = FALSE) returns the last list without asking", {
+  fx <- serving_client(client_server())
+  expect_null(fx$client$tools(wait = FALSE))
+  expect_length(fx$requests(), 0)
+
+  listed <- fx$client$tools()
+  sent <- length(fx$requests())
+  # Even once the list is past its time, it's returned as it is.
+  fx$client$.__enclos_env__$private$tools_expire <- 0
+  expect_identical(fx$client$tools(wait = FALSE), listed)
+  expect_length(fx$requests(), sent)
+})
+
 # ---- Asynchronous requests ----
 
 test_that("async requests resolve, connecting once", {

@@ -380,6 +380,38 @@ test_that("a remote server's tools become cards", {
   expect_match(failed@error, "kaboom")
 })
 
+test_that("in a session, a remote server's tools come from its client's list", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  fx <- serving_client(
+    McpServer$new(serving_app(name = "fx")),
+    name = "remote-fx"
+  )
+  session <- shiny::MockShinySession$new()
+  in_session <- TRUE
+  local_mocked_bindings(
+    active_shiny_session = function() if (in_session) session
+  )
+
+  expect_error(
+    as_shinychat_tool(fx$client),
+    "where the app starts",
+    class = "shinymcp_error_validation"
+  )
+  expect_length(fx$requests(), 0)
+
+  # Listed where the app starts; in a session, even once that list is old,
+  # the tools are made from it without asking the server again.
+  in_session <- FALSE
+  fx$client$tools()
+  sent <- length(fx$requests())
+  in_session <- TRUE
+  fx$client$.__enclos_env__$private$tools_expire <- 0
+  wrapped <- as_shinychat_tool(fx$client)
+  expect_equal(names(wrapped), c("echo", "boom"))
+  expect_length(fx$requests(), sent)
+})
+
 # ---- mcp_content_result() ----
 
 test_that("mcp_content_result() builds a card for the app's first tool", {
@@ -452,27 +484,80 @@ test_that("mcp_content_result() for an app without tools is named after the app"
   expect_equal(result@request@name, "static")
 })
 
-test_that("mcp_content_result() in a Shiny session embeds the app", {
+test_that("mcp_content_result() in a Shiny session saves the app's result", {
   skip_if_not_installed("ellmer")
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
   local_mocked_bindings(active_shiny_session = function() session)
 
-  result <- mcp_content_result(
+  pending <- mcp_content_result(
     card_app(),
     value = list(status = "ok"),
     arguments = list(name = "Ada")
   )
+  expect_true(promises::is.promising(pending))
+  result <- helper_value(pending)
+  expect_equal(result@value, list(status = "ok"))
   config <- helper_markup_config(as.character(result@extra$display$html))
-
   expect_equal(config$tool, "greet")
   expect_equal(config$arguments, list(name = "Ada"))
-  # No result yet: R calls the tool, and the card gets the result when it
-  # attaches.
-  expect_null(config$result)
+  expect_equal(config$result$structuredContent, list(message = "Hello Ada"))
+
+  # Restored in another session, the card shows the app with that result,
+  # and the tool isn't called again.
+  calls <- 0
+  source <- as_host_source(card_app())
+  call <- source$call
+  source$call <- function(...) {
+    calls <<- calls + 1
+    call(...)
+  }
+  registry <- new_host_registry()
+  register_host_source(registry, source)
+  restored <- helper_fake_session()
+  handle_host_event(
+    restored,
+    registry,
+    list(
+      type = "attach",
+      instanceId = config$instanceId,
+      requestId = "a1",
+      descriptor = config
+    )
+  )
   helper_drain()
-  state <- session$userData$.shinymcp_hosts$instances[[config$instanceId]]
-  expect_equal(state$result$structuredContent, list(message = "Hello Ada"))
+  reply <- helper_sent(restored, "shinymcp-host-attached")[[1]]
+  expect_true(reply$ok)
+  expect_equal(
+    reply$toolResult$structuredContent,
+    list(message = "Hello Ada")
+  )
+  expect_equal(calls, 0)
+})
+
+test_that("mcp_content_result() in a Shiny session reports a failed call", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  session <- shiny::MockShinySession$new()
+  local_mocked_bindings(active_shiny_session = function() session)
+  app <- mcp_app(
+    mcp_text("out"),
+    tools = list(list(name = "fail", fun = function() stop("no data"))),
+    name = "failing"
+  )
+
+  result <- helper_value(mcp_content_result(app, value = "shown"))
+  expect_match(result@error, "no data", fixed = TRUE)
+  expect_null(result@extra$display)
+  # No card was registered for it.
+  registry <- session$userData$.shinymcp_hosts
+  expect_true(is.null(registry) || length(ls(registry$instances)) == 0)
+
+  expect_error(
+    mcp_content_result(card_app(), value = "shown", tool = "nope"),
+    "no tool called",
+    class = "shinymcp_error_validation"
+  )
 })
 
 test_that("cards render in shinychat", {
@@ -482,11 +567,11 @@ test_that("cards render in shinychat", {
   session <- shiny::MockShinySession$new()
   local_mocked_bindings(active_shiny_session = function() session)
 
-  card <- mcp_content_result(
+  card <- helper_value(mcp_content_result(
     card_app(),
     value = list(status = "ok"),
     title = "Card Title"
-  )
+  ))
   rendered <- shinychat::contents_shinychat(card)
   expect_equal(rendered$tool_name, "greet")
   expect_equal(rendered$title, "Card Title")

@@ -13,6 +13,11 @@
 #' in the cards on to the model. Use `as_shinychat_tool()` on its own for
 #' cards without that.
 #'
+#' For a remote server, call `as_shinychat_tool()` where the app starts,
+#' outside the server function, and register the tools in each session:
+#' listing a server's tools waits for it. In a Shiny session it uses only
+#' the list the client already has, and is an error without one.
+#'
 #' `mcp_content_result()` builds a card by hand, for a result you append to
 #' the chat yourself.
 #'
@@ -34,7 +39,11 @@
 #' @param show_request Whether the card shows the call's arguments.
 #' @param full_screen Whether the card offers a full-screen view.
 #' @return For one tool, an [ellmer::tool()]; for several, a named list of
-#'   them.
+#'   them. `mcp_content_result()` returns an [ellmer::ContentToolResult]. In
+#'   a Shiny session it calls the tool first and returns a promise of the
+#'   card, which [shinychat::chat_append()] waits for; the card is saved
+#'   with the app's opening result, so a restored conversation shows the app
+#'   without calling the tool again.
 #' @family hosting
 #' @export
 #' @examples
@@ -58,10 +67,30 @@ as_shinychat_tool <- function(
     reason = "to use MCP Apps in a shinychat conversation."
   )
   source <- as_host_source(source)
+  # In a Shiny session a remote server's tools come from the list its
+  # client already has: listing them would hold up the session.
+  listed <- NULL
+  if (
+    inherits(source, "shinymcp_host_source_remote") &&
+      !is.null(active_shiny_session())
+  ) {
+    listed <- source$tools(wait = FALSE)
+    if (is.null(listed)) {
+      shinymcp_abort(
+        c(
+          "Make {.val {source$key}}'s tools where the app starts, not in a Shiny session.",
+          "i" = "Listing a remote server's tools waits for it, which would hold up the session. Call {.fn as_shinychat_tool} outside the server function and register its tools in each session.",
+          "i" = "A client made in the session can list them first with {.code $tools()}, which waits."
+        ),
+        class = "shinymcp_error_validation"
+      )
+    }
+  }
   tools <- shinychat_tools(
     source,
     tool = tool,
     session = NULL,
+    listed = listed,
     card = list(
       value_fn = value_fn,
       summary = summary,
@@ -79,16 +108,18 @@ as_shinychat_tool <- function(
 #'
 #' @param session The Shiny session cards are shown in, or `NULL` for the
 #'   one active when the tool is called.
+#' @param listed The source's tools, if already listed.
 #' @noRd
 shinychat_tools <- function(
   source,
   tool = NULL,
   session = NULL,
-  card = list()
+  card = list(),
+  listed = NULL
 ) {
   definitions <- Filter(
     function(t) tool_wire_visible_to(t, "model"),
-    source$tools()
+    listed %||% source$tools()
   )
   names(definitions) <- vapply(definitions, function(t) t$name, character(1))
   if (!is.null(tool)) {
@@ -360,22 +391,53 @@ mcp_content_result <- function(
     name = tool %||% source$key,
     arguments = arguments %||% list()
   )
-  live_card_result(
-    source = source,
-    value = value,
-    title = title,
-    icon = icon,
-    open = open,
-    show_request = show_request,
-    full_screen = full_screen,
-    text = text %||%
-      if (is.character(value)) {
-        paste(value, collapse = "\n")
-      } else {
-        as.character(to_json(value, pretty = TRUE))
-      },
-    tool = tool,
-    arguments = arguments,
-    request = request
+  card <- function(result = NULL, session = NULL) {
+    live_card_result(
+      source = source,
+      value = value,
+      title = title,
+      icon = icon,
+      open = open,
+      show_request = show_request,
+      full_screen = full_screen,
+      text = text %||%
+        if (is.character(value)) {
+          paste(value, collapse = "\n")
+        } else {
+          as.character(to_json(value, pretty = TRUE))
+        },
+      tool = tool,
+      arguments = arguments,
+      result = result,
+      request = request,
+      session = session
+    )
+  }
+  session <- active_shiny_session()
+  if (is.null(session) || is.null(tool)) {
+    return(card())
+  }
+  # The tool is called before the card is made, so the card is saved with
+  # the app's opening result: a restored card never calls its tool.
+  rlang::check_installed(
+    c("promises", "later"),
+    reason = "to open MCP Apps in a Shiny chat."
+  )
+  if (in_process_source(source)) {
+    # A mistake in the tool is an error here, as for a pane.
+    host_tool(source, source$tools(), tool)
+  }
+  promises::then(
+    source$call_async(tool, arguments %||% list(), host_call_context(session)),
+    function(call) {
+      if (isTRUE(call$result$isError)) {
+        text <- result_text(call$result)
+        return(ellmer::ContentToolResult(
+          error = if (nzchar(text)) text else "The tool failed.",
+          request = request
+        ))
+      }
+      card(call$result, session)
+    }
   )
 }

@@ -138,7 +138,12 @@ McpClient <- R6::R6Class(
     #'   `_meta`. The list is kept for as long as the server says it may be,
     #'   or a minute.
     #' @param refresh Read the list again even if it is kept.
-    tools = function(refresh = FALSE) {
+    #' @param wait `FALSE` to return the last list the client got, however
+    #'   old, without asking the server: `NULL` if it has none.
+    tools = function(refresh = FALSE, wait = TRUE) {
+      if (!isTRUE(wait)) {
+        return(private$tools_cache)
+      }
       if (!refresh && private$tools_fresh()) {
         return(private$tools_cache)
       }

@@ -144,7 +144,9 @@ via the `window.Shiny` stand-in. `data-shinymcp-input` and
 
 A tool that takes an action button's id runs when the button is pressed,
 not when its other inputs change. The page never runs tools annotated
-`readOnlyHint: false` or `destructiveHint: true` on its own to fill outputs.
+`readOnlyHint: false` or `destructiveHint: true` on its own, to fill
+outputs or because their inputs changed: only from a button they take
+(`toolsForInputs()`, `refreshesOutputs()`).
 
 Hosts' CSP forbids `eval()` and `new Function()`, so nothing on the page may
 use them. `conditionalPanel()` conditions go through a small interpreter in
@@ -202,7 +204,10 @@ remote long poll doesn't block the session. Never call a remote source's
 `tools()` from a session: an instance's tool is checked through
 `host_ready()`, a promise its call and attach wait on (apps in the same
 process are checked at registration, so mistakes stay errors). Only
-`mcp_chat_host()` lists tools synchronously, because ellmer needs them.
+`mcp_chat_host()` lists tools synchronously, because ellmer needs them and
+it is called in the session. `as_shinychat_tool()` in a session takes a
+remote server's tools only from its client's kept list
+(`tools(wait = FALSE)`), and is an error without one.
 
 `mcp_chat_host()` adds each open card's model context to the model's
 input from `Chat$on_request_start()`: a user turn of its own before the

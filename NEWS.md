@@ -21,7 +21,8 @@ section.
 * `mcp_tool_result()` sets a result's text and structured data.
 * A tool that takes a button's id runs when the button is pressed, not
   whenever its other inputs change. The page doesn't run tools annotated
-  as changing something to fill in outputs.
+  as changing something on its own, to fill in outputs or because an
+  input they take changed: they run when a button they take is pressed.
 * `mcp_submit_button()` places the apply button for
   `mcp_app(trigger = "submit")`.
 * `mcp_app(www = )` writes a folder of scripts, stylesheets, and images
@@ -68,12 +69,18 @@ section.
 * `mcp_host_ui()` and `mcp_host_server()` host an app in a pane of any
   Shiny app. The pane's tool is called in R, and `open()` calls it again
   with other arguments. `as_shinychat_tool()` makes the cards on their own.
-  Panes and cards never hold up the session waiting on a remote server.
+  Panes and cards never hold up the session waiting on a remote server:
+  for a remote server, call `as_shinychat_tool()` where the app starts,
+  since in a session it takes the tools only from the list the client
+  already has. `McpClient$tools(wait = FALSE)` returns that list without
+  asking the server.
 * `mcp_host_server()`, `mcp_embed()`, `as_shinychat_tool()`, and
   `mcp_content_result()` take a `source`, an app or an `mcp_client()`,
   where they took `app`. A pane's `execute()` takes `inputs`, and
   `value_fn`'s `raw_result` is there only for apps in the same process.
-  `mcp_content_result()` needs its `tool` named for a remote server.
+  `mcp_content_result()` needs its `tool` named for a remote server, and in
+  a Shiny session it calls the tool first and returns a promise of the
+  card, so the card is saved with the app's result.
 * A host passes on only the requests an app's page may make: tools visible
   to the app, resource reads, and `ping`.
 * A chat host passes the model's arguments on as it sent them, so an array

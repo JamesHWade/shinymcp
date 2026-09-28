@@ -68,7 +68,7 @@ in_process_host_source <- function(apps) {
   source$server <- server
   source$apps <- apps
 
-  source$tools <- function(refresh = FALSE) {
+  source$tools <- function(refresh = FALSE, wait = TRUE) {
     unlist(
       lapply(apps, function(app) app$tool_definitions()),
       recursive = FALSE
@@ -185,8 +185,8 @@ remote_host_source <- function(client) {
   source <- new_host_source("remote", client$name, client$name)
   source$client <- client
 
-  source$tools <- function(refresh = FALSE) {
-    client$tools(refresh = refresh)
+  source$tools <- function(refresh = FALSE, wait = TRUE) {
+    client$tools(refresh = refresh, wait = wait)
   }
 
   source$tools_async <- function(refresh = FALSE) {

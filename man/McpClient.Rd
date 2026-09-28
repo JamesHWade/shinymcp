@@ -71,13 +71,15 @@ response (\code{status}, \code{headers}, \code{body}) or a promise of one.}
 or a minute.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{McpClient$tools(refresh = FALSE)}
+    \preformatted{McpClient$tools(refresh = FALSE, wait = TRUE)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{refresh}}{Read the list again even if it is kept.}
+      \item{\code{wait}}{\code{FALSE} to return the last list the client got, however
+old, without asking the server: \code{NULL} if it has none.}
     }
     \if{html}{\out{</div>}}
   }

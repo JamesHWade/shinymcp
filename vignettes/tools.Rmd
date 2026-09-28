@@ -194,7 +194,9 @@ mcp_app(
 ```
 
 The page never runs a tool annotated with `read_only_hint = FALSE` or
-`destructive_hint = TRUE` on its own, to fill in outputs when it opens.
+`destructive_hint = TRUE` on its own, to fill in outputs when it opens or
+because an input it takes changed. It runs when the person presses a button
+it takes, so give such a tool one.
 
 `tool_outputs` declares the outputs each tool returns
 (`list(explore = c("scatter", "stats"))`), which gives it an `outputSchema`.

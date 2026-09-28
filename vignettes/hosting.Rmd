@@ -122,9 +122,27 @@ client$register_tool(as_shinychat_tool(cars_app))
 chat_server("chat", client)
 ```
 
+For a remote server, make the tools where the app starts, outside the
+server function, and register them in each session. Listing a server's
+tools waits for it, so in a session `as_shinychat_tool()` uses only the
+list the client already has:
+
+```{r}
+sales_tools <- as_shinychat_tool(mcp_client("https://connect.example.com/sales/mcp"))
+
+server <- function(input, output, session) {
+  client <- ellmer::chat("anthropic/claude-sonnet-5")
+  client$register_tools(sales_tools)
+  chat_server("chat", client)
+}
+```
+
 To put an app in the conversation without a tool call, for example a form
 when the chat starts, build the card with `mcp_content_result()` and
-append it with `chat_append()`.
+append it with `chat_append()`. In a Shiny session `mcp_content_result()`
+calls the app's tool and returns a promise, which `chat_append()` waits
+for, so the card is saved with what the tool returned and a restored
+conversation shows the app as it was.
 
 ## In a pane
 

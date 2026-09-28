@@ -1832,17 +1832,27 @@
 
   // The tools to run for the inputs that changed. A tool that takes a
   // button's id runs when the button is pressed, as an eventReactive()
-  // does, and not when its other inputs change. With no list of changes
-  // (the Apply button, or a host asking to run), every tool that only reads
-  // and waits for no button runs.
+  // does, and not when its other inputs change. A tool that changes
+  // something runs only then: never because an input changed. With no list
+  // of changes (the Apply button, or a host asking to run), every tool that
+  // only reads and waits for no button runs.
+  var buttonlessWarned = {};
+
   function toolsForInputs(changed) {
     var tools = appTools();
     if (!changed) return tools.filter(refreshesOutputs);
     return tools.filter(function (t) {
       var buttons = buttonArguments(t);
       var triggers = buttons.length ? buttons : t.args || [];
+      var hit = false;
       for (var i = 0; i < changed.length; i++) {
-        if (triggers.indexOf(changed[i]) >= 0) return true;
+        if (triggers.indexOf(changed[i]) >= 0) hit = true;
+      }
+      if (!hit) return false;
+      if (buttons.length || refreshesOutputs(t)) return true;
+      if (!buttonlessWarned[t.name]) {
+        buttonlessWarned[t.name] = true;
+        logWarn("tool '" + t.name + "' changes something, so it runs only when a button it takes is pressed; it takes none");
       }
       return false;
     });
@@ -2111,15 +2121,20 @@
     // Inputs set with priority "event" count even when their value repeats.
     if (events.length) payload.events = events;
     state.events = {};
-    if (sync) {
-      payload.sync = true;
-      state.syncedInstance = state.instance;
-    }
+    if (sync) payload.sync = true;
     inFlight = true;
     return callTool(config.runtime.viewTool, payload).then(
       function (result) {
         inFlight = false;
         handleResult(result, {});
+        // The session has every input once a full update has reached it.
+        // After an update that failed, it may lack what that update
+        // carried, so the next one sends everything again.
+        if (!result || result.isError) {
+          state.syncedInstance = null;
+        } else if (payload.sync) {
+          state.syncedInstance = state.instance;
+        }
         // The session was gone and R started a new one from this update,
         // which leaves out values set from JavaScript and uploads that
         // didn't change: send it everything the page has, once.
@@ -2133,6 +2148,7 @@
       },
       function (err) {
         inFlight = false;
+        state.syncedInstance = null;
         showError("The app's R session didn't respond: " + err.message);
         flushQueue();
       }

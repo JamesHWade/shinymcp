@@ -116,7 +116,7 @@ table's rows) aren't what it needs.
   `ellmer::tool_annotations(read_only_hint = FALSE)`. To run it from a
   button, as `observeEvent(input$save, ...)` did, give the tool an argument
   named after the button's id: it runs when the button is pressed, and not
-  when its other inputs change.
+  when its other inputs change. Without a button, the page never runs it.
 - **State between interactions** (`reactiveVal()`, uploaded data, a
   multi-step workflow). A tool keeps nothing between calls. Pass the state
   in as an argument, or leave that part of the app out.

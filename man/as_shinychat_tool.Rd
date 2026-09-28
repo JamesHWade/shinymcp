@@ -67,7 +67,11 @@ them. A vector of one value is one value; write an array of one as
 }
 \value{
 For one tool, an \code{\link[ellmer:tool]{ellmer::tool()}}; for several, a named list of
-them.
+them. \code{mcp_content_result()} returns an \link[ellmer:ContentToolResult]{ellmer::ContentToolResult}. In
+a Shiny session it calls the tool first and returns a promise of the
+card, which \code{\link[shinychat:chat_append]{shinychat::chat_append()}} waits for; the card is saved
+with the app's opening result, so a restored conversation shows the app
+without calling the tool again.
 }
 \description{
 \code{as_shinychat_tool()} turns the tools of an app, or of a remote MCP
@@ -79,6 +83,11 @@ live, in the tool's card. The model gets the tool's structured result
 \code{\link[=mcp_chat_host]{mcp_chat_host()}} does this for you and also passes what the person does
 in the cards on to the model. Use \code{as_shinychat_tool()} on its own for
 cards without that.
+
+For a remote server, call \code{as_shinychat_tool()} where the app starts,
+outside the server function, and register the tools in each session:
+listing a server's tools waits for it. In a Shiny session it uses only
+the list the client already has, and is an error without one.
 
 \code{mcp_content_result()} builds a card by hand, for a result you append to
 the chat yourself.

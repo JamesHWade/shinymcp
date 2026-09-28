@@ -143,7 +143,7 @@ example, next to the original.
   `ellmer::tool_annotations(read_only_hint = FALSE)`. An
   `observeEvent(input$save, ...)` becomes a tool that takes `save`, the
   button's id: it runs when the button is pressed, and not when its other
-  inputs change.
+  inputs change. Without a button, the page never runs it.
 * **State kept between interactions.** A tool can't remember. Pass the
   state in as an argument, or keep that part of the app in Shiny.
 * **File uploads.** A tool can't take a file from the page. Take a path or
