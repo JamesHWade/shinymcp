@@ -637,6 +637,35 @@ test_that("an McpApp from an app.R runs its tools and page in its directory", {
   expect_identical(elsewhere$call_tool("wd")$out, here)
 })
 
+test_that("an app.R's R/ folder loads without Shiny", {
+  local_mocked_bindings(shiny_installed = function() FALSE)
+  dir <- withr::local_tempdir()
+  dir.create(file.path(dir, "R"))
+  # In C-locale order B.R comes before a.R, which needs it.
+  writeLines("prefix <- 'hi'", file.path(dir, "R", "B.R"))
+  writeLines(
+    "greet <- local({ p <- toupper(prefix); function(x) paste(p, x) })",
+    file.path(dir, "R", "a.R")
+  )
+  write_app_file(
+    dir,
+    c(
+      "shinymcp::mcp_app(",
+      "  shinymcp::mcp_text('out'),",
+      "  tools = list(list(name = 'greet', fun = function(who = 'Ada') list(out = greet(who)))),",
+      "  name = 'no-shiny'",
+      ")"
+    )
+  )
+  app <- as_mcp_app(dir)
+  expect_identical(app$call_tool("greet")$out, "HI Ada")
+
+  file.create(file.path(dir, "R", "_disable_autoload.R"))
+  unloaded <- as_mcp_app(dir)$run_tool("greet")
+  expect_true(unloaded$isError)
+  expect_match(unloaded$content[[1]]$text, "greet", fixed = TRUE)
+})
+
 test_that("bad paths and broken app files give validation errors", {
   expect_error(
     as_mcp_app(file.path(tempdir(), "no-such-app")),

@@ -116,6 +116,38 @@ test_that("a UI extension that isn't an object declares no MCP Apps support", {
   expect_equal(tool_names(listed), c("echo", "boom"))
 })
 
+test_that("message fields are matched exactly, never by prefix", {
+  calls <- 0
+  server <- McpServer$new(serving_app(
+    tools = list(list(
+      name = "echo",
+      fun = function(x = "") {
+        calls <<- calls + 1
+        list(out = x)
+      }
+    ))
+  ))
+
+  named_by_prefix <- server$handle(serving_rpc(
+    "tools/call",
+    list(nameExtra = "echo")
+  ))
+  expect_equal(named_by_prefix$error$code, RPC_INVALID_PARAMS)
+  params_by_prefix <- server$handle(list(
+    jsonrpc = "2.0",
+    id = 1,
+    method = "tools/call",
+    paramsX = list(name = "echo")
+  ))
+  expect_equal(params_by_prefix$error$code, RPC_INVALID_PARAMS)
+  expect_equal(calls, 0)
+
+  # A field that starts with "id" isn't the id.
+  bad <- server$handle(list(jsonrpc = "2.0", method = 5, idempotent = 1))
+  expect_true("id" %in% names(bad))
+  expect_null(bad$id)
+})
+
 # ---- JSON-RPC helpers ----
 
 test_that("jsonrpc_response() and jsonrpc_error() build JSON-RPC 2.0 messages", {

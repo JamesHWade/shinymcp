@@ -141,7 +141,8 @@ normalize_json_schema <- function(schema) {
   if (!is.list(schema)) {
     return(schema)
   }
-  if (!is.null(schema$type) && identical(schema$type, "object")) {
+  # A nullable object (`type = list("object", "null")`) is an object too.
+  if ("object" %in% as.character(unlist(schema$type))) {
     if (is.null(schema$properties) || length(schema$properties) == 0) {
       schema$properties <- json_object()
     } else {

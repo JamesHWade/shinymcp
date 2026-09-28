@@ -57,6 +57,15 @@ to_json <- function(x, pretty = FALSE) {
   )
 }
 
+#' A field of a parsed JSON object, matched exactly
+#'
+#' `$` matches a prefix (`x$name` finds `nameExtra`), which messages from
+#' outside mustn't be able to use. `NULL` for anything but a list.
+#' @noRd
+json_field <- function(x, name) {
+  if (is.list(x)) x[[name]]
+}
+
 #' Parse JSON text without simplifying arrays
 #'
 #' jsonlite::parse_json() only ever reads its argument as JSON.

@@ -161,6 +161,39 @@ test_that("normalize_json_schema fixes empty objects, required, items, and enums
   )
 })
 
+test_that("normalize_json_schema treats a nullable object as an object", {
+  schema <- normalize_json_schema(list(
+    type = "object",
+    properties = list(
+      filters = list(
+        type = list("object", "null"),
+        properties = list(),
+        required = "field"
+      ),
+      point = list(
+        type = c("null", "object"),
+        properties = list(
+          at = list(type = list("object", "null"), properties = list())
+        )
+      )
+    )
+  ))
+  json <- as.character(to_json(schema))
+  parsed <- jsonlite::parse_json(json)
+
+  expect_match(
+    json,
+    '"filters":{"type":["object","null"],"properties":{}',
+    fixed = TRUE
+  )
+  expect_equal(parsed$properties$filters$required, list("field"))
+  expect_match(
+    json,
+    '"at":{"type":["object","null"],"properties":{}}',
+    fixed = TRUE
+  )
+})
+
 # ---- JSON Schema back to ellmer types ----
 
 test_that("schema_to_ellmer_types builds ellmer types from JSON Schema", {

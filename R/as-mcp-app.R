@@ -308,13 +308,48 @@ source_app_file <- function(app_file) {
 app_support_env <- function(dir) {
   if (
     !dir.exists(file.path(dir, "R")) ||
-      !isTRUE(getOption("shiny.autoload.r", TRUE)) ||
-      !rlang::is_installed("shiny")
+      !isTRUE(getOption("shiny.autoload.r", TRUE))
   ) {
     return(globalenv())
   }
   env <- new.env(parent = globalenv())
-  shiny::loadSupport(normalizePath(dir), renv = env, globalrenv = NULL)
+  if (shiny_installed()) {
+    shiny::loadSupport(normalizePath(dir), renv = env, globalrenv = NULL)
+  } else {
+    # Without Shiny the app.R can only build a tool app; its helpers load
+    # by the same rules.
+    load_app_support(dir, env)
+  }
+  env
+}
+
+#' @noRd
+shiny_installed <- function() {
+  rlang::is_installed("shiny")
+}
+
+#' Source an app's R/ files as shiny::loadSupport() does
+#'
+#' In C-locale order, in the app's directory, unless an
+#' `R/_disable_autoload.R` file says not to.
+#' @noRd
+load_app_support <- function(dir, env) {
+  helpers_dir <- file.path(dir, "R")
+  disabled <- list.files(
+    helpers_dir,
+    pattern = "^_disable_autoload\\.r$",
+    ignore.case = TRUE
+  )
+  if (length(disabled)) {
+    return(env)
+  }
+  helpers <- list.files(helpers_dir, pattern = "\\.[rR]$", full.names = TRUE)
+  helpers <- normalizePath(helpers[order(helpers, method = "radix")])
+  old <- setwd(dir)
+  on.exit(setwd(old), add = TRUE)
+  for (helper in helpers) {
+    source(helper, local = env, encoding = "UTF-8")
+  }
   env
 }
 

@@ -111,23 +111,24 @@ negotiate_protocol_version <- function(requested) {
 #' @noRd
 capabilities_support_ui <- function(capabilities) {
   if (
-    !is_json_object(capabilities) || !is_json_object(capabilities$extensions)
+    !is_json_object(capabilities) ||
+      !is_json_object(capabilities[["extensions"]])
   ) {
     return(FALSE)
   }
-  ui <- capabilities$extensions[[SHINYMCP_UI_EXTENSION_ID]]
+  ui <- capabilities[["extensions"]][[SHINYMCP_UI_EXTENSION_ID]]
   if (!is_json_object(ui)) {
     return(FALSE)
   }
-  if (is.null(ui$mimeTypes)) {
+  if (is.null(ui[["mimeTypes"]])) {
     return(TRUE)
   }
-  SHINYMCP_UI_MIME_TYPE %in% unlist(ui$mimeTypes, use.names = FALSE)
+  SHINYMCP_UI_MIME_TYPE %in% unlist(ui[["mimeTypes"]], use.names = FALSE)
 }
 
 #' @noRd
 client_supports_mcp_apps <- function(params) {
-  capabilities_support_ui(params$capabilities)
+  capabilities_support_ui(params[["capabilities"]])
 }
 
 #' Is a parsed JSON value an object (a named list, or an empty one)?
@@ -142,7 +143,7 @@ request_id <- function(message) {
   if (!is.list(message) || is.null(names(message))) {
     return(NULL)
   }
-  id <- message$id
+  id <- message[["id"]]
   if ((is.character(id) || is.numeric(id)) && length(id) == 1) id else NULL
 }
 
@@ -193,7 +194,7 @@ McpServer <- R6::R6Class(
       if (
         !is.list(message) ||
           is.null(names(message)) ||
-          !identical(message$jsonrpc, "2.0")
+          !identical(message[["jsonrpc"]], "2.0")
       ) {
         return(jsonrpc_error(
           request_id(message),
@@ -202,7 +203,7 @@ McpServer <- R6::R6Class(
           status = 400L
         ))
       }
-      method <- message$method
+      method <- message[["method"]]
       if (is.null(method)) {
         # A response from the client: nothing to do. Anything else without
         # a method is neither request nor response.
@@ -236,12 +237,12 @@ McpServer <- R6::R6Class(
           status = 400L
         ))
       }
-      params <- message$params
+      params <- message[["params"]]
       if (!is.null(params) && !is_json_object(params)) {
         return(
           if (!is_notification) {
             jsonrpc_error(
-              message$id,
+              message[["id"]],
               RPC_INVALID_PARAMS,
               "Invalid params: expected an object.",
               status = 400L
@@ -254,7 +255,7 @@ McpServer <- R6::R6Class(
         return(
           if (!is_notification) {
             jsonrpc_error(
-              message$id,
+              message[["id"]],
               RPC_INVALID_PARAMS,
               "Invalid params: _meta must be an object.",
               status = 400L
@@ -267,7 +268,7 @@ McpServer <- R6::R6Class(
           return(
             if (!is_notification) {
               jsonrpc_error(
-                message$id,
+                message[["id"]],
                 RPC_INVALID_PARAMS,
                 paste0("Invalid params: ", key, " must be an object."),
                 status = 400L
@@ -281,7 +282,7 @@ McpServer <- R6::R6Class(
         return(
           if (!is_notification) {
             jsonrpc_error(
-              message$id,
+              message[["id"]],
               RPC_INVALID_PARAMS,
               "Invalid params: the protocol version in _meta must be a string.",
               status = 400L
@@ -303,7 +304,7 @@ McpServer <- R6::R6Class(
       }
 
       result <- tryCatch(
-        private$dispatch(method, message$params %||% list(), request),
+        private$dispatch(method, message[["params"]] %||% list(), request),
         shinymcp_rpc_error = function(e) e,
         error = function(e) {
           structure(
@@ -320,7 +321,7 @@ McpServer <- R6::R6Class(
       )
       if (inherits(result, "shinymcp_rpc_error")) {
         return(jsonrpc_error(
-          message$id,
+          message[["id"]],
           e_code(result),
           conditionMessage(result),
           data = result$data,
@@ -333,7 +334,7 @@ McpServer <- R6::R6Class(
         result_meta[[META_SERVER_INFO]] <- private$server_info()
         result[["_meta"]] <- result_meta
       }
-      jsonrpc_response(message$id, result)
+      jsonrpc_response(message[["id"]], result)
     },
 
     # The app that owns a tool, or NULL
@@ -409,7 +410,7 @@ McpServer <- R6::R6Class(
     modern_request = function(message, version, context) {
       if (!version %in% SHINYMCP_MODERN_VERSIONS) {
         return(error_response(jsonrpc_error(
-          message$id,
+          message[["id"]],
           RPC_UNSUPPORTED_VERSION,
           "Unsupported protocol version",
           data = list(
@@ -419,7 +420,7 @@ McpServer <- R6::R6Class(
           status = 400L
         )))
       }
-      meta <- message$params[["_meta"]]
+      meta <- message[["params"]][["_meta"]]
       capabilities <- meta[[META_CLIENT_CAPABILITIES]]
       if (!is_json_object(capabilities)) {
         capabilities <- list()
@@ -444,7 +445,7 @@ McpServer <- R6::R6Class(
         client = session$client_info,
         session = session,
         context = context,
-        meta = message$params[["_meta"]]
+        meta = message[["params"]][["_meta"]]
       )
     },
 
@@ -476,12 +477,12 @@ McpServer <- R6::R6Class(
 
     handle_initialize = function(params, request) {
       session <- request$session
-      version <- negotiate_protocol_version(params$protocolVersion)
+      version <- negotiate_protocol_version(params[["protocolVersion"]])
       if (!is.null(session)) {
         session$protocol_version <- version
         session$client_supports_ui <- client_supports_mcp_apps(params)
-        session$client_info <- if (is_json_object(params$clientInfo)) {
-          params$clientInfo
+        session$client_info <- if (is_json_object(params[["clientInfo"]])) {
+          params[["clientInfo"]]
         }
         session$initialized <- TRUE
       }
@@ -515,7 +516,7 @@ McpServer <- R6::R6Class(
     },
 
     handle_tools_call = function(params, request) {
-      name <- params$name
+      name <- params[["name"]]
       if (!is_string(name)) {
         rpc_stop("Missing required parameter: name", code = RPC_INVALID_PARAMS)
       }
@@ -523,7 +524,7 @@ McpServer <- R6::R6Class(
       if (is.null(app)) {
         rpc_stop(paste0("Unknown tool: ", name), code = RPC_INVALID_PARAMS)
       }
-      arguments <- params$arguments %||% list()
+      arguments <- params[["arguments"]] %||% list()
       if (!is_json_object(arguments)) {
         rpc_stop("Tool arguments must be an object.", code = RPC_INVALID_PARAMS)
       }
@@ -532,7 +533,7 @@ McpServer <- R6::R6Class(
     },
 
     handle_resources_read = function(params, request) {
-      uri <- params$uri
+      uri <- params[["uri"]]
       if (!is_string(uri)) {
         rpc_stop("Missing required parameter: uri", code = RPC_INVALID_PARAMS)
       }

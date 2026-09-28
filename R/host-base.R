@@ -79,8 +79,11 @@ mcp_host_record_call <- function(state, name, arguments, result) {
 #' Handle a notification from a hosted app
 #' @noRd
 mcp_host_notification <- function(state, method, params) {
+  if (!is_string(method)) {
+    return(invisible(state))
+  }
   switch(
-    method %||% "",
+    method,
     "ui/update-model-context" = {
       state$model_context <- params
       state$context_time <- as.numeric(Sys.time())
@@ -92,8 +95,8 @@ mcp_host_notification <- function(state, method, params) {
     },
     "ui/notifications/size-changed" = {
       state$last_size <- compact_list(list(
-        width = params$width,
-        height = params$height
+        width = json_field(params, "width"),
+        height = json_field(params, "height")
       ))
       mcp_host_callback(state, "on_size", state$last_size)
     },
@@ -122,12 +125,16 @@ mcp_host_dispose <- function(state) {
 #' @noRd
 host_content_text <- function(params, limit = Inf) {
   blocks <- Filter(
-    function(b) is.list(b) && identical(b$type, "text") && is_string(b$text),
-    params$content %||% list()
+    function(b) {
+      identical(json_field(b, "type"), "text") &&
+        is_string(json_field(b, "text"))
+    },
+    json_field(params, "content") %||% list()
   )
-  parts <- vapply(blocks, function(b) b$text, character(1))
-  if (!is.null(params$structuredContent)) {
-    parts <- c(parts, as.character(to_json(params$structuredContent)))
+  parts <- vapply(blocks, function(b) b[["text"]], character(1))
+  structured <- json_field(params, "structuredContent")
+  if (!is.null(structured)) {
+    parts <- c(parts, as.character(to_json(structured)))
   }
   text <- paste(parts, collapse = "\n")
   if (is.finite(limit) && nchar(text) > limit) {

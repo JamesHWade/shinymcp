@@ -659,6 +659,18 @@ test_that("the page can call only the tools it may", {
       request_id = "r3"
     )
   )
+  # Fields are matched exactly: `nameX` isn't `name`.
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(
+      "i1",
+      "tools/call",
+      list(nameX = "approve"),
+      id = 4,
+      request_id = "r4"
+    )
+  )
   helper_drain()
 
   responses <- lapply(
@@ -674,6 +686,7 @@ test_that("the page can call only the tools it may", {
     "The app can't call the tool \"peek\"."
   )
   expect_equal(by_id[["3"]]$error$code, RPC_INVALID_PARAMS)
+  expect_equal(by_id[["4"]]$error$code, RPC_INVALID_PARAMS)
   expect_equal(state$last_tool_call$name, "approve")
 })
 

@@ -1776,13 +1776,61 @@ test_that("registerDataObj() data is served through the data action", {
   expect_true(missing$isError)
   expect_identical(rt_text(missing), "No data named 'nope' in this view.")
 
-  # Data needs a live session: a lost view has none.
+  # Data needs a live session: a lost view has none, and says so, so the
+  # page asks again with its inputs; then the view is rebuilt from them.
   lost <- app$run_tool(
     "data_view",
     list(action = "data", instance = "view-lost", output = "rows"),
     context = list(caller = "app")
   )
   expect_true(lost$isError)
+  expect_true(rt_meta(lost)$gone)
+  again <- app$run_tool(
+    "data_view",
+    list(
+      action = "data",
+      instance = "view-lost",
+      output = "rows",
+      body = "start=0",
+      inputs = setNames(list(), character()),
+      kinds = setNames(list(), character())
+    ),
+    context = list(caller = "app")
+  )
+  expect_null(again$isError)
+  expect_true(rt_meta(again)$restarted)
+  expect_true(is_string(rt_meta(again)$instance))
+  expect_true(is.numeric(rt_meta(again)$revision))
+  expect_identical(
+    jsonlite::fromJSON(rt_meta(again)$data)$n,
+    nrow(datasets::faithful)
+  )
+})
+
+test_that("a view rebuilt for a data request renders its outputs first", {
+  skip_if_not_installed("shiny")
+  # As DT does, the data is registered when the output renders.
+  ui <- shiny::fluidPage(shiny::textOutput("url"))
+  server <- function(input, output, session) {
+    output$url <- shiny::renderText({
+      session$registerDataObj("rows", datasets::faithful, function(data, req) {
+        shiny::httpResponse(200, "application/json", nrow(data))
+      })
+    })
+  }
+  app <- rt_app(ui, server, name = "data")
+  res <- app$run_tool(
+    "data_view",
+    list(
+      action = "data",
+      instance = "view-lost",
+      output = "rows",
+      inputs = setNames(list(), character())
+    ),
+    context = list(caller = "app")
+  )
+  expect_null(res$isError)
+  expect_identical(rt_meta(res)$data, "272")
 })
 
 test_that("a failing data filter returns an error result", {

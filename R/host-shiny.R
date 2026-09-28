@@ -451,9 +451,9 @@ host_descriptor <- function(state, height = "auto", trigger = NULL) {
 #' tool is checked when the card attaches, without blocking the session.
 #' @noRd
 restore_host_instance <- function(registry, descriptor) {
-  id <- descriptor$instanceId
-  key <- descriptor$source
-  tool <- descriptor$tool
+  id <- json_field(descriptor, "instanceId")
+  key <- json_field(descriptor, "source")
+  tool <- json_field(descriptor, "tool")
   if (!is_string(id) || !is_string(key) || !is_string(tool)) {
     return(NULL)
   }
@@ -475,12 +475,15 @@ restore_host_instance <- function(registry, descriptor) {
     source,
     instance_id = id,
     tool = tool,
-    arguments = if (is_json_object(descriptor$arguments)) descriptor$arguments,
-    result = if (is_json_object(descriptor$result)) descriptor$result,
+    arguments = if (is_json_object(descriptor[["arguments"]])) {
+      descriptor[["arguments"]]
+    },
+    result = if (is_json_object(descriptor[["result"]])) descriptor[["result"]],
     kind = "card"
   )
   state$restored <- TRUE
-  state$owner <- if (is_string(descriptor$owner)) descriptor$owner
+  owner <- descriptor[["owner"]]
+  state$owner <- if (is_string(owner)) owner
   if (!is.null(definition)) {
     state$ready <- promises::promise_resolve(settle_host_tool(
       state,
@@ -606,12 +609,20 @@ host_page_async <- function(registry, state, uri) {
 #' Answer a card or pane that asks to attach
 #' @noRd
 host_attach <- function(session, registry, event) {
-  descriptor <- event$descriptor %||% list()
-  instance_id <- event$instanceId %||% descriptor$instanceId %||% ""
+  descriptor <- json_field(event, "descriptor") %||% list()
+  instance_id <- json_field(event, "instanceId") %||%
+    json_field(descriptor, "instanceId") %||%
+    ""
   reply <- function(message) {
     session$sendCustomMessage(
       "shinymcp-host-attached",
-      c(list(instanceId = instance_id, requestId = event$requestId), message)
+      c(
+        list(
+          instanceId = instance_id,
+          requestId = json_field(event, "requestId")
+        ),
+        message
+      )
     )
   }
   fail <- function(text) reply(list(ok = FALSE, error = text))
@@ -690,23 +701,27 @@ host_attach <- function(session, registry, event) {
 #' Answer one message from a hosted app's page
 #' @noRd
 handle_host_event <- function(session, registry, event) {
-  type <- event$type %||% "request"
+  type <- json_field(event, "type") %||% "request"
   if (identical(type, "attach")) {
     return(host_attach(session, registry, event))
   }
-  instance_id <- event$instanceId %||% ""
+  instance_id <- json_field(event, "instanceId") %||% ""
   state <- host_instance(registry, instance_id)
 
   if (identical(type, "notification")) {
     if (!is.null(state)) {
-      mcp_host_notification(state, event$method, event$params %||% list())
+      mcp_host_notification(
+        state,
+        json_field(event, "method"),
+        json_field(event, "params") %||% list()
+      )
       host <- card_chat_host(registry, state)
       if (
-        identical(event$method, "ui/message") &&
+        identical(json_field(event, "method"), "ui/message") &&
           identical(state$kind, "card") &&
           is.function(host$on_message)
       ) {
-        host$on_message(state, event$params %||% list())
+        host$on_message(state, json_field(event, "params") %||% list())
       }
     }
     return(invisible())
@@ -719,14 +734,14 @@ handle_host_event <- function(session, registry, event) {
     return(invisible())
   }
 
-  message <- event$message
+  message <- json_field(event, "message")
   id <- request_id(message)
   reply <- function(response) {
     session$sendCustomMessage(
       "shinymcp-host-response",
       list(
         instanceId = instance_id,
-        requestId = event$requestId,
+        requestId = json_field(event, "requestId"),
         response = strip_http_status(response)
       )
     )
@@ -739,7 +754,8 @@ handle_host_event <- function(session, registry, event) {
     ))
     return(invisible())
   }
-  method <- message$method
+  method <- json_field(message, "method")
+  params <- json_field(message, "params")
   if (!is_string(method) || !method %in% HOST_PAGE_METHODS) {
     reply(jsonrpc_error(
       id,
@@ -751,7 +767,7 @@ handle_host_event <- function(session, registry, event) {
 
   allowed <- if (identical(method, "tools/call")) {
     promises::then(state$source$tools_async(), function(tools) {
-      name <- message$params$name
+      name <- json_field(params, "name")
       for (tool in tools) {
         if (identical(tool$name, name)) {
           return(tool_wire_visible_to(tool, "app"))
@@ -772,7 +788,7 @@ handle_host_event <- function(session, registry, event) {
           RPC_INVALID_PARAMS,
           paste0(
             "The app can't call the tool ",
-            as.character(to_json(message$params$name %||% "")),
+            as.character(to_json(json_field(params, "name") %||% "")),
             "."
           )
         ))
@@ -789,8 +805,8 @@ handle_host_event <- function(session, registry, event) {
           if (identical(method, "tools/call") && !is.null(response$result)) {
             mcp_host_record_call(
               state,
-              message$params$name,
-              message$params$arguments,
+              json_field(params, "name"),
+              json_field(params, "arguments"),
               response$result
             )
           }

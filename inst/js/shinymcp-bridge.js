@@ -1415,12 +1415,7 @@
     var body = "query=" + encodeURIComponent(query) +
       "&field=" + encodeURIComponent("[\"value\",\"label\"]") +
       "&value=value&conju=and&maxop=" + SERVER_CHOICES;
-    callTool(config.runtime.viewTool, {
-      action: "data",
-      instance: state.instance,
-      output: decodeURIComponent(match[1]),
-      body: body
-    }).then(function (result) {
+    dataRequest(decodeURIComponent(match[1]), body).then(function (result) {
       var view = viewMeta(result);
       // A later update replaced these choices.
       if (!view || typeof view.data !== "string" || el.__shinymcpChoicesUrl !== url) return;
@@ -2078,6 +2073,32 @@
     return out;
   }
 
+  // Ask the view tool for data kept in R (DT's server-side rows,
+  // selectize's server-side choices). If the view's session is gone, ask
+  // once more with everything the page has, and R starts a new one.
+  function dataRequest(output, body) {
+    function ask(full) {
+      var args = { action: "data", instance: state.instance, output: output, body: body };
+      if (full) {
+        args.inputs = readInputs();
+        args.kinds = inputKinds(keys(adapters));
+      }
+      return callTool(config.runtime.viewTool, args).then(function (result) {
+        var view = viewMeta(result);
+        if (view && view.gone && !full) return ask(true);
+        if (view && view.instance) state.instance = view.instance;
+        if (view && view.restarted) {
+          // The new session has every input, and the outputs the page shows.
+          state.syncedInstance = state.instance;
+          if (typeof view.revision === "number") state.viewRevision = view.revision;
+          logWarn("the app's R session was restarted; state kept outside inputs was reset");
+        }
+        return result;
+      });
+    }
+    return ask(false);
+  }
+
   function inputKinds(ids) {
     var kinds = {};
     each(ids, function (id) {
@@ -2181,7 +2202,8 @@
         action: "download",
         instance: state.instance,
         output: outputId,
-        inputs: readInputs()
+        inputs: readInputs(),
+        kinds: inputKinds(keys(adapters))
       },
       _meta: callMeta()
     }).then(
@@ -3152,12 +3174,7 @@
           var query = url.indexOf("?") >= 0 ? url.slice(url.indexOf("?") + 1) : "";
           var body = typeof options.data === "string" ? options.data : options.data ? $.param(options.data) : "";
           if (!body) body = query;
-          callTool(config.runtime.viewTool, {
-            action: "data",
-            instance: state.instance,
-            output: name,
-            body: body
-          }).then(
+          dataRequest(name, body).then(
             function (result) {
               if (aborted) return;
               var view = viewMeta(result);

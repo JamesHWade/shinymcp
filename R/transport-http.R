@@ -242,7 +242,7 @@ http_dispatch <- function(
     ))
   }
   meta_version <- meta_protocol_version(message)
-  is_initialize <- identical(message$method, "initialize")
+  is_initialize <- identical(message[["method"]], "initialize")
 
   if (!is.null(meta_version) && !is_initialize) {
     # Modern request: validate the mirrored headers, then serve statelessly.
@@ -250,7 +250,7 @@ http_dispatch <- function(
     if (!is.null(problem)) {
       return(list(
         response = jsonrpc_error(
-          message$id %||% NULL,
+          message[["id"]] %||% NULL,
           RPC_HEADER_MISMATCH,
           problem,
           status = 400L
@@ -267,7 +267,7 @@ http_dispatch <- function(
   ) {
     return(list(
       response = jsonrpc_error(
-        message$id %||% NULL,
+        message[["id"]] %||% NULL,
         RPC_INVALID_REQUEST,
         paste("Unsupported MCP-Protocol-Version:", header_version),
         data = list(
@@ -292,7 +292,7 @@ http_dispatch <- function(
       # The client must start a new session.
       return(list(
         response = jsonrpc_error(
-          message$id %||% NULL,
+          message[["id"]] %||% NULL,
           RPC_INVALID_REQUEST,
           "Session not found",
           status = 404L
@@ -317,7 +317,7 @@ http_dispatch <- function(
 #' the server refuses them.
 #' @noRd
 meta_protocol_version <- function(message) {
-  params <- message$params
+  params <- message[["params"]]
   meta <- if (is_json_object(params)) params[["_meta"]]
   version <- if (is_json_object(meta)) meta[[META_PROTOCOL_VERSION]]
   if (is_string(version)) version
@@ -349,31 +349,31 @@ check_modern_headers <- function(message, headers) {
       version
     ))
   }
-  if (is.null(message$id)) {
+  if (is.null(message[["id"]])) {
     # Header rules for notifications are not defined by this revision.
     return(NULL)
   }
   # Headers mirror strings in the body. A method, or a name, that isn't one
   # is left for the server to refuse, as an invalid request or params.
-  if (!is_string(message$method)) {
+  if (!is_string(message[["method"]])) {
     return(NULL)
   }
   header_method <- headers[["mcp-method"]]
   if (is.null(header_method)) {
     return("Header mismatch: Mcp-Method header is required.")
   }
-  if (!identical(header_method, message$method)) {
+  if (!identical(header_method, message[["method"]])) {
     return(sprintf(
       "Header mismatch: Mcp-Method header '%s' does not match body value '%s'.",
       header_method,
-      message$method
+      message[["method"]]
     ))
   }
   target <- switch(
-    message$method,
+    message[["method"]],
     "tools/call" = ,
-    "prompts/get" = message$params$name,
-    "resources/read" = message$params$uri,
+    "prompts/get" = message[["params"]][["name"]],
+    "resources/read" = message[["params"]][["uri"]],
     NULL
   )
   if (is_string(target)) {

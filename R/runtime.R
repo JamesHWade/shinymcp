@@ -282,38 +282,41 @@ ShinyRuntime <- R6::R6Class(
         return(private$dependency_request(arguments$dependency))
       }
       if (identical(action, "data")) {
+        # Data requests carry the page's inputs only when asked again after
+        # the view's session was found gone: then it's rebuilt from them.
+        if (is.null(instance) && is.list(arguments$inputs)) {
+          instance <- private$rebuild_instance(arguments, context, id)
+          with_request_context(context, private$settle(instance))
+          crashed <- private$crash_result(instance)
+          if (!is.null(crashed)) {
+            return(crashed)
+          }
+          # Outputs register their data as they render (DT's tables). The
+          # page shows them already, made from the same inputs, so they
+          # count as sent, and the page takes the new view's revision.
+          collected <- with_request_context(
+            context,
+            collect_runtime_outputs(instance, self$outputs)
+          )
+          for (out in names(collected)) {
+            instance$digests[[out]] <- collected[[out]]$digest
+          }
+          instance$revision <- (instance$revision %||% 0L) + 1L
+          restarted <- TRUE
+        }
         return(private$data_request(
           instance,
           arguments$output,
           arguments$body,
-          context
+          context,
+          restarted = restarted
         ))
       }
 
       page_inputs <- arguments$inputs %||% list()
       kinds <- arguments$kinds %||% list()
       if (is.null(instance)) {
-        # A new view, or one whose session is gone: rebuild it from the
-        # page's full input state. An id that's still in use belongs to
-        # someone else's view, so the new one gets its own.
-        values <- private$page_values(page_inputs, kinds, NULL)
-        # A new session starts its buttons at zero, so observers don't redo
-        # earlier presses (a "Save" saving again); a press that came with
-        # this request still counts.
-        pressed <- as.character(unlist(arguments$changed))
-        for (key in names(values)) {
-          if (inherits(values[[key]], "shinyActionButtonValue")) {
-            values[[key]] <- action_value(if (key %in% pressed) 1L else 0L)
-          }
-        }
-        free <- is_string(id) &&
-          !exists(id, envir = private$instances, inherits = FALSE)
-        instance <- private$create_instance(
-          values,
-          context,
-          id = if (free) id
-        )
-        instance$page_sent <- private$dom_keys(values)
+        instance <- private$rebuild_instance(arguments, context, id)
         restarted <- is_string(id)
         all_outputs <- TRUE
       } else {
@@ -367,6 +370,31 @@ ShinyRuntime <- R6::R6Class(
         all_outputs = all_outputs,
         restarted = restarted
       )
+    },
+
+    # A new view, or one whose session is gone, rebuilt from the page's
+    # full input state. An id that's still in use belongs to someone
+    # else's view, so the new one gets its own.
+    rebuild_instance = function(arguments, context, id) {
+      values <- private$page_values(
+        arguments$inputs %||% list(),
+        arguments$kinds %||% list(),
+        NULL
+      )
+      # A new session starts its buttons at zero, so observers don't redo
+      # earlier presses (a "Save" saving again); a press that came with
+      # this request still counts.
+      pressed <- as.character(unlist(arguments$changed))
+      for (key in names(values)) {
+        if (inherits(values[[key]], "shinyActionButtonValue")) {
+          values[[key]] <- action_value(if (key %in% pressed) 1L else 0L)
+        }
+      }
+      free <- is_string(id) &&
+        !exists(id, envir = private$instances, inherits = FALSE)
+      instance <- private$create_instance(values, context, id = if (free) id)
+      instance$page_sent <- private$dom_keys(values)
+      instance
     },
 
     server_function = function() {
@@ -961,8 +989,16 @@ ShinyRuntime <- R6::R6Class(
     # server-side DT table (DT::renderDT(server = TRUE)). The page's request
     # body is handed to the filter function the widget registered, as Shiny
     # would hand it an HTTP request.
-    data_request = function(inst, name, body, context) {
-      obj <- if (!is.null(inst)) inst$data_objects[[name %||% ""]]
+    data_request = function(inst, name, body, context, restarted = FALSE) {
+      if (is.null(inst)) {
+        # The page asks again with its inputs, and the view is rebuilt.
+        return(wire_result(list(
+          content = list(text_block("This view's session is gone.")),
+          isError = TRUE,
+          `_meta` = list(`shinymcp/view` = list(gone = TRUE))
+        )))
+      }
+      obj <- inst$data_objects[[name %||% ""]]
       if (is.null(obj)) {
         return(wire_result(list(
           content = list(text_block(paste0(
@@ -1004,7 +1040,14 @@ ShinyRuntime <- R6::R6Class(
       Encoding(text) <- "UTF-8"
       wire_result(list(
         content = list(text_block(paste0("Data for ", name, "."))),
-        `_meta` = list(`shinymcp/view` = list(instance = inst$id, data = text))
+        `_meta` = list(
+          `shinymcp/view` = compact_list(list(
+            instance = inst$id,
+            data = text,
+            revision = if (restarted) inst$revision,
+            restarted = if (restarted) TRUE
+          ))
+        )
       ))
     },
 

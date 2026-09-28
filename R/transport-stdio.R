@@ -89,7 +89,9 @@ is_json_batch <- function(message) {
 #' @noRd
 batch_refusal <- function(msg) {
   if (
-    is.list(msg) && !is.null(names(msg)) && identical(msg$method, "initialize")
+    is.list(msg) &&
+      !is.null(names(msg)) &&
+      identical(msg[["method"]], "initialize")
   ) {
     jsonrpc_error(
       request_id(msg),
