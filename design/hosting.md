@@ -60,9 +60,13 @@ A source is where an app's tools and page come from.
   keeping the `Mcp-Session-Id`. It declares the MCP Apps extension, keeps
   `_meta` on every result (mcptools drops it, which is why hosts can't use
   it), and reads JSON or SSE response bodies. In a Shiny session, requests
-  are asynchronous (httr2 and promises), so a slow tool or a long poll
-  doesn't hold up the session or the other requests; outside one they
-  block. `headers` is a list or a function returning one, called for each
+  are asynchronous (curl, driven from later, and promises; each request
+  has a pool of its own), so a slow tool or a long poll doesn't hold up
+  the session or the other requests; outside one they block (httr2).
+  httr2's `req_perform_promise()` isn't used: in httr2 1.3.0 it waits on
+  its pool for curl's timeout in milliseconds read as seconds, which left
+  a timed-out request's wait on the event loop for ~1000 times its
+  timeout. `headers` is a list or a function returning one, called for each
   request, so each visitor's requests can carry their own credentials:
   create the client in the server function for that.
 

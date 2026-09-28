@@ -39,7 +39,7 @@ Suggests:
     httpuv,
     httr2,
     knitr,
-    later,
+    later (>= 1.4.0),
     palmerpenguins,
     promises,
     rmarkdown,

@@ -448,4 +448,10 @@ test_that("async requests to a server that never answers time out", {
   expect_match(conditionMessage(failed), "Timeout was reached")
   # Discovery, then the handshake: two timeouts, and the pool's check.
   expect_lt(as.numeric(difftime(Sys.time(), start, units = "secs")), 10)
+  # And nothing is left waiting on the event loop.
+  end <- Sys.time() + 3
+  while (!later::loop_empty() && Sys.time() < end) {
+    later::run_now(0.1)
+  }
+  expect_true(later::loop_empty())
 })

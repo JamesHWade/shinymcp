@@ -788,13 +788,16 @@ client_abort <- function(message, method = NULL, error = NULL) {
 
 # ---- HTTP ----
 
-#' Perform a request with httr2
+#' Perform a request: with httr2, or, returning a promise, with curl
 #'
 #' Responses of every status are returned, not raised: an MCP error comes
 #' with a JSON-RPC body the caller reads. Only failing to reach the server
 #' is an error.
 #' @noRd
 httr2_transport <- function(request, async = FALSE, timeout = 60) {
+  if (async) {
+    return(curl_request_async(request, timeout))
+  }
   req <- httr2::request(request$url)
   req <- httr2::req_method(req, request$method)
   req <- httr2::req_headers(req, !!!request$headers)
@@ -807,32 +810,81 @@ httr2_transport <- function(request, async = FALSE, timeout = 60) {
     req,
     paste0("shinymcp/", utils::packageVersion("shinymcp"))
   )
-  if (async) {
-    rlang::check_installed(
-      c("promises", "later", "curl"),
-      reason = "to call MCP servers from Shiny."
+  httr2_response(httr2::req_perform(req))
+}
+
+#' Perform a request with curl and return a promise of the response
+#'
+#' Each request has a pool of its own, driven from later: in a shared pool,
+#' a request added while another waits (an app's long poll) isn't watched
+#' until that one has news. httr2's req_perform_promise() isn't used
+#' because it waits on its pool for curl's timeout read as seconds, though
+#' curl gives milliseconds: a server that never answered was waited on for
+#' hours, and the wait stayed on the event loop after the request ended.
+#' @noRd
+curl_request_async <- function(request, timeout = 60) {
+  rlang::check_installed(
+    c("promises", "later", "curl"),
+    reason = "to call MCP servers from Shiny."
+  )
+  handle <- curl::new_handle(
+    url = request$url,
+    customrequest = request$method,
+    timeout_ms = round(timeout * 1000),
+    connecttimeout_ms = round(timeout * 1000),
+    useragent = paste0("shinymcp/", utils::packageVersion("shinymcp"))
+  )
+  if (!is.null(request$body)) {
+    curl::handle_setopt(handle, postfields = request$body)
+  }
+  if (length(request$headers)) {
+    curl::handle_setheaders(
+      handle,
+      .list = lapply(request$headers, as.character)
     )
-    # A pool of its own: httr2 polls a pool's connections together, and a
-    # request added while it waits on another (an app's long poll) isn't
-    # watched until that one has news.
-    pool <- curl::new_pool()
-    response <- httr2::req_perform_promise(req, pool = pool)
-    settled <- FALSE
-    response <- promises::finally(response, function() settled <<- TRUE)
-    # httr2 waits on the pool for curl's timeout read as seconds, though
-    # curl gives milliseconds, so a server that never answers would be
-    # waited on for hours. Running the pool each second lets curl's own
-    # timeout end the request.
-    tick <- function() {
-      if (!settled) {
-        try(curl::multi_run(0, pool = pool), silent = TRUE)
-        later::later(tick, 1)
+  }
+  pool <- curl::new_pool()
+  promises::promise(function(resolve, reject) {
+    curl::multi_add(
+      handle,
+      done = function(res) resolve(curl_response(res)),
+      fail = function(message) reject(simpleError(message)),
+      pool = pool
+    )
+    poll <- function(...) {
+      pending <- tryCatch(
+        curl::multi_run(timeout = 0, pool = pool)$pending,
+        error = function(e) {
+          reject(e)
+          0
+        }
+      )
+      if (pending > 0) {
+        fds <- curl::multi_fdset(pool = pool)
+        # curl's wait is in milliseconds (-1 for none); look again at
+        # least each second.
+        ms <- fds$timeout %||% -1
+        wait <- if (ms >= 0) min(ms / 1000, 1) else 1
+        later::later_fd(
+          poll,
+          fds$reads,
+          fds$writes,
+          fds$exceptions,
+          timeout = wait
+        )
       }
     }
-    later::later(tick, 1)
-    return(promises::then(response, httr2_response))
-  }
-  httr2_response(httr2::req_perform(req))
+    poll()
+  })
+}
+
+#' @noRd
+curl_response <- function(res) {
+  headers <- curl::parse_headers_list(res$headers)
+  names(headers) <- tolower(names(headers))
+  body <- rawToChar(res$content)
+  Encoding(body) <- "UTF-8"
+  list(status = res$status_code, headers = headers, body = body)
 }
 
 #' @noRd
