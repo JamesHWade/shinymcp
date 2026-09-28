@@ -2467,6 +2467,22 @@ test_that("is_mcp_session() is TRUE only inside the runtime", {
   expect_false(is_mcp_session())
 })
 
+test_that("the session helpers work where Shiny isn't installed", {
+  skip_if_not_installed("shiny")
+  local_mocked_bindings(
+    is_installed = function(pkg, ...) !identical(pkg, "shiny"),
+    .package = "rlang"
+  )
+  local_mocked_bindings(
+    getDefaultReactiveDomain = function() stop("there is no package 'shiny'"),
+    .package = "shiny"
+  )
+  expect_false(mcp_model_context(text = "hi"))
+  expect_false(mcp_send_message("hi"))
+  expect_false(is_mcp_session())
+  expect_null(mcp_host_context())
+})
+
 test_that("the default model context lists the model's inputs and outputs", {
   skip_if_not_installed("shiny")
   app <- cars_text_app()

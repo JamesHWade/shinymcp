@@ -421,6 +421,26 @@ test_that("responses sent by the client get no response", {
     id = 4,
     error = list(code = -1, message = "no")
   )))
+  # A result can be null.
+  expect_null(server$handle(from_json(
+    '{"jsonrpc":"2.0","id":5,"result":null}'
+  )))
+})
+
+test_that("a message that is neither request nor response is refused", {
+  server <- McpServer$new(serving_app())
+  for (json in c(
+    '{"jsonrpc":"2.0","id":1}',
+    '{"jsonrpc":"2.0","id":1,"method":null}'
+  )) {
+    response <- server$handle(from_json(json))
+    expect_equal(response$id, 1, info = json)
+    expect_equal(response$error$code, -32600L, info = json)
+    expect_equal(attr(response, "http_status"), 400L, info = json)
+  }
+  response <- server$handle(list(jsonrpc = "2.0"))
+  expect_null(response$id)
+  expect_equal(response$error$code, -32600L)
 })
 
 test_that("messages that aren't JSON-RPC 2.0 are invalid requests", {

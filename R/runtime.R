@@ -2377,7 +2377,9 @@ mcp_host_context <- function(session = shiny::getDefaultReactiveDomain()) {
 
 #' @noRd
 runtime_instance <- function(session) {
-  if (is.null(session)) {
+  # Without Shiny there's no session, and the helpers' default for it,
+  # shiny::getDefaultReactiveDomain(), can't be evaluated: check first.
+  if (!rlang::is_installed("shiny") || is.null(session)) {
     return(NULL)
   }
   inst <- tryCatch(session$userData$.shinymcp, error = function(e) NULL)

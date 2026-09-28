@@ -203,8 +203,17 @@ McpServer <- R6::R6Class(
       }
       method <- message$method
       if (is.null(method)) {
-        # A response from the client: nothing to do.
-        return(NULL)
+        # A response from the client: nothing to do. Anything else without
+        # a method is neither request nor response.
+        if (any(c("result", "error") %in% names(message))) {
+          return(NULL)
+        }
+        return(jsonrpc_error(
+          request_id(message),
+          RPC_INVALID_REQUEST,
+          "Invalid Request: expected a method, or a result or error.",
+          status = 400L
+        ))
       }
       if (!is_string(method)) {
         return(jsonrpc_error(
