@@ -38,6 +38,11 @@
 #' report is cut to 2,000 characters, from the five apps that changed most
 #' recently.
 #'
+#' A session can have several chats, each with its own `mcp_chat_host()`.
+#' Each chat's model is told about, and gets messages from, only the cards
+#' its tools opened. A card built with [mcp_content_result()] belongs to
+#' the session's chat when there's only one.
+#'
 #' @param chat The value of [shinychat::chat_server()], or an ellmer chat.
 #'   With an ellmer chat, pass `chat_id` too, so apps' messages can reach
 #'   the input box.
@@ -104,7 +109,12 @@ mcp_chat_host <- function(
   for (source in sources) {
     register_host_source(registry, source)
   }
+  # Several chats can share a session; each card is its chat's. The key is
+  # saved with the card, so it has to be the same in every session: the
+  # chat's id, or else its place among the session's chat hosts.
+  key <- chat_host_key(registry, chat_id)
   card <- chat_card_options(...)
+  card$owner <- key
   tools <- unname(unlist(
     lapply(sources, function(source) {
       shinychat_tools(source, session = session, card = card)
@@ -114,7 +124,7 @@ mcp_chat_host <- function(
   client$register_tools(tools)
 
   if (isTRUE(context)) {
-    removers <- install_app_context(client, registry)
+    removers <- install_app_context(client, registry, key)
     session$onSessionEnded(function() {
       for (remove in removers) {
         try(remove(), silent = TRUE)
@@ -122,7 +132,7 @@ mcp_chat_host <- function(
     })
   }
 
-  registry$on_card_message <- if (messages != "ignore") {
+  on_message <- if (messages != "ignore") {
     function(state, params) {
       text <- host_content_text(list(content = params$content))
       if (!nzchar(text)) {
@@ -137,11 +147,20 @@ mcp_chat_host <- function(
       resolved$compose(text, submit = identical(messages, "submit"))
     }
   }
+  registry$chat_hosts[[key]] <- list(on_message = on_message)
 
   invisible(list(
-    context = function() host_context_text(registry),
+    context = function() host_context_text(registry, key),
     tools = tools
   ))
+}
+
+#' The key a chat host's cards carry
+#' @noRd
+chat_host_key <- function(registry, chat_id = NULL) {
+  taken <- names(registry$chat_hosts)
+  key <- chat_id %||% paste0("chat-", length(taken) + 1L)
+  utils::tail(make.unique(c(taken, key)), 1)
 }
 
 #' The ellmer client of a chat, and a way to fill its input box
@@ -206,7 +225,7 @@ chat_card_options <- function(
 #'
 #' @return Functions that remove the callbacks.
 #' @noRd
-install_app_context <- function(client, registry) {
+install_app_context <- function(client, registry, owner = NULL) {
   inserted <- list()
 
   without_inserted <- function(turns) {
@@ -226,7 +245,7 @@ install_app_context <- function(client, registry) {
     current <- client$get_turns()
     kept <- without_inserted(current)
     inserted <<- list()
-    text <- host_context_text(registry)
+    text <- host_context_text(registry, owner)
     if (!is.null(text)) {
       turn <- ellmer::UserTurn(text)
       inserted <<- list(turn)
@@ -283,13 +302,20 @@ has_tool_requests <- function(turn) {
 #' What the open apps in a conversation report, for the model
 #'
 #' Each card's latest model context, cut to `max_chars`, from the
-#' `max_apps` apps that reported most recently, oldest first.
+#' `max_apps` apps that reported most recently, oldest first. With `owner`,
+#' only that chat host's cards.
 #' @noRd
-host_context_text <- function(registry, max_apps = 5, max_chars = 2000) {
+host_context_text <- function(
+  registry,
+  owner = NULL,
+  max_apps = 5,
+  max_chars = 2000
+) {
   states <- Filter(
     function(state) {
       !is.null(state$model_context) &&
-        nzchar(host_content_text(state$model_context))
+        nzchar(host_content_text(state$model_context)) &&
+        (is.null(owner) || identical(card_chat_key(registry, state), owner))
     },
     host_instances(registry, "card")
   )

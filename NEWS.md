@@ -54,7 +54,8 @@ section.
   opens them with their tools; before each message the person sends, it is
   told what each open app reports about what it shows; a message an app
   suggests goes to the chat's input box; and a restored conversation shows
-  its apps again without calling their tools.
+  its apps again without calling their tools. Several chats in one session
+  each keep to their own apps.
 * New `mcp_client()` connects to any MCP server over HTTP, in either
   protocol era, keeping the `_meta` MCP Apps rely on. Every host takes a
   client where it takes an app, so a Shiny app can show apps deployed on

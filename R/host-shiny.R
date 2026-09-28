@@ -188,8 +188,8 @@ new_host_registry <- function() {
   registry$instances <- new.env(parent = emptyenv())
   registry$sources <- new.env(parent = emptyenv())
   registry$pages <- new.env(parent = emptyenv())
-  # Set by a chat host: called with the state and the params.
-  registry$on_card_message <- NULL
+  # Set by chat hosts, by key: what each does with its cards' messages.
+  registry$chat_hosts <- list()
   registry
 }
 
@@ -199,6 +199,25 @@ register_host_source <- function(registry, source) {
   source <- as_host_source(source)
   registry$sources[[source$key]] <- source
   source
+}
+
+#' The key of the chat host a card belongs to, or NULL
+#'
+#' The one whose tool made it, or, for a card built by hand, the session's
+#' only chat host.
+#' @noRd
+card_chat_key <- function(registry, state) {
+  if (is_string(state$owner)) {
+    return(state$owner)
+  }
+  keys <- names(registry$chat_hosts)
+  if (length(keys) == 1) keys
+}
+
+#' @noRd
+card_chat_host <- function(registry, state) {
+  key <- card_chat_key(registry, state)
+  if (!is.null(key)) registry$chat_hosts[[key]]
 }
 
 #' The instance with an id, or NULL
@@ -333,7 +352,8 @@ register_shiny_host_instance <- function(
   trigger = NULL,
   debounce_ms = NULL,
   height = "auto",
-  title = NULL
+  title = NULL,
+  owner = NULL
 ) {
   rlang::check_installed("promises", reason = "to host MCP Apps in Shiny.")
   registry <- ensure_shiny_host_registry(session)
@@ -364,6 +384,8 @@ register_shiny_host_instance <- function(
     title = title,
     config = config
   )
+  # The chat host whose tool made the card.
+  state$owner <- owner
   if (!is.null(definition)) {
     state$ready <- promises::promise_resolve(settle_host_tool(
       state,
@@ -408,6 +430,7 @@ host_descriptor <- function(state, height = "auto", trigger = NULL) {
     arguments = state$arguments %||% json_object(),
     result = state$result,
     title = state$title,
+    owner = state$owner,
     height = height,
     trigger = trigger,
     version = as.character(utils::packageVersion("shinymcp"))
@@ -451,6 +474,7 @@ restore_host_instance <- function(registry, descriptor) {
     kind = "card"
   )
   state$restored <- TRUE
+  state$owner <- if (is_string(descriptor$owner)) descriptor$owner
   if (!is.null(definition)) {
     state$ready <- promises::promise_resolve(settle_host_tool(
       state,
@@ -670,12 +694,13 @@ handle_host_event <- function(session, registry, event) {
   if (identical(type, "notification")) {
     if (!is.null(state)) {
       mcp_host_notification(state, event$method, event$params %||% list())
+      host <- card_chat_host(registry, state)
       if (
         identical(event$method, "ui/message") &&
           identical(state$kind, "card") &&
-          is.function(registry$on_card_message)
+          is.function(host$on_message)
       ) {
-        registry$on_card_message(state, event$params %||% list())
+        host$on_message(state, event$params %||% list())
       }
     }
     return(invisible())

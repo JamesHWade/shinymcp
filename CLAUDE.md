@@ -207,7 +207,11 @@ process are checked at registration, so mistakes stay errors). Only
 `mcp_chat_host()` adds each open card's model context to the model's
 input from `Chat$on_request_start()`: a user turn of its own before the
 person's message (never before tool results), removed in
-`on_request_end()` once the reply has no tool requests left.
+`on_request_end()` once the reply has no tool requests left. Each chat
+host has a key (`chat_id`, else `chat-<n>` by its place in the session);
+its cards carry it as `owner`, in their descriptors too, and only its own
+cards' context and messages reach it (`registry$chat_hosts`). A card built
+by hand belongs to the session's only chat host.
 
 ### Live runtime (transitional)
 

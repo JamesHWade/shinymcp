@@ -67,6 +67,11 @@ What apps report is written by the apps, so treat it like anything else
 a tool returns: the model is told where it came from, and each app's
 report is cut to 2,000 characters, from the five apps that changed most
 recently.
+
+A session can have several chats, each with its own \code{mcp_chat_host()}.
+Each chat's model is told about, and gets messages from, only the cards
+its tools opened. A card built with \code{\link[=mcp_content_result]{mcp_content_result()}} belongs to
+the session's chat when there's only one.
 }
 \examples{
 \dontrun{

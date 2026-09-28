@@ -211,7 +211,8 @@ shinychat_card <- function(source, definition, arguments, call, session, card) {
     tool = definition$name,
     arguments = arguments,
     result = result,
-    session = session
+    session = session,
+    owner = card$owner
   )
 }
 
@@ -274,7 +275,8 @@ live_card_result <- function(
   arguments = NULL,
   result = NULL,
   request = NULL,
-  session = NULL
+  session = NULL,
+  owner = NULL
 ) {
   rlang::check_installed("ellmer", reason = "for shinychat tool results.")
   display <- compact_list(list(
@@ -293,7 +295,8 @@ live_card_result <- function(
       arguments = arguments,
       result = result,
       kind = "card",
-      title = if (is.character(title)) title
+      title = if (is.character(title)) title,
+      owner = owner
     )
     if (is.null(result)) {
       start_host_call(root_shiny_session(session), registered$state)

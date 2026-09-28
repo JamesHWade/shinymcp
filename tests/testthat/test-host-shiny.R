@@ -771,12 +771,16 @@ test_that("notifications update the host state; card messages reach the chat hos
   card <- new_mcp_host_state(host_app(), "i2", tool = "greet", kind = "card")
   registry <- helper_host_registry(i1 = pane, i2 = card)
   posted <- list()
-  registry$on_card_message <- function(state, params) {
-    posted[[length(posted) + 1]] <<- list(
-      id = state$instance_id,
-      params = params
+  registry$chat_hosts <- list(
+    chat = list(
+      on_message = function(state, params) {
+        posted[[length(posted) + 1]] <<- list(
+          id = state$instance_id,
+          params = params
+        )
+      }
     )
-  }
+  )
   notify <- function(id, method, params) {
     handle_host_event(
       session,

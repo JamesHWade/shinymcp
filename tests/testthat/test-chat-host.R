@@ -403,6 +403,126 @@ test_that("mcp_chat_host() puts apps' messages in the input box, or sends them",
   )
 })
 
+# A stand-in for shinychat::chat_server()'s value whose input box records
+# what it's given.
+composer_chat <- function() {
+  chat <- new.env(parent = emptyenv())
+  chat$composed <- list()
+  chat$update_user_input <- function(value = NULL, ..., submit = FALSE) {
+    chat$composed[[length(chat$composed) + 1]] <- value
+  }
+  client <- ellmer::chat_openai_compatible(
+    base_url = "http://mock.test/v1",
+    credentials = function() "test",
+    model = "mock"
+  )
+  makeActiveBinding("client", function() client, chat)
+  chat
+}
+
+# A card with a context of its own, as a chat host's tool would make it.
+owned_card <- function(registry, id, owner, text) {
+  state <- card_with_context(registry, id, text)
+  state$owner <- owner
+  state
+}
+
+post_message <- function(session, registry, id, text) {
+  handle_host_event(
+    session,
+    registry,
+    list(
+      instanceId = id,
+      type = "notification",
+      method = "ui/message",
+      params = list(
+        role = "user",
+        content = list(list(type = "text", text = text))
+      )
+    )
+  )
+}
+
+test_that("two chats in a session each get their own cards' context and messages", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinychat")
+  skip_if_not_installed("S7")
+  session <- shiny::MockShinySession$new()
+  first <- composer_chat()
+  second <- composer_chat()
+  one <- mcp_chat_host(first, chat_host_app(), session = session)
+  two <- mcp_chat_host(second, chat_host_app(), session = session)
+  registry <- session$userData$.shinymcp_hosts
+  expect_equal(names(registry$chat_hosts), c("chat-1", "chat-2"))
+
+  owned_card(registry, "a", "chat-1", "Showing apples.")
+  owned_card(registry, "b", "chat-2", "Showing bananas.")
+  expect_match(one$context(), "apples", fixed = TRUE)
+  expect_false(grepl("bananas", one$context(), fixed = TRUE))
+  expect_match(two$context(), "bananas", fixed = TRUE)
+  expect_false(grepl("apples", two$context(), fixed = TRUE))
+
+  fake <- helper_fake_session()
+  post_message(fake, registry, "a", "About apples")
+  post_message(fake, registry, "b", "About bananas")
+  expect_equal(first$composed, list("About apples"))
+  expect_equal(second$composed, list("About bananas"))
+
+  # A card built by hand belongs to no chat when there are two.
+  card_with_context(registry, "c", "Showing cherries.")
+  post_message(fake, registry, "c", "About cherries")
+  expect_false(grepl("cherries", one$context(), fixed = TRUE))
+  expect_false(grepl("cherries", two$context(), fixed = TRUE))
+  expect_length(c(first$composed, second$composed), 2)
+})
+
+test_that("with one chat, cards built by hand are its own", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinychat")
+  skip_if_not_installed("S7")
+  session <- shiny::MockShinySession$new()
+  chat <- composer_chat()
+  host <- mcp_chat_host(chat, chat_host_app(), session = session)
+  registry <- session$userData$.shinymcp_hosts
+
+  card_with_context(registry, "c", "Showing cherries.")
+  post_message(helper_fake_session(), registry, "c", "About cherries")
+  expect_match(host$context(), "cherries", fixed = TRUE)
+  expect_equal(chat$composed, list("About cherries"))
+})
+
+test_that("a chat host's key is saved with its cards and read back on restore", {
+  skip_if_not_installed("shiny")
+  session <- shiny::MockShinySession$new()
+  registered <- register_shiny_host_instance(
+    session,
+    chat_host_app(),
+    instance_id = "c1",
+    kind = "card",
+    owner = "chat-2"
+  )
+  expect_equal(registered$config$owner, "chat-2")
+
+  registry <- new_host_registry()
+  register_host_source(registry, chat_host_app())
+  restored <- restore_host_instance(
+    registry,
+    list(
+      instanceId = "c9",
+      source = "greeter",
+      tool = "greet",
+      owner = "chat-2"
+    )
+  )
+  expect_equal(restored$owner, "chat-2")
+  expect_equal(chat_host_key(registry, "support"), "support")
+  registry$chat_hosts$support <- list()
+  expect_equal(chat_host_key(registry, "support"), "support.1")
+  expect_equal(chat_host_key(registry), "chat-2")
+})
+
 test_that("an ellmer chat without a chat id can't take apps' messages", {
   skip_if_not_installed("ellmer")
   skip_if_not_installed("shiny")
@@ -418,7 +538,7 @@ test_that("an ellmer chat without a chat id can't take apps' messages", {
   registry <- session$userData$.shinymcp_hosts
 
   expect_warning(
-    registry$on_card_message(
+    registry$chat_hosts[[1]]$on_message(
       NULL,
       list(content = list(list(type = "text", text = "hi")))
     ),
