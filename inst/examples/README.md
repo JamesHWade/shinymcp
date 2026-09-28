@@ -38,7 +38,7 @@ model receives from each call.
 
 | Example | What it shows |
 |---|---|
-| [`converted-dashboard`](converted-dashboard) | A Shiny app (`original-app.R`) rewritten as tools, the way `convert_app()` starts it. |
+| [`rewritten-dashboard`](rewritten-dashboard) | A Shiny app (`original-app.R`) rewritten as a tool, with its UI unchanged. |
 | [`feature-tour`](feature-tour) | The page's JavaScript API: an app-only tool, a resource read on demand, messages to the chat, links, and full screen. |
 | [`ggplot-builder`](ggplot-builder) | A plot builder over ggplot2 4.0 features, built from one tool. |
 | [`rpharma-hangout`](rpharma-hangout) | The R/Pharma 2026 demo: two apps reached from an MCP client, a Shiny host, and shinychat. |

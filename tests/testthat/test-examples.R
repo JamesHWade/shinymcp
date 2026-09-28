@@ -33,8 +33,8 @@ app_examples <- list(
     pkgs = c("shiny", "shinyWidgets", "DT"),
     args = list(cyl = list("4", "6"))
   ),
-  "converted-dashboard" = list(
-    pkgs = "ellmer",
+  "rewritten-dashboard" = list(
+    pkgs = c("ellmer", "shiny"),
     args = list(dataset = "iris", obs = 3)
   ),
   "feature-tour" = list(pkgs = c("ellmer", "bslib"), args = list()),

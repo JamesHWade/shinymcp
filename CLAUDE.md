@@ -9,8 +9,7 @@ is a tool whose result comes with a page (a `ui://` resource) that chat
 clients such as Claude, ChatGPT, and VS Code show in a sandboxed iframe and
 talk to over postMessage JSON-RPC.
 
-There are two kinds of app, and the package also hosts apps and converts
-between the two:
+There are two kinds of app, and the package also serves and hosts them:
 
 - **Live Shiny apps.** `as_mcp_app()` serves a Shiny app as it is: the
   server function runs in R, one `MockShinySession` per view of the app,
@@ -23,8 +22,6 @@ between the two:
   handshake versions 2024-11-05 to 2025-11-25 and stateless 2026-07-28.
 - **Hosting.** `preview_app()`, `mcp_host_ui()`/`mcp_host_server()`, and
   `as_shinychat_tool()` show apps the way a chat client does.
-- **Conversion.** `convert_app()` drafts tools from a Shiny app's reactive
-  graph, for apps that should be rewritten as tools.
 
 ## Directory Structure
 
@@ -58,11 +55,6 @@ shinymcp/
 │   ├── host-shiny.R           # mcp_host_ui(), mcp_host_server()
 │   ├── shinychat.R            # as_shinychat_tool(), mcp_content_result()
 │   ├── preview.R              # preview_app()
-│   │   # Rewriting a Shiny app as tools
-│   ├── parse.R                # Shiny app AST -> ShinyAppIR
-│   ├── analyze.R              # Reactive graph -> tool groups
-│   ├── generate.R             # Draft ui.R, tools.R, app.R
-│   ├── convert.R              # convert_app()
 │   │   # Shared
 │   ├── utils.R
 │   ├── errors.R               # shinymcp_abort() and error classes
@@ -86,7 +78,7 @@ shinymcp/
 ```bash
 NOT_CRAN=true Rscript -e "devtools::test()"
 Rscript -e "testthat::test_file('tests/testthat/test-runtime.R')"
-Rscript -e "devtools::test(filter = 'parse')"
+Rscript -e "devtools::test(filter = 'runtime')"
 ```
 
 ### Code Quality
@@ -142,13 +134,6 @@ the bridge (`parseCondition()`, `evaluateCondition()`); plot clicks, hovers,
 and brushes are a port of Shiny's `imageutils` (`setupPlotInteractions()`),
 fed by the coordmap each plot payload carries. Check changes to either
 against the same app in real Shiny: the input values should match.
-
-### Conversion Pipeline
-
-1. `parse_shiny_app(path)` → `ShinyAppIR` (AST walking)
-2. `analyze_reactive_graph(ir)` → `ReactiveAnalysis` (dependency graph)
-3. `generate_mcp_app(analysis, ir, output_dir)` → files on disk
-4. `convert_app(path)` → orchestrates the full pipeline
 
 ## Architecture
 

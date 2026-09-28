@@ -93,10 +93,12 @@ earlier versions needs changes.
 
 ## Rewriting apps as tools
 
-* `convert_app()` writes `ui.R`, `tools.R`, and `app.R`. Its draft tools
-  take typed arguments with the app's defaults, carry the reactive
-  expressions they use, and return their outputs by id, so the draft runs
-  straight away.
+* `convert_app()`, `as_mcp_apps()`, and the functions behind them
+  (`parse_shiny_app()`, `analyze_reactive_graph()`, and
+  `generate_mcp_app()`) are removed. Their drafts guessed at an app's
+  structure from its code and still left every tool to be written.
+  `vignette("rewriting-as-tools")` and the bundled skill take a person or a
+  coding agent through the rewrite instead.
 * `mcp_tool_module()` serves a module's UI with its server function, or
   with a `handler` function in its place.
 

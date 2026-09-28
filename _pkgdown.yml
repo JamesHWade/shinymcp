@@ -75,14 +75,6 @@ reference:
       - mcp_result
       - mcp_tool_result
 
-  - title: Rewriting a Shiny app as tools
-    contents:
-      - convert_app
-      - as_mcp_apps
-      - parse_shiny_app
-      - analyze_reactive_graph
-      - generate_mcp_app
-
   - title: Pages built by hand
     contents:
       - bridge_script_tag

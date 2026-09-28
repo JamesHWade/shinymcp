@@ -1,4 +1,4 @@
-# as_mcp_app() and as_mcp_apps() (R/as-mcp-app.R, R/convert.R)
+# as_mcp_app() (R/as-mcp-app.R)
 
 cars_ui <- function() {
   shiny::fluidPage(
@@ -620,38 +620,4 @@ test_that("an McpApp is returned unchanged", {
 test_that("other objects are refused", {
   expect_error(as_mcp_app(42), class = "shinymcp_error_validation")
   expect_error(as_mcp_app(list(a = 1)), "Can't make an MCP App", fixed = TRUE)
-})
-
-# ---- as_mcp_apps() ----
-
-test_that("as_mcp_apps() splits an app into one scaffold per tool group", {
-  root <- withr::local_tempdir()
-  dir <- fixture_chained_reactive_app(root)
-  apps <- as_mcp_apps(dir)
-  expect_true(length(apps) >= 2)
-  expect_true(all(vapply(apps, inherits, logical(1), "McpApp")))
-  expect_identical(
-    unname(vapply(apps, function(a) a$name, character(1))),
-    paste0("chained-app-", names(apps))
-  )
-  # Scaffolds use explicit tools, not the live runtime.
-  expect_true(all(vapply(apps, function(a) is.null(a$runtime()), logical(1))))
-
-  ir <- parse_shiny_app(dir)
-  expect_named(as_mcp_apps(ir), names(apps))
-})
-
-test_that("as_mcp_apps(split = 'manual') gives one card for the whole app", {
-  root <- withr::local_tempdir()
-  dir <- fixture_chained_reactive_app(root)
-  apps <- as_mcp_apps(dir, split = "manual")
-  expect_named(apps, "manual_card")
-  expect_setequal(
-    names(apps$manual_card$tools()$manual_card$input_schema$properties),
-    c("dataset", "n_rows", "user_name")
-  )
-})
-
-test_that("as_mcp_apps() refuses other objects", {
-  expect_error(as_mcp_apps(42), "must be a Shiny app path")
 })
