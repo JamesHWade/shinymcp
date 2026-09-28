@@ -276,7 +276,7 @@ McpClient <- R6::R6Class(
     #' @param ... Ignored.
     print = function(...) {
       cli::cat_line("<McpClient> ", self$name)
-      cli::cat_line("  ", self$url)
+      cli::cat_line("  ", url_without_credentials(self$url))
       if (!is.null(private$version)) {
         cli::cat_line("  Protocol ", private$version)
       }
@@ -529,7 +529,7 @@ McpClient <- R6::R6Class(
         }
         shinymcp_abort(
           c(
-            "Couldn't reach the MCP server at {.url {self$url}}.",
+            "Couldn't reach the MCP server at {.url {url_without_credentials(self$url)}}.",
             "x" = "{conditionMessage(e)}"
           ),
           class = "shinymcp_error_client",
@@ -707,9 +707,19 @@ encode_header_value <- function(value) {
 
 #' @noRd
 client_default_name <- function(url) {
-  name <- sub("^[a-zA-Z]+://", "", url)
+  name <- sub("^[a-zA-Z]+://", "", url_without_credentials(url))
   name <- sub("[?#].*$", "", name)
   sub("/+$", "", name)
+}
+
+#' A URL without the credentials it may carry (`user:password@`)
+#'
+#' Requests go to the URL as given. Wherever it's shown (a client's default
+#' name, messages, `print()`) the credentials are left out: hosts send a
+#' client's name to the browser and save it with conversations.
+#' @noRd
+url_without_credentials <- function(url) {
+  sub("^([a-zA-Z][a-zA-Z0-9+.-]*://)[^/?#]*@", "\\1", url)
 }
 
 # ---- Responses ----
