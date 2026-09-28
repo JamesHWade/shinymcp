@@ -91,6 +91,20 @@ test_that("initialize starts a session and returns its id", {
   expect_equal(serving_body(response)$result$protocolVersion, "2025-06-18")
 })
 
+test_that("an initialize that fails leaves no session behind", {
+  server <- McpServer$new(serving_app())
+  sessions <- new_sessions()
+  for (body in c(
+    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":5}',
+    '{"jsonrpc":"2.0","id":null,"method":"initialize","params":{}}'
+  )) {
+    response <- send(body, server, sessions)
+    expect_false(is.null(serving_body(response)$error), info = body)
+    expect_null(response$headers[["Mcp-Session-Id"]])
+  }
+  expect_length(ls(sessions), 0)
+})
+
 test_that("each session keeps the capabilities its client declared", {
   server <- McpServer$new(serving_app())
   sessions <- new_sessions()

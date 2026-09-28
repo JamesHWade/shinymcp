@@ -168,7 +168,10 @@ MCP Apps (extension version 2026-01-26) use:
 - A Content Security Policy that blocks what the app doesn't declare
   (`csp` in `mcp_app()`); fonts in the page can't load
 
-Clients without UI support get no app-only tools and no `_meta.ui`.
+Clients without UI support get no app-only tools and no `_meta.ui`, and
+can't call app-only tools. For clients with it, the host enforces
+visibility, as the spec says: the server can't tell an app's call through
+the host from the model's.
 
 ### Results
 

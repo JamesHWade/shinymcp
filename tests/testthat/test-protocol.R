@@ -847,6 +847,30 @@ test_that("clients without MCP Apps support get no app-only tools and no nested 
   }
 })
 
+test_that("a client that doesn't show apps can't call tools only apps may", {
+  server <- McpServer$new(serving_app())
+  call_refresh <- function(session) {
+    server$handle(
+      serving_rpc("tools/call", list(name = "refresh"), id = 3),
+      list(session = session)
+    )
+  }
+
+  refused <- call_refresh(initialize_session(server, ui = FALSE))
+  expect_equal(refused$error$code, RPC_INVALID_PARAMS)
+  expect_equal(refused$error$message, "Unknown tool: refresh")
+
+  allowed <- call_refresh(initialize_session(server, ui = TRUE))
+  expect_equal(allowed$result$structuredContent, list(out = "refreshed"))
+
+  # Stateless requests are judged by the capabilities they carry.
+  modern <- function(ui) {
+    server$handle(serving_modern("tools/call", list(name = "refresh"), ui = ui))
+  }
+  expect_equal(modern(FALSE)$error$code, RPC_INVALID_PARAMS)
+  expect_equal(modern(TRUE)$result$structuredContent, list(out = "refreshed"))
+})
+
 test_that("clients with MCP Apps support see app-only tools", {
   server <- McpServer$new(serving_app())
   session <- initialize_session(server, ui = TRUE)

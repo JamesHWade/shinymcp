@@ -282,11 +282,8 @@ http_dispatch <- function(
   session_id <- headers[["mcp-session-id"]]
   extra_headers <- list()
   if (is_initialize) {
-    session_id <- unique_id("mcp")
+    # Kept, and its id given out, only once initialization succeeds.
     session <- server$new_session()
-    sessions[[session_id]] <- session
-    prune_http_sessions(sessions, max_sessions)
-    extra_headers[["Mcp-Session-Id"]] <- session_id
   } else if (!is.null(session_id)) {
     if (!known_session(sessions, session_id)) {
       # The client must start a new session.
@@ -307,7 +304,14 @@ http_dispatch <- function(
 
   transport$session <- session
   session$last_used <- as.numeric(Sys.time())
-  list(response = server$handle(message, transport), headers = extra_headers)
+  response <- server$handle(message, transport)
+  if (is_initialize && "result" %in% names(response)) {
+    session_id <- unique_id("mcp")
+    sessions[[session_id]] <- session
+    prune_http_sessions(sessions, max_sessions)
+    extra_headers[["Mcp-Session-Id"]] <- session_id
+  }
+  list(response = response, headers = extra_headers)
 }
 
 #' The protocol version a request names in `_meta`, or NULL

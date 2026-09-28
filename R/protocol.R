@@ -521,7 +521,12 @@ McpServer <- R6::R6Class(
         rpc_stop("Missing required parameter: name", code = RPC_INVALID_PARAMS)
       }
       app <- self$tool_app(name)
-      if (is.null(app)) {
+      # A client that doesn't show apps wasn't told of tools only an app
+      # may call, and has no app to call them.
+      if (
+        is.null(app) ||
+          (!isTRUE(request$supports_ui) && !name %in% names(app$tools("model")))
+      ) {
         rpc_stop(paste0("Unknown tool: ", name), code = RPC_INVALID_PARAMS)
       }
       arguments <- params[["arguments"]] %||% list()

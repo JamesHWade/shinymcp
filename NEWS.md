@@ -55,6 +55,8 @@ section.
   `allowed_hosts`.
 * Results leave out libraries the page already has, and results for the
   model name large libraries instead of carrying them.
+* A client that doesn't show MCP Apps is neither told of nor allowed to
+  call tools that only an app may call.
 
 ## Hosts
 
