@@ -247,6 +247,7 @@ McpClient <- R6::R6Class(
     #'   request starts a new one.
     close = function() {
       session <- private$session_id
+      version <- private$version
       private$reset()
       if (!is.null(session)) {
         try(
@@ -256,7 +257,10 @@ McpClient <- R6::R6Class(
               url = self$url,
               headers = c(
                 private$user_headers(),
-                list(`Mcp-Session-Id` = session)
+                list(
+                  `MCP-Protocol-Version` = version,
+                  `Mcp-Session-Id` = session
+                )
               ),
               body = NULL
             ),

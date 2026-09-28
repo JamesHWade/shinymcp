@@ -171,7 +171,9 @@ mcp_tool_from_list <- function(tool, call = rlang::caller_env()) {
     description = tool$description %||% "",
     title = tool$title %||% annotations$title,
     input_schema = input_schema,
-    output_schema = tool$outputSchema,
+    output_schema = if (!is.null(tool$outputSchema)) {
+      normalize_json_schema(tool$outputSchema)
+    },
     annotations = normalize_tool_annotations(annotations),
     visibility = visibility,
     outputs = tool$outputs %||% tool[[".output_ids"]],

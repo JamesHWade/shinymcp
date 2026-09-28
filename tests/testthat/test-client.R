@@ -191,6 +191,8 @@ test_that("close() ends the session", {
   last <- fx$requests()[[length(fx$requests())]]
   expect_equal(last$method, "DELETE")
   expect_equal(last$headers$`Mcp-Session-Id`, session)
+  # As every request after the handshake does, it names the version.
+  expect_equal(last$headers$`MCP-Protocol-Version`, "2025-11-25")
   expect_null(fx$client$protocol_version())
 })
 

@@ -276,7 +276,10 @@ test_that("list tools take title, annotations, outputs, and _meta", {
     list(title = "Annotation title", readOnlyHint = TRUE)
   )
   expect_equal(tool$outputs, c("a", "b"))
-  expect_equal(tool$output_schema, list(type = "object"))
+  expect_equal(
+    tool$output_schema,
+    list(type = "object", properties = json_object())
+  )
   expect_equal(tool$meta, list(custom = "x"))
 
   titled <- as_mcp_tool(list(
@@ -567,6 +570,21 @@ test_that("UI metadata a tool declares itself goes only to clients that show app
   # Clients that show apps get the app's page.
   full <- tool_wire_definition(tool, resource_uri = "ui://demo")
   expect_equal(full[["_meta"]][["ui"]]$resourceUri, "ui://demo")
+})
+
+test_that("a declared outputSchema is sent as valid JSON Schema", {
+  tool <- as_mcp_tool(list(
+    name = "o",
+    outputSchema = list(
+      type = "object",
+      properties = list(),
+      required = "a"
+    ),
+    fun = function() NULL
+  ))
+  json <- to_json(tool_wire_definition(tool, "ui://x"))
+  expect_match(json, '"properties":{}', fixed = TRUE)
+  expect_match(json, '"required":["a"]', fixed = TRUE)
 })
 
 test_that("wire definitions use a fallback outputSchema only when the tool has none", {
