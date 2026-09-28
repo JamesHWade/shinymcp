@@ -346,6 +346,37 @@ test_that("async requests to a server that can't be reached reject", {
   expect_match(conditionMessage(failed), "Couldn't reach")
 })
 
+test_that("every async method checks for promises before using it", {
+  skip_if_not_installed("promises")
+  client <- serving_client(client_server())$client
+  # A kept tool list, so tools_async() could answer without a request.
+  client$tools()
+  # Where promises isn't installed, any use of it fails before the check.
+  local_mocked_bindings(
+    then = function(...) stop("promises was used before the check"),
+    promise_resolve = function(...) stop("promises was used before the check"),
+    .package = "promises"
+  )
+  checked <- character()
+  local_mocked_bindings(
+    check_installed = function(pkg, ...) {
+      checked <<- c(checked, pkg)
+      rlang::abort("promises is missing", class = "test_missing")
+    },
+    .package = "rlang"
+  )
+  expect_error(client$tools_async(), class = "test_missing")
+  expect_error(client$tools_async(refresh = TRUE), class = "test_missing")
+  expect_error(client$call_tool_async("echo"), class = "test_missing")
+  expect_error(client$read_resource_async("ui://fx"), class = "test_missing")
+  expect_error(client$request_async("ping"), class = "test_missing")
+  expect_error(
+    client$send_async(client_message("ping")),
+    class = "test_missing"
+  )
+  expect_equal(checked, rep("promises", 6))
+})
+
 test_that("the client works over real HTTP", {
   skip_on_cran()
   skip_if_not_installed("httpuv")

@@ -1254,11 +1254,16 @@ app_lifecycle <- function(on_start = NULL, on_stop = NULL) {
     if (!state$started) {
       return(invisible())
     }
+    dir <- state$dir
     state$started <- FALSE
     state$dir <- NULL
     if (is.function(on_stop)) {
+      # Like the rest of the app's code, the hook runs in its directory.
       old <- getwd()
       on.exit(setwd(old), add = TRUE)
+      if (!is.null(dir)) {
+        setwd(dir)
+      }
       on_stop()
     }
     invisible()

@@ -180,6 +180,7 @@ McpClient <- R6::R6Class(
     #' @description `tools()`, returning a promise.
     #' @param refresh Read the list again even if it is kept.
     tools_async = function(refresh = FALSE) {
+      check_promises()
       if (!refresh && private$tools_fresh()) {
         return(promises::promise_resolve(private$tools_cache))
       }
@@ -206,6 +207,7 @@ McpClient <- R6::R6Class(
     #' @param method JSON-RPC method.
     #' @param params Named list of parameters.
     request_async = function(method, params = NULL) {
+      check_promises()
       promises::then(
         self$send_async(client_message(method, params)),
         function(response) client_result(response, method)
@@ -215,10 +217,7 @@ McpClient <- R6::R6Class(
     #' @description `send()`, returning a promise.
     #' @param message A JSON-RPC request (a list).
     send_async = function(message) {
-      rlang::check_installed(
-        "promises",
-        reason = "to call MCP servers from Shiny."
-      )
+      check_promises()
       promises::then(
         private$connect_async(),
         function(...) private$exchange(message, async = TRUE)
@@ -604,6 +603,15 @@ McpClient <- R6::R6Class(
     }
   )
 )
+
+#' The async methods return promises; check the package is there first
+#' @noRd
+check_promises <- function() {
+  rlang::check_installed(
+    "promises",
+    reason = "to call MCP servers from Shiny."
+  )
+}
 
 # ---- Messages ----
 

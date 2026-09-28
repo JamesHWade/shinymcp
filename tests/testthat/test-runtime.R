@@ -232,6 +232,29 @@ test_that("the server function runs in a shinyAppDir() app's directory", {
   app$close()
 })
 
+test_that("onStop runs in a shinyAppDir() app's directory", {
+  skip_if_not_installed("shiny")
+  local_app_dir_side_effects()
+  dir <- withr::local_tempdir()
+  writeLines("shiny::fluidPage(shiny::textOutput('o'))", file.path(dir, "ui.R"))
+  writeLines(
+    "function(input, output, session) output$o <- shiny::renderText('hi')",
+    file.path(dir, "server.R")
+  )
+  shiny_app <- shiny::shinyAppDir(dir)
+  stop_app <- shiny_app$onStop
+  stopped_in <- NULL
+  shiny_app$onStop <- function() {
+    stopped_in <<- getwd()
+    stop_app()
+  }
+  before <- getwd()
+  app <- suppressPackageStartupMessages(as_mcp_app(shiny_app, name = "stop"))
+  app$close()
+  expect_identical(normalizePath(stopped_in), normalizePath(dir))
+  expect_identical(getwd(), before)
+})
+
 test_that("mcp_request() inside the server function sees the request", {
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(
