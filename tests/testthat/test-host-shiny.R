@@ -1012,6 +1012,9 @@ test_that("the text of what an app sends is its text blocks and structured conte
   expect_equal(host_content_text(params), "one\ntwo\n{\"n\":3}")
   expect_equal(host_content_text(params, limit = 6), "one...")
   expect_equal(host_content_text(list()), "")
+  # Empty structured content adds nothing.
+  params$structuredContent <- setNames(list(), character())
+  expect_equal(host_content_text(params), "one\ntwo")
 })
 
 # ---- mcp_host_server() ----

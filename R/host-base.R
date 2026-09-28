@@ -133,7 +133,7 @@ host_content_text <- function(params, limit = Inf) {
   )
   parts <- vapply(blocks, function(b) b[["text"]], character(1))
   structured <- json_field(params, "structuredContent")
-  if (!is.null(structured)) {
+  if (length(structured)) {
     parts <- c(parts, as.character(to_json(structured)))
   }
   text <- paste(parts, collapse = "\n")

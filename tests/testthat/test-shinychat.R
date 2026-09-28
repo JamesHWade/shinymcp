@@ -120,6 +120,20 @@ test_that("calling the tool runs it and returns a card result", {
   expect_null(display$html)
 })
 
+test_that("a tool that returns only text gives the model its text", {
+  skip_if_not_installed("ellmer")
+  app <- mcp_app(
+    htmltools::div(),
+    tools = list(list(
+      name = "done",
+      fun = function() mcp_tool_result(text = "Done")
+    )),
+    name = "done"
+  )
+  done <- as_shinychat_tool(app)
+  expect_equal(done()@value, "Done")
+})
+
 test_that("arguments the model leaves out take the tool's defaults", {
   skip_if_not_installed("ellmer")
   greet <- as_shinychat_tool(card_app(), tool = "greet")
@@ -638,6 +652,23 @@ test_that("the model value is the structured content, else the text", {
       )
     )),
     "one\ntwo"
+  )
+  # A result with only text has empty structured content.
+  app <- mcp_app(
+    htmltools::div(),
+    tools = list(list(
+      name = "done",
+      fun = function() mcp_tool_result(text = "Done")
+    )),
+    name = "done"
+  )
+  expect_equal(default_model_value(app$run_tool("done", list())), "Done")
+  expect_equal(
+    default_model_value(list(
+      structuredContent = setNames(list(), character()),
+      content = list(list(type = "text", text = "Done"))
+    )),
+    "Done"
   )
   expect_equal(result_text(NULL), "")
 })

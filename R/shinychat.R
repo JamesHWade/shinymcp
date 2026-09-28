@@ -253,15 +253,16 @@ shinychat_card <- function(source, definition, arguments, call, session, card) {
 
 #' The value the model sees for a tool result
 #'
-#' The structured result, except for a single value that was wrapped only
-#' because structuredContent has to be an object: that reads better as text.
+#' The structured result, except when it's empty (`{}`), or a single value
+#' that was wrapped only because structuredContent has to be an object: the
+#' text says more, or reads better.
 #' @noRd
 default_model_value <- function(result) {
   structured <- result$structuredContent
   lone_value <- identical(names(structured), "value") &&
     is.atomic(structured$value) &&
     length(structured$value) <= 1
-  if (is.null(structured) || lone_value) {
+  if (length(structured) == 0 || lone_value) {
     return(result_text(result))
   }
   structured
