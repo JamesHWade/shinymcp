@@ -424,6 +424,8 @@
 
   function labelFor(adapter) {
     var el = adapter.el;
+    // Values set with Shiny.setInputValue() have no element, so no label.
+    if (!el) return null;
     var label = document.querySelector('label[for="' + cssEscape(el.id || adapter.id) + '"]');
     if (!label) {
       var group = el.closest ? el.closest(".shiny-input-container, .shinymcp-input-group, .form-group") : null;
@@ -1844,6 +1846,13 @@
       }
       return false;
     });
+  }
+
+  function takenByTool(id) {
+    for (var i = 0; i < TOOLS.length; i++) {
+      if ((TOOLS[i].args || []).indexOf(id) >= 0) return true;
+    }
+    return false;
   }
 
   function buttonArguments(tool) {
@@ -3508,6 +3517,9 @@
       each(keys(adapters), function (id) {
         var a = adapters[id];
         if (a.secret || a.unsupported || a.event) return;
+        // A value a widget sets from JavaScript (a picker's "_open") is
+        // the widget's own state unless a tool takes it.
+        if (a.kind === "value" && !takenByTool(id)) return;
         var v = a.get();
         inputs[id] = v;
         var label = labelFor(a);
@@ -3657,6 +3669,7 @@
   }
 
   function init() {
+    document.documentElement.classList.add("shinymcp-" + MODE);
     connectShiny();
     scanInputs(document);
     state.scanned = true;
