@@ -765,7 +765,7 @@ ShinyRuntime <- R6::R6Class(
       # Callbacks that are due, such as a finished task's (ExtendedTask,
       # promises), run first, so the flush below sees their results.
       if (rlang::is_installed("later")) {
-        later::run_now(0)
+        run_due_callbacks()
       }
       now <- as.numeric(Sys.time())
       elapsed <- max(0, (now - inst$clock) * 1000)
@@ -1028,7 +1028,7 @@ ShinyRuntime <- R6::R6Class(
       path <- tryCatch(
         with_request_context(
           context,
-          with_mock_context(inst$session, inst$session$getOutput(dom_id))
+          with_mock_context(inst$session, mock_output(inst$session, dom_id))
         ),
         error = function(e) e
       )
@@ -1279,6 +1279,33 @@ app_lifecycle <- function(on_start = NULL, on_stop = NULL) {
 }
 
 # ---- Session plumbing ----
+
+#' An output's value from a mock session
+#'
+#' MockShinySession$getOutput() resolves the output's promise by running the
+#' event loop until it's empty, which never happens while anything else in
+#' the process keeps a callback scheduled (a Shiny app's timers, a pending
+#' request): the call would never return. Instead, the callbacks that are
+#' due now run (a rendered output's promise resolves through them), and the
+#' output is read on a loop of its own. One still waiting on async work
+#' reads as NULL for now.
+#' @noRd
+mock_output <- function(session, dom_id) {
+  run_due_callbacks()
+  later::with_temp_loop(session$getOutput(dom_id))
+}
+
+#' Run the event loop's callbacks that are due, without waiting for others
+#' @noRd
+run_due_callbacks <- function(max_rounds = 100) {
+  for (i in seq_len(max_rounds)) {
+    if (later::loop_empty() || later::next_op_secs() > 0) {
+      break
+    }
+    later::run_now(0)
+  }
+  invisible()
+}
 
 #' Evaluate in a mock session's reactive domain
 #' @noRd
@@ -1667,7 +1694,7 @@ collect_runtime_outputs <- function(inst, specs, skip_deps = character()) {
       next
     }
     value <- tryCatch(
-      with_mock_context(inst$session, inst$session$getOutput(dom_id)),
+      with_mock_context(inst$session, mock_output(inst$session, dom_id)),
       error = function(e) e
     )
     out[[public_id]] <- runtime_output_entry(

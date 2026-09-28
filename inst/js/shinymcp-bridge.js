@@ -2120,6 +2120,15 @@
       function (result) {
         inFlight = false;
         handleResult(result, {});
+        // The session was gone and R started a new one from this update,
+        // which leaves out values set from JavaScript and uploads that
+        // didn't change: send it everything the page has, once.
+        var view = viewMeta(result);
+        if (view && view.restarted && !payload.sync) {
+          state.syncedInstance = null;
+          viewUpdate([], {});
+          return;
+        }
         flushQueue();
       },
       function (err) {

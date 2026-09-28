@@ -2069,6 +2069,34 @@ test_that("an ExtendedTask's result arrives on a later tick", {
   expect_null(rt_meta(res)$nextTick)
 })
 
+test_that("a view answers while other callbacks are scheduled in the process", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  ui <- shiny::fluidPage(
+    shiny::textInput("name", "Name", "a"),
+    shiny::textOutput("out")
+  )
+  server <- function(input, output, session) {
+    output$out <- shiny::renderText(paste("name:", input$name))
+  }
+  app <- rt_app(ui, server, name = "busy")
+  # Something else that keeps a callback scheduled, as a Shiny app's timers
+  # do, for three seconds.
+  stopped <- FALSE
+  stop_at <- Sys.time() + 3
+  tick <- function() {
+    if (!stopped && Sys.time() < stop_at) later::later(tick, 0.2)
+  }
+  later::later(tick, 0.2)
+  withr::defer(stopped <- TRUE)
+
+  start <- Sys.time()
+  res <- rt_open(app, list(name = "b"))
+  took <- as.numeric(difftime(Sys.time(), start, units = "secs"))
+  expect_identical(rt_meta(res)$outputs$out$value, "name: b")
+  expect_lt(took, 2)
+})
+
 test_that("values set from JavaScript arrive as Shiny delivers them", {
   skip_if_not_installed("shiny")
   seen <- new.env()
