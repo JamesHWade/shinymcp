@@ -2079,24 +2079,39 @@
   function dataRequest(output, body) {
     function ask(full) {
       var args = { action: "data", instance: state.instance, output: output, body: body };
-      if (full) {
-        args.inputs = readInputs();
-        args.kinds = inputKinds(keys(adapters));
-      }
+      if (full) assign(args, fullState());
       return callTool(config.runtime.viewTool, args).then(function (result) {
         var view = viewMeta(result);
         if (view && view.gone && !full) return ask(true);
-        if (view && view.instance) state.instance = view.instance;
-        if (view && view.restarted) {
-          // The new session has every input, and the outputs the page shows.
-          state.syncedInstance = state.instance;
-          if (typeof view.revision === "number") state.viewRevision = view.revision;
-          logWarn("the app's R session was restarted; state kept outside inputs was reset");
-        }
+        takeView(result);
         return result;
       });
     }
     return ask(false);
+  }
+
+  // Everything a session rebuilt from the page needs.
+  function fullState() {
+    return {
+      inputs: readInputs(),
+      kinds: inputKinds(keys(adapters)),
+      sizes: outputSizes(),
+      pixelRatio: Math.min(window.devicePixelRatio || 1, 2),
+      host: hostSummary()
+    };
+  }
+
+  // Take up the view a download or data request was answered from. If R
+  // had to rebuild it, the answer carries the new session's state, as an
+  // update's result would: show that, not what the old session showed.
+  function takeView(result) {
+    var view = viewMeta(result);
+    if (view && view.restarted) {
+      handleResult({ _meta: result._meta }, {});
+      state.syncedInstance = state.instance;
+    } else if (view && view.instance) {
+      state.instance = view.instance;
+    }
   }
 
   function inputKinds(ids) {
@@ -2198,23 +2213,20 @@
     setBusy(1);
     request("tools/call", {
       name: config.runtime.viewTool,
-      arguments: {
-        action: "download",
-        instance: state.instance,
-        output: outputId,
-        inputs: readInputs(),
-        kinds: inputKinds(keys(adapters))
-      },
+      arguments: assign(
+        { action: "download", instance: state.instance, output: outputId },
+        fullState()
+      ),
       _meta: callMeta()
     }).then(
       function (result) {
         setBusy(-1);
+        takeView(result);
         if (result && result.isError) {
           showError(resultText(result));
           return;
         }
         var view = viewMeta(result);
-        if (view && view.instance) state.instance = view.instance;
         if (view && view.download) saveFile(view.download);
       },
       function (err) {

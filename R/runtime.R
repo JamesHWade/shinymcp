@@ -284,38 +284,35 @@ ShinyRuntime <- R6::R6Class(
       if (identical(action, "data")) {
         # Data requests carry the page's inputs only when asked again after
         # the view's session was found gone: then it's rebuilt from them.
-        if (is.null(instance) && is.list(arguments$inputs)) {
+        rebuilt <- is.null(instance) && is.list(arguments$inputs)
+        if (rebuilt) {
           instance <- private$rebuild_instance(arguments, context, id)
+          private$apply_sizes(instance, arguments$sizes, arguments$pixelRatio)
+          private$apply_host_context(instance, arguments$host)
+          instance$uploads <- c(instance$uploads, private$uploads)
+          private$uploads <- character()
           with_request_context(context, private$settle(instance))
           crashed <- private$crash_result(instance)
           if (!is.null(crashed)) {
             return(crashed)
           }
-          # Outputs register their data as they render (DT's tables). The
-          # page shows them already, made from the same inputs, so they
-          # count as sent, and the page takes the new view's revision.
-          collected <- with_request_context(
-            context,
-            collect_runtime_outputs(instance, self$outputs)
-          )
-          for (out in names(collected)) {
-            instance$digests[[out]] <- collected[[out]]$digest
-          }
-          instance$revision <- (instance$revision %||% 0L) + 1L
-          restarted <- TRUE
         }
-        return(private$data_request(
+        answer <- private$data_request(
           instance,
           arguments$output,
           arguments$body,
-          context,
-          restarted = restarted
-        ))
+          context
+        )
+        if (rebuilt) {
+          answer <- private$with_state(answer, instance, context)
+        }
+        return(answer)
       }
 
       page_inputs <- arguments$inputs %||% list()
       kinds <- arguments$kinds %||% list()
-      if (is.null(instance)) {
+      rebuilt <- is.null(instance)
+      if (rebuilt) {
         instance <- private$rebuild_instance(arguments, context, id)
         restarted <- is_string(id)
         all_outputs <- TRUE
@@ -361,7 +358,11 @@ ShinyRuntime <- R6::R6Class(
         return(crashed)
       }
       if (identical(action, "download")) {
-        return(private$download(instance, arguments$output, context))
+        answer <- private$download(instance, arguments$output, context)
+        if (rebuilt) {
+          answer <- private$with_state(answer, instance, context)
+        }
+        return(answer)
       }
       private$result(
         instance,
@@ -370,6 +371,27 @@ ShinyRuntime <- R6::R6Class(
         all_outputs = all_outputs,
         restarted = restarted
       )
+    },
+
+    # A view rebuilt for a download or for data: the answer brings what an
+    # update's would, since the new session may not show what the old one
+    # did, even when there's nothing to download or no data to give. R
+    # counts it as sent.
+    with_state = function(answer, inst, context) {
+      state <- private$result(
+        inst,
+        context,
+        model = FALSE,
+        all_outputs = TRUE,
+        restarted = TRUE
+      )
+      view <- state[["_meta"]][["shinymcp/view"]]
+      extra <- answer[["_meta"]][["shinymcp/view"]]
+      for (key in setdiff(names(extra), names(view))) {
+        view[[key]] <- extra[[key]]
+      }
+      answer[["_meta"]][["shinymcp/view"]] <- view
+      answer
     },
 
     # A new view, or one whose session is gone, rebuilt from the page's
@@ -989,7 +1011,7 @@ ShinyRuntime <- R6::R6Class(
     # server-side DT table (DT::renderDT(server = TRUE)). The page's request
     # body is handed to the filter function the widget registered, as Shiny
     # would hand it an HTTP request.
-    data_request = function(inst, name, body, context, restarted = FALSE) {
+    data_request = function(inst, name, body, context) {
       if (is.null(inst)) {
         # The page asks again with its inputs, and the view is rebuilt.
         return(wire_result(list(
@@ -1040,14 +1062,7 @@ ShinyRuntime <- R6::R6Class(
       Encoding(text) <- "UTF-8"
       wire_result(list(
         content = list(text_block(paste0("Data for ", name, "."))),
-        `_meta` = list(
-          `shinymcp/view` = compact_list(list(
-            instance = inst$id,
-            data = text,
-            revision = if (restarted) inst$revision,
-            restarted = if (restarted) TRUE
-          ))
-        )
+        `_meta` = list(`shinymcp/view` = list(instance = inst$id, data = text))
       ))
     },
 

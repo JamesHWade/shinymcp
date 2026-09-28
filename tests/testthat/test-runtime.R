@@ -1685,6 +1685,27 @@ test_that("a download from a view whose session is gone starts a new one", {
   expect_null(res$isError)
   expect_identical(rt_meta(res)$download$filename, "faithful-4.csv")
   expect_identical(app$runtime()$instance_count(), 1L)
+  # With the new view's state, which the page shows from then on.
+  meta <- rt_meta(res)
+  expect_true(meta$restarted)
+  expect_identical(meta$outputs$count$value, "4 rows")
+  quiet <- rt_update(app, meta, changed = list())
+  expect_length(rt_meta(quiet)$outputs, 0)
+
+  # Even when the download fails.
+  broken <- app$run_tool(
+    "files_view",
+    list(
+      action = "download",
+      instance = "view-lost-2",
+      output = "broken",
+      inputs = list(rows = 5)
+    ),
+    context = list(caller = "app")
+  )
+  expect_true(broken$isError)
+  expect_identical(rt_meta(broken)$outputs$count$value, "5 rows")
+  expect_null(rt_meta(broken)$download)
 })
 
 test_that("downloads that don't exist, fail, or are too big return errors", {
@@ -1805,6 +1826,129 @@ test_that("registerDataObj() data is served through the data action", {
     jsonlite::fromJSON(rt_meta(again)$data)$n,
     nrow(datasets::faithful)
   )
+  # The answer brings the new view's outputs, so an update that changes
+  # nothing has none to send.
+  expect_match(rt_meta(again)$outputs$url$value, "^session/")
+  quiet <- rt_update(app, rt_meta(again), changed = list())
+  expect_length(rt_meta(quiet)$outputs, 0)
+})
+
+test_that("a view rebuilt for a data request answers with its state", {
+  skip_if_not_installed("shiny")
+  starts <- 0
+  ui <- shiny::fluidPage(
+    shiny::textInput("note", "Note"),
+    shiny::textOutput("session")
+  )
+  server <- function(input, output, session) {
+    starts <<- starts + 1
+    n <- starts
+    shiny::updateTextInput(session, "note", placeholder = paste("start", n))
+    shiny::showNotification(paste("session", n))
+    session$registerDataObj("rows", n, function(data, req) {
+      shiny::httpResponse(200, "application/json", data)
+    })
+    output$session <- shiny::renderText(paste("session", n))
+  }
+  app <- rt_app(ui, server, name = "data")
+  old <- rt_meta(rt_open(app))
+  expect_identical(old$outputs$session$value, "session 1")
+
+  res <- app$run_tool(
+    "data_view",
+    list(
+      action = "data",
+      instance = "view-lost",
+      output = "rows",
+      inputs = list(note = "kept"),
+      kinds = list(note = list(kind = "text"))
+    ),
+    context = list(caller = "app")
+  )
+  meta <- rt_meta(res)
+  expect_identical(meta$data, "2")
+  expect_true(meta$restarted)
+  # What the new session shows, not what the old one did.
+  expect_identical(meta$outputs$session$value, "session 2")
+  expect_identical(meta$inputMessages[[1]]$message$placeholder, "start 2")
+  expect_match(meta$notifications[[1]]$message$html, "session 2", fixed = TRUE)
+  expect_identical(rt_session_input(app, meta$instance, "note"), "kept")
+
+  # The new view is where the page's data requests go from now on.
+  more <- app$run_tool(
+    "data_view",
+    list(action = "data", instance = meta$instance, output = "rows"),
+    context = list(caller = "app")
+  )
+  expect_identical(rt_meta(more)$data, "2")
+  expect_null(rt_meta(more)$restarted)
+  expect_null(rt_meta(more)$outputs)
+})
+
+test_that("a rebuilt view's state comes back even without its data", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::textOutput("o"))
+  server <- function(input, output, session) {
+    output$o <- shiny::renderText("rebuilt")
+  }
+  app <- rt_app(ui, server, name = "data")
+  res <- app$run_tool(
+    "data_view",
+    list(
+      action = "data",
+      instance = "view-lost",
+      output = "nope",
+      inputs = setNames(list(), character())
+    ),
+    context = list(caller = "app")
+  )
+  expect_true(res$isError)
+  expect_identical(rt_text(res), "No data named 'nope' in this view.")
+  expect_true(rt_meta(res)$restarted)
+  expect_identical(rt_meta(res)$outputs$o$value, "rebuilt")
+  expect_null(rt_meta(res)$data)
+})
+
+test_that("uploads a data request brings belong to the view it rebuilds", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(shiny::fileInput("upload", "Upload"))
+  server <- function(input, output, session) {
+    session$registerDataObj("rows", 1, function(data, req) {
+      shiny::httpResponse(200, "application/json", "[]")
+    })
+  }
+  app <- rt_app(ui, server, name = "data")
+  csv <- "a,b\n1,2\n"
+  res <- app$run_tool(
+    "data_view",
+    list(
+      action = "data",
+      instance = "view-lost",
+      output = "rows",
+      inputs = list(
+        upload = list(list(
+          name = "data.csv",
+          size = nchar(csv),
+          type = "text/csv",
+          data = jsonlite::base64_enc(charToRaw(csv))
+        ))
+      ),
+      kinds = list(upload = list(kind = "file"))
+    ),
+    context = list(caller = "app")
+  )
+  id <- rt_meta(res)$instance
+  datapath <- rt_session_input(app, id, "upload")$datapath
+  expect_true(file.exists(datapath))
+  # No other view's update can take them.
+  expect_length(rt_private(app)$uploads, 0)
+  # Closing the view removes them.
+  app$run_tool(
+    "data_view",
+    list(action = "close", instance = id),
+    context = list(caller = "app")
+  )
+  expect_false(file.exists(datapath))
 })
 
 test_that("a view rebuilt for a data request renders its outputs first", {

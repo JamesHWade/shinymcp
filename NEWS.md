@@ -126,7 +126,9 @@ section.
   the page.
 * Sessions are limited by the `shinymcp.max_views` and
   `shinymcp.view_timeout` options (see `help("shinymcp-options")`). A view
-  whose session is gone starts a new one from the page's inputs.
+  whose session is gone starts a new one from the page's inputs, whether
+  the page was sending a change, downloading a file, or fetching a table's
+  rows, and the page then shows what the new session shows.
 * An error in an observer ends the view's session, as it ends a browser's.
   The model, or the page, gets the error, and the page's next change
   starts a new session.

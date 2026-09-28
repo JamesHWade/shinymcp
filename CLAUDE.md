@@ -229,7 +229,11 @@ actions `update`, `download`, `data`, `dependency`, and `close`. Each view
 is a subclass of `shiny::MockShinySession` that records what the server
 sends to the browser (outputs, input updates, notifications, modals,
 inserted UI, custom messages, tab changes). Views carry a revision; a page
-that missed updates, or whose session is gone, sends all its inputs.
+that missed updates, or whose session is gone, sends all its inputs. An
+update, download, or data request that finds its view gone rebuilds it,
+and the answer carries the whole new state (`with_state()` for downloads
+and data), which R then counts as sent: never record outputs as sent
+without returning them.
 Timers (`invalidateLater()`) run when the page calls back at the time each
 result gives. Limits: `shinymcp.max_views`, `shinymcp.view_timeout`.
 
