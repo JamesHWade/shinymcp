@@ -226,13 +226,95 @@ host_instances <- function(registry, kind = NULL) {
 #' tool the model may call.
 #' @noRd
 default_source_tool <- function(source) {
-  tools <- Filter(
-    function(t) tool_wire_visible_to(t, "model"),
-    source$tools()
-  )
+  default_tool_name(source$tools())
+}
+
+#' @noRd
+default_tool_name <- function(tools) {
+  tools <- Filter(function(t) tool_wire_visible_to(t, "model"), tools)
   with_page <- Filter(function(t) !is.null(tool_resource_uri(t)), tools)
   pick <- c(with_page, tools)
   if (length(pick)) pick[[1]]$name
+}
+
+#' The tool an instance opens, from a source's tools
+#'
+#' The one named, or the source's default. An error if there's no such
+#' tool, or it doesn't show an app.
+#' @noRd
+host_tool <- function(source, tools, name = NULL) {
+  name <- name %||% default_tool_name(tools)
+  if (is.null(name)) {
+    shinymcp_abort(
+      "{.val {source$key}} has no tool to open.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  for (tool in tools) {
+    if (identical(tool$name, name)) {
+      if (is.null(tool_resource_uri(tool))) {
+        shinymcp_abort(
+          "The tool {.val {name}} doesn't show an app.",
+          class = "shinymcp_error_validation"
+        )
+      }
+      return(tool)
+    }
+  }
+  shinymcp_abort(
+    "{.val {source$key}} has no tool called {.val {name}}.",
+    class = "shinymcp_error_validation"
+  )
+}
+
+#' Settle an instance's tool and title from the tool's definition
+#' @noRd
+settle_host_tool <- function(state, definition) {
+  state$tool <- definition$name
+  title <- definition$title %||% definition$annotations$title
+  if (isTRUE(state$default_title) && !is.null(title)) {
+    state$title <- title
+    state$default_title <- FALSE
+  }
+  definition
+}
+
+#' A promise of the tool an instance opens, checked against its source
+#'
+#' A remote server's tools are listed without blocking the session. The
+#' promise is made when first needed and kept; if it fails (the server
+#' couldn't be reached), the next attach or call tries again.
+#' @noRd
+host_ready <- function(state) {
+  if (!is.null(state$ready)) {
+    return(state$ready)
+  }
+  name <- state$tool
+  tools <- tryCatch(
+    state$source$tools_async(),
+    error = function(e) promises::promise_reject(e)
+  )
+  ready <- promises::then(tools, function(tools) {
+    definition <- host_tool(state$source, tools, name)
+    # open() with another tool may have replaced this promise.
+    if (identical(state$ready, ready)) {
+      settle_host_tool(state, definition)
+    }
+    definition
+  })
+  state$ready <- ready
+  promises::catch(ready, function(e) {
+    if (identical(state$ready, ready)) {
+      state$ready <- NULL
+    }
+  })
+  ready
+}
+
+#' Is a source apps in this R process? Their tools are listed at once.
+#' @noRd
+in_process_source <- function(source) {
+  inherits(source, "shinymcp_host_source_in_process")
 }
 
 #' Register an app instance with a Shiny session
@@ -253,29 +335,19 @@ register_shiny_host_instance <- function(
   height = "auto",
   title = NULL
 ) {
+  rlang::check_installed("promises", reason = "to host MCP Apps in Shiny.")
   registry <- ensure_shiny_host_registry(session)
   source <- register_host_source(registry, source)
-  entry <- tool %||% default_source_tool(source)
-  definition <- if (!is.null(entry)) source_tool(source, entry)
-  if (is.null(definition)) {
-    if (is.null(entry)) {
-      shinymcp_abort(
-        "{.val {source$key}} has no tool to open.",
-        class = "shinymcp_error_validation"
-      )
-    }
-    shinymcp_abort(
-      "{.val {source$key}} has no tool called {.val {entry}}.",
-      class = "shinymcp_error_validation"
-    )
+  # Apps in this process are checked now, so a mistake is an error here. A
+  # remote server's tools are listed without blocking the session, and a
+  # problem shows where the app would be.
+  definition <- if (in_process_source(source)) {
+    host_tool(source, source$tools(), tool)
   }
-  if (is.null(tool_resource_uri(definition))) {
-    shinymcp_abort(
-      "{.val {entry}} doesn't declare an app to show.",
-      class = "shinymcp_error_validation"
-    )
+  tool <- definition$name %||% tool
+  interaction <- if (!is.null(tool)) {
+    source$interaction(tool, trigger, debounce_ms)
   }
-  interaction <- source$interaction(entry, trigger, debounce_ms)
   config <- if (!is.null(interaction)) {
     compact_list(list(
       trigger = interaction$trigger,
@@ -285,13 +357,21 @@ register_shiny_host_instance <- function(
   state <- new_mcp_host_state(
     source,
     instance_id = instance_id,
-    tool = entry,
+    tool = tool,
     arguments = arguments,
     result = result,
     kind = kind,
-    title = title %||% definition$title %||% definition$annotations$title,
+    title = title,
     config = config
   )
+  if (!is.null(definition)) {
+    state$ready <- promises::promise_resolve(settle_host_tool(
+      state,
+      definition
+    ))
+  } else {
+    host_ready(state)
+  }
   registry$instances[[instance_id]] <- state
   list(
     state = state,
@@ -338,7 +418,8 @@ host_descriptor <- function(state, height = "auto", trigger = NULL) {
 #'
 #' For cards restored with a saved conversation. The descriptor is trusted
 #' only to name a source this session hosts and one of its tools; nothing
-#' is called.
+#' is called. An app in this process is checked now; a remote server's
+#' tool is checked when the card attaches, without blocking the session.
 #' @noRd
 restore_host_instance <- function(registry, descriptor) {
   id <- descriptor$instanceId
@@ -351,9 +432,15 @@ restore_host_instance <- function(registry, descriptor) {
   if (is.null(source) || !nzchar(id)) {
     return(NULL)
   }
-  definition <- tryCatch(source_tool(source, tool), error = function(e) NULL)
-  if (is.null(definition) || is.null(tool_resource_uri(definition))) {
-    return(NULL)
+  definition <- NULL
+  if (in_process_source(source)) {
+    definition <- tryCatch(
+      host_tool(source, source$tools(), tool),
+      error = function(e) NULL
+    )
+    if (is.null(definition)) {
+      return(NULL)
+    }
   }
   state <- new_mcp_host_state(
     source,
@@ -361,11 +448,27 @@ restore_host_instance <- function(registry, descriptor) {
     tool = tool,
     arguments = if (is_json_object(descriptor$arguments)) descriptor$arguments,
     result = if (is_json_object(descriptor$result)) descriptor$result,
-    kind = "card",
-    title = definition$title %||% definition$annotations$title
+    kind = "card"
   )
+  state$restored <- TRUE
+  if (!is.null(definition)) {
+    state$ready <- promises::promise_resolve(settle_host_tool(
+      state,
+      definition
+    ))
+  }
   registry$instances[[id]] <- state
   state
+}
+
+#' Forget an instance, if the registry still holds it
+#' @noRd
+forget_host_instance <- function(registry, state) {
+  id <- state$instance_id
+  if (identical(host_instance(registry, id), state)) {
+    rm(list = id, envir = registry$instances)
+  }
+  invisible()
 }
 
 # ---- Opening an app ----
@@ -386,14 +489,21 @@ start_host_call <- function(session, state) {
   current <- function() {
     identical(state$call_seq, seq) && !isTRUE(state$disposed)
   }
+  # The tool is called once it's known to be there (for a remote server, its
+  # tools are listed first), unless a newer call has taken over.
+  call <- promises::then(host_ready(state), function(definition) {
+    if (current()) {
+      state$source$call_async(
+        state$tool,
+        state$arguments,
+        host_call_context(session)
+      )
+    }
+  })
   promises::then(
-    state$source$call_async(
-      state$tool,
-      state$arguments,
-      host_call_context(session)
-    ),
+    call,
     onFulfilled = function(call) {
-      if (!current()) {
+      if (!current() || is.null(call)) {
         return(invisible())
       }
       state$result <- call$result
@@ -485,28 +595,24 @@ host_attach <- function(session, registry, event) {
     return(invisible())
   }
 
-  tools <- state$source$tools_async()
+  # The tool is checked before the page is read; the tools the page may
+  # call come from the same list.
+  checked <- promises::then(host_ready(state), function(definition) {
+    promises::then(state$source$tools_async(), function(tools) {
+      list(definition = definition, tools = tools)
+    })
+  })
   promises::then(
-    tools,
-    onFulfilled = function(tools) {
-      definition <- NULL
-      for (tool in tools) {
-        if (identical(tool$name, state$tool)) {
-          definition <- tool
-        }
-      }
-      uri <- if (!is.null(definition)) tool_resource_uri(definition)
-      if (is.null(uri)) {
-        fail(paste0("The tool ", state$tool, " doesn't show an app."))
-        return(invisible())
-      }
+    checked,
+    onFulfilled = function(checked) {
+      definition <- checked$definition
       app_tools <- vapply(
-        Filter(function(t) tool_wire_visible_to(t, "app"), tools),
+        Filter(function(t) tool_wire_visible_to(t, "app"), checked$tools),
         function(t) t$name,
         character(1)
       )
       promises::then(
-        host_page_async(registry, state, uri),
+        host_page_async(registry, state, tool_resource_uri(definition)),
         onFulfilled = function(page) {
           ui <- page$meta$ui %||% list()
           if (isTRUE(state$default_title)) {
@@ -535,7 +641,15 @@ host_attach <- function(session, registry, event) {
       )
     },
     onRejected = function(e) {
-      fail(paste("Couldn't reach the app's server:", conditionMessage(e)))
+      if (!inherits(e, "shinymcp_error_validation")) {
+        fail(paste("Couldn't reach the app's server:", conditionMessage(e)))
+      } else if (isTRUE(state$restored)) {
+        # A saved card whose tool the server no longer has.
+        forget_host_instance(registry, state)
+        fail("This app isn't available any more.")
+      } else {
+        fail(conditionMessage(e))
+      }
     }
   )
   invisible()
@@ -689,7 +803,9 @@ handle_host_event <- function(session, registry, event) {
 #' @param source Where the app comes from: an [McpApp] (or a list of
 #'   them), or an [McpClient] from [mcp_client()].
 #' @param tool The tool that opens the app. Defaults to the first tool the
-#'   model may call that shows an app.
+#'   model may call that shows an app. A remote server's tools are listed
+#'   without holding up the session, so a tool it doesn't have is reported
+#'   in the pane rather than as an error.
 #' @param arguments Named list of arguments for that call.
 #' @param trigger,debounce_ms For apps made with shinymcp in this process:
 #'   override the app's own `trigger` and `debounce_ms`. `trigger =
@@ -781,14 +897,14 @@ mcp_host_server <- function(
         instance_id = shiny::reactive(state$instance_id),
         open = function(arguments = NULL, tool = NULL) {
           if (!is.null(tool)) {
-            definition <- source_tool(state$source, tool)
-            if (is.null(definition) || is.null(tool_resource_uri(definition))) {
-              shinymcp_abort(
-                "{.val {state$source$key}} has no tool called {.val {tool}} that shows an app.",
-                class = "shinymcp_error_validation"
-              )
+            # Checked now for an app in this process, else when it opens.
+            definition <- if (in_process_source(state$source)) {
+              host_tool(state$source, state$source$tools(), tool)
             }
             state$tool <- tool
+            state$ready <- if (!is.null(definition)) {
+              promises::promise_resolve(definition)
+            }
           }
           state$arguments <- arguments %||% json_object()
           state$result <- NULL

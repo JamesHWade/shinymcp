@@ -808,16 +808,28 @@ httr2_transport <- function(request, async = FALSE, timeout = 60) {
   )
   if (async) {
     rlang::check_installed(
-      c("promises", "curl"),
+      c("promises", "later", "curl"),
       reason = "to call MCP servers from Shiny."
     )
     # A pool of its own: httr2 polls a pool's connections together, and a
     # request added while it waits on another (an app's long poll) isn't
     # watched until that one has news.
-    return(promises::then(
-      httr2::req_perform_promise(req, pool = curl::new_pool()),
-      httr2_response
-    ))
+    pool <- curl::new_pool()
+    response <- httr2::req_perform_promise(req, pool = pool)
+    settled <- FALSE
+    response <- promises::finally(response, function() settled <<- TRUE)
+    # httr2 waits on the pool for curl's timeout read as seconds, though
+    # curl gives milliseconds, so a server that never answers would be
+    # waited on for hours. Running the pool each second lets curl's own
+    # timeout end the request.
+    tick <- function() {
+      if (!settled) {
+        try(curl::multi_run(0, pool = pool), silent = TRUE)
+        later::later(tick, 1)
+      }
+    }
+    later::later(tick, 1)
+    return(promises::then(response, httr2_response))
   }
   httr2_response(httr2::req_perform(req))
 }

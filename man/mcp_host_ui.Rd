@@ -37,7 +37,9 @@ mcp_embed(
 them), or an \link{McpClient} from \code{\link[=mcp_client]{mcp_client()}}.}
 
 \item{tool}{The tool that opens the app. Defaults to the first tool the
-model may call that shows an app.}
+model may call that shows an app. A remote server's tools are listed
+without holding up the session, so a tool it doesn't have is reported
+in the pane rather than as an error.}
 
 \item{arguments}{Named list of arguments for that call.}
 

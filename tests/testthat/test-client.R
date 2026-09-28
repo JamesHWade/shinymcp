@@ -405,3 +405,26 @@ test_that("the client works over real HTTP", {
   expect_equal(result$structuredContent, list(out = "over http"))
   expect_equal(client$protocol_version(), "2026-07-28")
 })
+
+test_that("async requests to a server that never answers time out", {
+  skip_on_cran()
+  skip_if_not_installed("httpuv")
+  skip_if_not_installed("httr2")
+  skip_if_not_installed("later")
+  # A socket that takes connections and never answers them.
+  port <- httpuv::randomPort()
+  silent <- serverSocket(port)
+  on.exit(close(silent), add = TRUE)
+  client <- mcp_client(sprintf("http://127.0.0.1:%d/mcp", port), timeout = 1)
+
+  failed <- NULL
+  promises::catch(client$tools_async(), function(e) failed <<- e)
+  start <- Sys.time()
+  while (is.null(failed) && Sys.time() < start + 30) {
+    later::run_now(0.1)
+  }
+  expect_s3_class(failed, "shinymcp_error_client")
+  expect_match(conditionMessage(failed), "Timeout was reached")
+  # Discovery, then the handshake: two timeouts, and the pool's check.
+  expect_lt(as.numeric(difftime(Sys.time(), start, units = "secs")), 10)
+})

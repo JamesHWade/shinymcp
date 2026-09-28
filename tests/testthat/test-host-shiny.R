@@ -1468,6 +1468,189 @@ test_that("an instance without a title of its own takes its page's", {
   expect_false(named$default_title)
 })
 
+# A client whose requests are counted by whether they block the session.
+waiting_client <- function(server, name = "remote") {
+  served <- serving_transport(server)
+  counts <- new.env(parent = emptyenv())
+  counts$blocking <- 0
+  counts$down <- FALSE
+  client <- McpClient$new(
+    "http://127.0.0.1/mcp",
+    name = name,
+    transport = function(request, async = FALSE, timeout = 60) {
+      if (!async) {
+        counts$blocking <- counts$blocking + 1
+      }
+      if (counts$down) {
+        return(promises::promise_reject(simpleError("Connection refused")))
+      }
+      served$transport(request, async = async, timeout = timeout)
+    }
+  )
+  list(client = client, counts = counts, requests = served$requests)
+}
+
+request_methods <- function(requests) {
+  vapply(
+    requests,
+    function(r) {
+      if (is.null(r$body)) {
+        return("")
+      }
+      jsonlite::parse_json(rawToChar(r$body))$method %||% ""
+    },
+    ""
+  )
+}
+
+test_that("a remote app is registered without waiting on its server", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  remote <- waiting_client(McpServer$new(serving_app(name = "fx")))
+  capture <- helper_capture_session()
+
+  registered <- register_shiny_host_instance(
+    capture$session,
+    remote$client,
+    instance_id = "r1",
+    arguments = list(x = "hi")
+  )
+  state <- registered$state
+  # Which tool opens the app is known once the server lists its tools.
+  expect_null(registered$config$tool)
+  expect_equal(registered$config$title, "remote")
+
+  start_host_call(capture$session, state)
+  helper_drain()
+  expect_equal(state$tool, "echo")
+  expect_equal(state$result$structuredContent, list(out = "hi"))
+  expect_equal(remote$counts$blocking, 0)
+  expect_equal(sum(request_methods(remote$requests()) == "tools/list"), 1)
+})
+
+test_that("a remote tool that isn't there shows where the app would be", {
+  skip_if_not_installed("later")
+  remote <- waiting_client(McpServer$new(serving_app(name = "fx")))
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(remote$client, "r1", tool = "nope")
+  registry <- helper_host_registry(r1 = state)
+
+  start_host_call(session, state)
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state))
+  )
+  helper_drain()
+
+  reply <- helper_sent(session, "shinymcp-host-attached")[[1]]
+  expect_false(reply$ok)
+  expect_match(reply$error, "has no tool called \"nope\"")
+  expect_match(state$call_error, "has no tool called")
+  expect_false("tools/call" %in% request_methods(remote$requests()))
+})
+
+test_that("a restored card from a remote server is checked when it attaches", {
+  skip_if_not_installed("later")
+  remote <- waiting_client(McpServer$new(serving_app(name = "fx")))
+  session <- helper_fake_session()
+  registry <- new_host_registry()
+  register_host_source(registry, remote$client)
+  saved <- list(content = list(list(type = "text", text = "saved")))
+
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(list(
+      instanceId = "old",
+      source = "remote",
+      tool = "echo",
+      result = saved
+    ))
+  )
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(
+      list(instanceId = "gone", source = "remote", tool = "nope"),
+      request_id = "a2"
+    )
+  )
+  helper_drain()
+
+  replies <- helper_sent(session, "shinymcp-host-attached")
+  by_id <- stats::setNames(replies, vapply(replies, `[[`, "", "instanceId"))
+  expect_true(by_id$old$ok)
+  expect_equal(by_id$old$toolResult, saved)
+  expect_false(by_id$gone$ok)
+  expect_equal(by_id$gone$error, "This app isn't available any more.")
+  expect_equal(ls(registry$instances), "old")
+  expect_false("tools/call" %in% request_methods(remote$requests()))
+  expect_equal(remote$counts$blocking, 0)
+})
+
+test_that("a server that couldn't be reached is tried again on the next attach", {
+  skip_if_not_installed("later")
+  remote <- waiting_client(McpServer$new(serving_app(name = "fx")))
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(remote$client, "r1", tool = "echo")
+  registry <- helper_host_registry(r1 = state)
+
+  remote$counts$down <- TRUE
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state))
+  )
+  helper_drain()
+  remote$counts$down <- FALSE
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(host_descriptor(state), request_id = "a2")
+  )
+  helper_drain()
+
+  replies <- helper_sent(session, "shinymcp-host-attached")
+  expect_false(replies[[1]]$ok)
+  expect_match(replies[[1]]$error, "^Couldn't reach the app's server")
+  expect_true(replies[[2]]$ok)
+})
+
+test_that("a remote pane opens another tool without waiting on its server", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  remote <- waiting_client(McpServer$new(serving_app(name = "fx")))
+  capture <- helper_capture_session()
+
+  shiny::testServer(
+    function(id) {
+      mcp_host_server(id, remote$client, arguments = list(x = "a"))
+    },
+    args = list(id = "h"),
+    session = capture$session,
+    {
+      host <- session$returned
+      helper_drain()
+      state <- capture$session$userData$.shinymcp_hosts$instances[[
+        host$instance_id()
+      ]]
+      expect_equal(state$result$structuredContent, list(out = "a"))
+
+      # A tool that isn't there fails the call, not open().
+      host$open(list(x = "b"), tool = "nope")
+      helper_drain()
+      expect_match(state$call_error, "has no tool called")
+      expect_null(state$result)
+
+      host$open(list(x = "c"), tool = "echo")
+      helper_drain()
+      expect_equal(state$result$structuredContent, list(out = "c"))
+    }
+  )
+  expect_equal(remote$counts$blocking, 0)
+})
+
 test_that("answers that arrive after the app closed go nowhere", {
   skip_if_not_installed("later")
   session <- helper_fake_session()

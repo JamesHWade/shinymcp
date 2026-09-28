@@ -198,7 +198,11 @@ page's requests come in as `request` events and go to the instance's
 source (`R/host-source.R`: an in-process `McpServer` run from `later()`,
 or an `McpClient`), only for `tools/call` of tools visible to the app,
 resource reads, and `ping`. Everything is asynchronous (promises), so a
-remote long poll doesn't block the session.
+remote long poll doesn't block the session. Never call a remote source's
+`tools()` from a session: an instance's tool is checked through
+`host_ready()`, a promise its call and attach wait on (apps in the same
+process are checked at registration, so mistakes stay errors). Only
+`mcp_chat_host()` lists tools synchronously, because ellmer needs them.
 
 `mcp_chat_host()` adds each open card's model context to the model's
 input from `Chat$on_request_start()`: a user turn of its own before the

@@ -270,17 +270,6 @@ remote_page <- function(result, uri) {
 
 # ---- Tool metadata ----
 
-#' A tool's definition in a source, or NULL
-#' @noRd
-source_tool <- function(source, name) {
-  for (tool in source$tools()) {
-    if (identical(tool$name, name)) {
-      return(tool)
-    }
-  }
-  NULL
-}
-
 #' The page a tool declares (`_meta.ui.resourceUri`), or NULL
 #' @noRd
 tool_resource_uri <- function(tool) {

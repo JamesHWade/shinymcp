@@ -106,6 +106,15 @@ over HTTP), and OAuth flows (bring the token in `headers`).
 A tool that declares no page returns its result to the model as usual, with
 no card.
 
+Nothing in the session waits on a remote server. A pane or card on an
+`mcp_client()` checks its tool against the server's `tools/list` without
+blocking, before its call and before its attach, and a tool that isn't
+there, or declares no page, is reported where the app would be; a failed
+listing is tried again at the next attach. Apps in the same process are
+checked when the pane registers, so a wrong name is an error at once. The
+chat host is the exception: ellmer needs the model's tools when it starts,
+so `mcp_chat_host()` lists a client's tools then.
+
 ## Requests from the page
 
 R answers the page's requests only for:

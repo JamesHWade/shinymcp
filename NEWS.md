@@ -64,6 +64,7 @@ section.
 * `mcp_host_ui()` and `mcp_host_server()` host an app in a pane of any
   Shiny app. The pane's tool is called in R, and `open()` calls it again
   with other arguments. `as_shinychat_tool()` makes the cards on their own.
+  Panes and cards never hold up the session waiting on a remote server.
 * `mcp_host_server()`, `mcp_embed()`, `as_shinychat_tool()`, and
   `mcp_content_result()` take a `source`, an app or an `mcp_client()`,
   where they took `app`. A pane's `execute()` takes `inputs`, and

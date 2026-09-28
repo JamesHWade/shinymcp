@@ -137,11 +137,14 @@ be:
   credentials in `headers`. `client$tools()` in the console fails with the
   same error, in more detail.
 * *This app isn't available any more*: a card restored with a saved
-  conversation, whose server this session doesn't host. Give
-  `mcp_chat_host()` the same sources in every session, with the same names.
-  A client is named after its URL unless you give it a `name`.
-* *The tool ... doesn't show an app*: the tool declares no page. The model
-  still gets its result.
+  conversation, whose server this session doesn't host, or which no longer
+  has the card's tool. Give `mcp_chat_host()` the same sources in every
+  session, with the same names. A client is named after its URL unless you
+  give it a `name`.
+* *... has no tool called ...*, or *The tool ... doesn't show an app*: a
+  pane names a tool its server doesn't have, or one that declares no page.
+  For an app in the same R process, `mcp_host_server()` stops with this
+  error instead.
 
 An app that holds requests open while it waits for changes, as a Shiny app
 served with Shiny's own MCP support can, needs a client `timeout` longer
