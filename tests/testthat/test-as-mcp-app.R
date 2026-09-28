@@ -637,6 +637,32 @@ test_that("an McpApp from an app.R runs its tools and page in its directory", {
   expect_identical(elsewhere$call_tool("wd")$out, here)
 })
 
+test_that("an McpApp built in an app's R/ folder runs in the app's directory", {
+  local_app_dir_side_effects()
+  dir <- withr::local_tempdir()
+  dir.create(file.path(dir, "R"))
+  writeLines("from the app's folder", file.path(dir, "data.txt"))
+  writeLines(
+    c(
+      "notes_app <- shinymcp::mcp_app(",
+      "  shinymcp::mcp_text('out'),",
+      "  tools = list(list(",
+      "    name = 'read',",
+      "    fun = function() list(out = readLines('data.txt'))",
+      "  )),",
+      "  name = 'notes'",
+      ")"
+    ),
+    file.path(dir, "R", "notes.R")
+  )
+  write_app_file(dir, "notes_app")
+  here <- getwd()
+  app <- suppressPackageStartupMessages(as_mcp_app(dir))
+
+  expect_identical(app$call_tool("read")$out, "from the app's folder")
+  expect_identical(getwd(), here)
+})
+
 test_that("an app.R's R/ folder loads without Shiny", {
   local_mocked_bindings(shiny_installed = function() FALSE)
   dir <- withr::local_tempdir()

@@ -449,6 +449,17 @@ sniff_image_mime <- function(x) {
   NA_character_
 }
 
+#' Base64 data with the image type its first bytes give, for images
+#' @noRd
+base64_with_mime <- function(data, default_mime) {
+  mime <- if (startsWith(default_mime, "image/")) {
+    sniff_image_mime(data)
+  } else {
+    NA_character_
+  }
+  list(data = data, mime = if (is.na(mime)) default_mime else mime)
+}
+
 #' Read a file path, raw vector, or base64 string as base64
 #' @noRd
 read_binary_input <- function(x, default_mime) {
@@ -456,19 +467,14 @@ read_binary_input <- function(x, default_mime) {
     return(list(data = base64_file(x), mime = mime_type_for(x, default_mime)))
   }
   if (is.raw(x)) {
-    return(list(data = base64_raw(x), mime = default_mime))
+    return(base64_with_mime(base64_raw(x), default_mime))
   }
   if (is.character(x) && length(x) == 1) {
     if (startsWith(x, "data:")) {
       mime <- sub("^data:([^;,]+).*$", "\\1", x)
       return(list(data = sub("^data:[^,]*,", "", x), mime = mime))
     }
-    mime <- if (startsWith(default_mime, "image/")) {
-      sniff_image_mime(x)
-    } else {
-      NA_character_
-    }
-    return(list(data = x, mime = if (is.na(mime)) default_mime else mime))
+    return(base64_with_mime(x, default_mime))
   }
   shinymcp_abort(
     "Expected a file path, a raw vector, or a base64 string, not {.cls {class(x)}}.",

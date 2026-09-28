@@ -514,6 +514,24 @@ test_that("image files, data URIs, and raw bytes are images", {
   # Base64 without a data: prefix is sniffed.
   jpeg_like <- build_tool_result(mcp_result_image("/9j/4AAQSkZJRg=="))
   expect_equal(jpeg_like$content[[2]]$mimeType, "image/jpeg")
+
+  # So are raw bytes.
+  starts <- list(
+    "image/jpeg" = as.raw(c(0xff, 0xd8, 0xff, 0xe0)),
+    "image/gif" = charToRaw("GIF89a"),
+    "image/webp" = c(charToRaw("RIFF"), as.raw(c(0, 0, 0, 0))),
+    "image/png" = as.raw(c(0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a))
+  )
+  for (mime in names(starts)) {
+    bytes <- c(starts[[mime]], as.raw(1:32))
+    result <- build_tool_result(mcp_result_image(bytes))
+    expect_equal(result$content[[2]]$mimeType, mime, info = mime)
+    expect_match(
+      view_of(result)$result$value$src,
+      paste0("^data:", mime, ";base64,"),
+      info = mime
+    )
+  }
 })
 
 test_that("images the model can't view get no image block", {

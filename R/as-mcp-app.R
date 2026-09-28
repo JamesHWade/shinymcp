@@ -262,14 +262,15 @@ as_mcp_app.default <- function(x, ...) {
 #' while being loaded.
 #' @noRd
 source_app_file <- function(app_file) {
-  env <- new.env(parent = app_support_env(dirname(app_file)))
-  env$serve <- function(...) invisible(NULL)
-  env$preview_app <- function(...) invisible(NULL)
-  # Apps made while the file loads keep its directory, and run their tools
-  # and build their page there, as a Shiny app's code runs in its own.
+  # Apps made while the app loads, in its R/ folder or its app.R, keep its
+  # directory, and run their tools and build their page there, as a Shiny
+  # app's code runs in its own.
   outer_dir <- the$app_dir
   the$app_dir <- normalizePath(dirname(app_file))
   on.exit(the$app_dir <- outer_dir, add = TRUE)
+  env <- new.env(parent = app_support_env(dirname(app_file)))
+  env$serve <- function(...) invisible(NULL)
+  env$preview_app <- function(...) invisible(NULL)
   sourced <- tryCatch(
     source(app_file, local = env, chdir = TRUE),
     error = function(e) {
