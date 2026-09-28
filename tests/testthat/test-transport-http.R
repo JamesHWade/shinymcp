@@ -421,6 +421,25 @@ test_that("a batch gets one response per request, in order", {
   expect_equal(body[[3]]$error$code, -32601L)
 })
 
+test_that("initialize in a batch is refused, and as a notification not answered", {
+  handler <- new_handler()
+  response <- handler(serving_request(list(
+    serving_initialize(id = 1),
+    serving_initialize(id = NULL),
+    serving_rpc("ping", id = 2)
+  )))
+  expect_equal(response$status, 200L)
+  body <- serving_body(response)
+  expect_length(body, 2)
+  expect_equal(body[[1]]$id, 1)
+  expect_equal(body[[1]]$error$code, -32600L)
+  expect_equal(body[[2]]$id, 2)
+
+  response <- handler(serving_request(list(serving_initialize(id = NULL))))
+  expect_equal(response$status, 202L)
+  expect_equal(response$body, "")
+})
+
 test_that("a batch of notifications gets 202 and no body", {
   handler <- new_handler()
   batch <- list(

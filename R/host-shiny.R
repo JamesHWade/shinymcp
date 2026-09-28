@@ -656,6 +656,12 @@ host_attach <- function(session, registry, event) {
       promises::then(
         host_page_async(registry, state, tool_resource_uri(definition)),
         onFulfilled = function(page) {
+          # open() loaded the app again while this page was read: the page
+          # of the newer attach is the one shown.
+          if (!identical(state$page_generation, generation)) {
+            fail("The app is opening again.")
+            return(invisible())
+          }
           ui <- page$meta$ui %||% list()
           if (isTRUE(state$default_title)) {
             state$title <- html_page_title(page$html) %||% state$title

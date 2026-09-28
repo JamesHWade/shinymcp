@@ -218,6 +218,42 @@ test_that("normalize_json_schema treats a schema with properties as an object", 
   expect_null(jsonlite::parse_json(json)$properties$label[["enum"]])
 })
 
+test_that("normalize_json_schema reaches every keyword that holds schemas", {
+  empty <- list(properties = list())
+  schema <- normalize_json_schema(list(
+    type = "object",
+    properties = list(
+      choice = list(anyOf = list(empty, list(type = "string"))),
+      both = list(allOf = list(empty), oneOf = list(empty)),
+      extra = list(type = "object", additionalProperties = empty),
+      not_this = list(not = empty),
+      pair = list(type = "array", prefixItems = list(empty), items = FALSE),
+      tuple = list(type = "array", items = list(empty, empty)),
+      conditional = list(`if` = empty, then = empty, `else` = empty),
+      patterned = list(patternProperties = list(`^x` = empty))
+    ),
+    `$defs` = list(point = empty),
+    definitions = list()
+  ))
+  json <- as.character(to_json(schema))
+
+  expect_false(grepl('"properties":[]', json, fixed = TRUE))
+  expect_match(
+    json,
+    '"anyOf":[{"properties":{}},{"type":"string"}]',
+    fixed = TRUE
+  )
+  expect_match(json, '"additionalProperties":{"properties":{}}', fixed = TRUE)
+  expect_match(json, '"items":false', fixed = TRUE)
+  expect_match(
+    json,
+    '"items":[{"properties":{}},{"properties":{}}]',
+    fixed = TRUE
+  )
+  expect_match(json, '"$defs":{"point":{"properties":{}}}', fixed = TRUE)
+  expect_match(json, '"definitions":{}', fixed = TRUE)
+})
+
 # ---- JSON Schema back to ellmer types ----
 
 test_that("schema_to_ellmer_types builds ellmer types from JSON Schema", {

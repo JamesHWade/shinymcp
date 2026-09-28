@@ -186,8 +186,10 @@ handle_http_request <- function(
   )
 
   if (is_json_batch(message)) {
-    responses <- compact_list(lapply(message, function(msg) {
-      batch_refusal(msg) %||%
+    responses <- compact_list(lapply(
+      message,
+      batch_entry,
+      handle = function(msg) {
         http_dispatch(
           msg,
           server,
@@ -196,7 +198,8 @@ handle_http_request <- function(
           transport,
           max_sessions
         )$response
-    }))
+      }
+    ))
     if (length(responses) == 0) {
       return(list(status = 202L, headers = cors, body = ""))
     }

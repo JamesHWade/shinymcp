@@ -194,6 +194,7 @@ mcp_tool_result <- function(..., text = NULL, data = NULL, error = FALSE) {
       class = "shinymcp_error_validation"
     )
   }
+  check_output_ids(names(outputs))
   # Structured content is a JSON object.
   named <- is.list(data) &&
     !is.data.frame(data) &&
@@ -525,6 +526,7 @@ build_tool_result <- function(
     error <- raw$error
     outputs <- raw$outputs
   } else if (is_named_output_list(raw)) {
+    check_output_ids(names(raw))
     outputs <- raw
   } else {
     outputs <- NULL
@@ -603,6 +605,19 @@ build_tool_result <- function(
   }
   result[["_meta"]] <- list(`shinymcp/view` = view_meta)
   result
+}
+
+#' Refuse an output id given twice: the second value would be lost
+#' @noRd
+check_output_ids <- function(ids) {
+  dupes <- unique(ids[duplicated(ids)])
+  if (length(dupes)) {
+    shinymcp_abort(
+      "Each output id can be given once; {.val {dupes}} {?is/are} given more than once.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  invisible()
 }
 
 #' @noRd

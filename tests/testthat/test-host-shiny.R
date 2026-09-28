@@ -1268,6 +1268,86 @@ test_that("a pane opened again doesn't take the old page's calls as its own", {
   )
 })
 
+test_that("an attach that finishes after a newer one leaves the pane to the newer page", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  apps <- list(
+    mcp_app(
+      mcp_text("a"),
+      tools = list(list(name = "show_a", fun = function() list(a = "A"))),
+      name = "first"
+    ),
+    mcp_app(
+      mcp_text("b"),
+      tools = list(list(
+        name = "show_b",
+        fun = function(label = "b") list(b = label)
+      )),
+      name = "second"
+    )
+  )
+  capture <- helper_capture_session()
+  shiny::testServer(
+    function(id) mcp_host_server(id, apps, tool = "show_a"),
+    args = list(id = "h"),
+    session = capture$session,
+    {
+      host <- session$returned
+      root <- session$rootScope()
+      id <- host$instance_id()
+      state <- root$userData$.shinymcp_hosts$instances[[id]]
+      helper_drain()
+      # The first app's page is slow to read.
+      release <- NULL
+      page_async <- state$source$page_async
+      state$source$page_async <- function(uri, config) {
+        page <- page_async(uri, config)
+        if (!identical(uri, "ui://first")) {
+          return(page)
+        }
+        promises::promise(function(resolve, reject) {
+          release <<- function() resolve(page)
+        })
+      }
+
+      root$setInputs(
+        shinymcp_host_event = host_attach_event(host_descriptor(state), "a1")
+      )
+      helper_drain()
+      host$open(tool = "show_b")
+      root$setInputs(
+        shinymcp_host_event = host_attach_event(host_descriptor(state), "a2")
+      )
+      helper_drain()
+      expect_equal(state$title, "second")
+      release()
+      helper_drain()
+
+      attached <- capture$messages("shinymcp-host-attached")
+      by_request <- stats::setNames(
+        attached,
+        vapply(attached, function(m) m$requestId, "")
+      )
+      expect_true(by_request$a2$ok)
+      expect_false(by_request$a1$ok)
+      expect_equal(state$title, "second")
+
+      # The page shown is the second app's, and its calls are the pane's.
+      root$setInputs(
+        shinymcp_host_event = helper_host_request(
+          id,
+          "tools/call",
+          list(name = "show_b", arguments = list(label = "page")),
+          request_id = "q1"
+        )
+      )
+      helper_drain()
+      session$flushReact()
+      expect_equal(host$last_tool_call()$arguments, list(label = "page"))
+    }
+  )
+})
+
 test_that("opening another app's tool in a pane takes that app's trigger", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("later")

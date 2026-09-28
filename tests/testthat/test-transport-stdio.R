@@ -118,6 +118,24 @@ test_that("a batch line gets an array of replies", {
   expect_null(stdio_handle_line(server, notifications, context))
 })
 
+test_that("initialize in a batch is refused, and as a notification not answered", {
+  server <- McpServer$new(serving_app())
+  context <- list(transport = "stdio", session = server$new_session())
+  batch <- line_of(list(
+    serving_initialize(id = 1),
+    serving_initialize(id = NULL),
+    serving_rpc("ping", id = 2)
+  ))
+  reply <- from_json(stdio_handle_line(server, batch, context))
+  expect_length(reply, 2)
+  expect_equal(reply[[1]]$id, 1)
+  expect_equal(reply[[1]]$error$code, -32600L)
+  expect_equal(reply[[2]]$id, 2)
+
+  alone <- line_of(list(serving_initialize(id = NULL)))
+  expect_null(stdio_handle_line(server, alone, context))
+})
+
 test_that("each entry of a batch that isn't a message gets its own error", {
   server <- McpServer$new(serving_app())
   context <- list(transport = "stdio", session = server$new_session())

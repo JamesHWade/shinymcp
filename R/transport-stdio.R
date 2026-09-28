@@ -64,9 +64,7 @@ stdio_handle_line <- function(server, line, context) {
   }
   response <- if (is_json_batch(message)) {
     # A JSON-RPC batch (allowed before protocol version 2025-06-18).
-    compact_list(lapply(message, function(msg) {
-      batch_refusal(msg) %||% handle_one(msg)
-    }))
+    compact_list(lapply(message, batch_entry, handle = handle_one))
   } else {
     handle_one(message)
   }
@@ -85,21 +83,28 @@ is_json_batch <- function(message) {
   is.list(message) && is.null(names(message)) && length(message) > 0
 }
 
-#' The error for a batched message that must be sent on its own, or NULL
+#' Answer one entry of a batch with `handle()`
+#'
+#' `initialize` must be sent on its own. As a request it gets an error; as a
+#' notification, which is never answered, it is dropped.
 #' @noRd
-batch_refusal <- function(msg) {
+batch_entry <- function(msg, handle) {
   if (
     is.list(msg) &&
       !is.null(names(msg)) &&
       identical(msg[["method"]], "initialize")
   ) {
-    jsonrpc_error(
+    if (!"id" %in% names(msg)) {
+      return(NULL)
+    }
+    return(jsonrpc_error(
       request_id(msg),
       RPC_INVALID_REQUEST,
       "Invalid Request: initialize can't be sent in a batch.",
       status = 400L
-    )
+    ))
   }
+  handle(msg)
 }
 
 #' Evaluate with anything printed to stdout sent to stderr instead

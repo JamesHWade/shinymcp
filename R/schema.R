@@ -160,14 +160,57 @@ normalize_json_schema <- function(schema) {
       schema[["required"]] <- I(as.character(unlist(schema[["required"]])))
     }
   }
-  if (!is.null(schema[["items"]])) {
-    schema[["items"]] <- normalize_json_schema(schema[["items"]])
-  }
   if (!is.null(schema[["enum"]])) {
     schema[["enum"]] <- I(unlist(schema[["enum"]]))
   }
+  # Every other keyword that holds schemas: one, a list, or a map of them.
+  for (key in intersect(names(schema), SCHEMA_KEYWORDS)) {
+    value <- schema[[key]]
+    # `items` could also be a list of schemas before JSON Schema 2020-12.
+    tuple <- is.list(value) && length(value) > 0 && is.null(names(value))
+    if (!is.null(value)) {
+      schema[[key]] <- if (tuple) {
+        lapply(value, normalize_json_schema)
+      } else {
+        normalize_json_schema(value)
+      }
+    }
+  }
+  for (key in intersect(names(schema), SCHEMA_LIST_KEYWORDS)) {
+    if (!is.null(schema[[key]])) {
+      schema[[key]] <- lapply(schema[[key]], normalize_json_schema)
+    }
+  }
+  for (key in intersect(names(schema), SCHEMA_MAP_KEYWORDS)) {
+    if (length(schema[[key]]) == 0) {
+      schema[[key]] <- json_object()
+    } else {
+      schema[[key]] <- lapply(schema[[key]], normalize_json_schema)
+    }
+  }
   schema
 }
+
+SCHEMA_KEYWORDS <- c(
+  "items",
+  "additionalItems",
+  "additionalProperties",
+  "unevaluatedItems",
+  "unevaluatedProperties",
+  "propertyNames",
+  "contains",
+  "not",
+  "if",
+  "then",
+  "else"
+)
+SCHEMA_LIST_KEYWORDS <- c("allOf", "anyOf", "oneOf", "prefixItems")
+SCHEMA_MAP_KEYWORDS <- c(
+  "patternProperties",
+  "dependentSchemas",
+  "$defs",
+  "definitions"
+)
 
 #' Convert JSON Schema properties to ellmer types
 #'

@@ -882,6 +882,29 @@ test_that("mcp_tool_result() data must be a named list", {
   )
 })
 
+test_that("an output id can be given once", {
+  expect_error(
+    build_tool_result(list(plot = "first", plot = "second")),
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    mcp_tool_result(plot = "first", plot = "second"),
+    class = "shinymcp_error_validation"
+  )
+  # A tool that gives one twice gets an error result the model can read.
+  app <- mcp_app(
+    mcp_text("plot"),
+    tools = list(list(
+      name = "twice",
+      fun = function() list(plot = "first", plot = "second")
+    )),
+    name = "twice"
+  )
+  result <- app$run_tool("twice", list())
+  expect_true(result$isError)
+  expect_match(result$content[[1]]$text, "given more than once", fixed = TRUE)
+})
+
 test_that("mcp_tool_result() outputs must be named", {
   expect_error(mcp_tool_result("a", "b"), class = "shinymcp_error_validation")
   expect_error(
