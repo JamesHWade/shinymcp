@@ -88,8 +88,9 @@ string, a function returning a string, or a list with \code{content},
 data out of the page.}
 
 \item{host_styles}{If \code{TRUE} (the default) the app takes the host's
-colors and fonts when the host provides them, so it looks native in
-each client. Set \code{FALSE} to keep your own theme.}
+colors and fonts when the host provides them, and a Bootstrap 5 page
+follows its dark mode, so the app looks native in each client. Set
+\code{FALSE} to keep your own theme.}
 
 \item{model_context}{If \code{TRUE} (the default) the app tells the model what
 the user has changed in it, so the model can take it into account on

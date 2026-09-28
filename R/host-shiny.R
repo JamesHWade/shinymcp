@@ -662,7 +662,7 @@ host_attach <- function(session, registry, event) {
             fail("The app is opening again.")
             return(invisible())
           }
-          ui <- page$meta$ui %||% list()
+          ui <- tool_ui_meta(list(`_meta` = page$meta))
           if (isTRUE(state$default_title)) {
             state$title <- html_page_title(page$html) %||% state$title
           }
@@ -673,9 +673,9 @@ host_attach <- function(session, registry, event) {
             title = state$title,
             page = compact_list(list(
               html = page$html,
-              csp = ui$csp,
-              permissions = ui$permissions,
-              prefersBorder = ui$prefersBorder
+              csp = ui[["csp"]],
+              permissions = ui[["permissions"]],
+              prefersBorder = ui[["prefersBorder"]]
             )),
             tool = definition,
             toolInput = state$arguments %||% json_object(),
@@ -717,7 +717,12 @@ handle_host_event <- function(session, registry, event) {
   state <- host_instance(registry, instance_id)
 
   if (identical(type, "notification")) {
-    if (!is.null(state)) {
+    # Until the page a pane's open() loads has attached, notifications come
+    # from the page before it (its context, a message, its size) and are
+    # no longer the pane's.
+    current <- !is.null(state) &&
+      identical(state$attached_generation, state$page_generation)
+    if (current) {
       mcp_host_notification(
         state,
         json_field(event, "method"),

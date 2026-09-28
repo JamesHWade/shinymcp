@@ -568,8 +568,9 @@ McpApp <- R6::R6Class(
 #'   `mime_type`, `name`, `description`, and `meta`. Use this to keep large
 #'   data out of the page.
 #' @param host_styles If `TRUE` (the default) the app takes the host's
-#'   colors and fonts when the host provides them, so it looks native in
-#'   each client. Set `FALSE` to keep your own theme.
+#'   colors and fonts when the host provides them, and a Bootstrap 5 page
+#'   follows its dark mode, so the app looks native in each client. Set
+#'   `FALSE` to keep your own theme.
 #' @param model_context If `TRUE` (the default) the app tells the model what
 #'   the user has changed in it, so the model can take it into account on
 #'   its next turn.

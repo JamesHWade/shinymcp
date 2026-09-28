@@ -188,6 +188,24 @@ normalize_json_schema <- function(schema) {
       schema[[key]] <- lapply(schema[[key]], normalize_json_schema)
     }
   }
+  # Maps of property names to the names they require (or, for the older
+  # `dependencies`, to a schema).
+  for (key in intersect(
+    names(schema),
+    c("dependentRequired", "dependencies")
+  )) {
+    if (length(schema[[key]]) == 0) {
+      schema[[key]] <- json_object()
+    } else {
+      schema[[key]] <- lapply(schema[[key]], function(entry) {
+        if (is.list(entry) && !is.null(names(entry))) {
+          normalize_json_schema(entry)
+        } else {
+          I(as.character(unlist(entry)))
+        }
+      })
+    }
+  }
   schema
 }
 

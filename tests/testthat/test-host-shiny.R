@@ -276,6 +276,17 @@ test_that("the default tool is the first the model may call that shows an app", 
   expect_null(default_source_tool(as_host_source(mcp_app(htmltools::div()))))
 })
 
+test_that("a tool with only the older flat ui/resourceUri key is read", {
+  flat <- list(name = "old", `_meta` = list(`ui/resourceUri` = "ui://old"))
+  expect_equal(tool_resource_uri(flat), "ui://old")
+  expect_true(tool_wire_visible_to(flat, "app"))
+  expect_true(tool_wire_visible_to(flat, "model"))
+  # A _meta.ui that isn't an object is ignored, not an error.
+  odd <- list(name = "odd", `_meta` = list(ui = "ui://odd"))
+  expect_null(tool_resource_uri(odd))
+  expect_true(tool_wire_visible_to(odd, "app"))
+})
+
 test_that("registration refuses a tool the source doesn't have, or no tool", {
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
@@ -1264,6 +1275,57 @@ test_that("a pane opened again doesn't take the old page's calls as its own", {
       ask("New", "q3")
       release()
       expect_equal(host$last_tool_call()$arguments, list(name = "New"))
+    }
+  )
+})
+
+test_that("the old page's notifications after open() aren't the pane's", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  capture <- helper_capture_session()
+
+  shiny::testServer(
+    function(id) mcp_host_server(id, host_app()),
+    args = list(id = "h"),
+    session = capture$session,
+    {
+      host <- session$returned
+      root <- session$rootScope()
+      id <- host$instance_id()
+      state <- root$userData$.shinymcp_hosts$instances[[id]]
+      notify <- function(method, params) {
+        root$setInputs(
+          shinymcp_host_event = list(
+            instanceId = id,
+            type = "notification",
+            method = method,
+            params = params
+          )
+        )
+      }
+      root$setInputs(
+        shinymcp_host_event = host_attach_event(host_descriptor(state), "a1")
+      )
+      helper_drain()
+      notify("ui/update-model-context", list(structuredContent = list(n = 1)))
+      expect_equal(host$model_context()$structuredContent, list(n = 1))
+
+      # The old page is still there until the page script loads the new one.
+      host$open(list(name = "Bo"))
+      notify("ui/update-model-context", list(structuredContent = list(n = 2)))
+      notify(
+        "ui/message",
+        list(role = "user", content = list(list(type = "text", text = "old")))
+      )
+      expect_equal(host$model_context()$structuredContent, list(n = 1))
+      expect_equal(host$messages(), list())
+
+      root$setInputs(
+        shinymcp_host_event = host_attach_event(host_descriptor(state), "a2")
+      )
+      helper_drain()
+      notify("ui/update-model-context", list(structuredContent = list(n = 3)))
+      expect_equal(host$model_context()$structuredContent, list(n = 3))
     }
   )
 })

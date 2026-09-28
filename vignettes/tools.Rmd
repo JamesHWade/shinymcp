@@ -214,9 +214,9 @@ with `window.shinymcp.sendMessage()`.
 The UI can be a whole page, such as `bslib::page_sidebar()`, or a fragment;
 give a fragment a theme with `mcp_app(theme = bslib::bs_theme())`. By
 default the page takes the chat client's colors and fonts when it provides
-them, so the app matches the conversation around it; `host_styles = FALSE`
-keeps your own. Pages built on Bootstrap 5 (bslib) also follow the client's
-dark mode.
+them, and a page built on Bootstrap 5 (bslib) follows the client's dark
+mode, so the app matches the conversation around it. `host_styles = FALSE`
+keeps your own theme.
 
 Everything the page needs is written into it, because chat clients show
 apps under a Content Security Policy that blocks other sources. Files the

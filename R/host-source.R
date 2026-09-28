@@ -273,16 +273,28 @@ remote_page <- function(result, uri) {
 #' The page a tool declares (`_meta.ui.resourceUri`), or NULL
 #' @noRd
 tool_resource_uri <- function(tool) {
-  meta <- tool[["_meta"]] %||% list()
-  uri <- meta$ui$resourceUri %||% meta[["ui/resourceUri"]]
+  meta <- tool[["_meta"]]
+  uri <- tool_ui_meta(tool)[["resourceUri"]] %||%
+    if (is.list(meta)) meta[["ui/resourceUri"]]
   if (is_string(uri)) uri else NULL
+}
+
+#' A tool's `_meta.ui`, or an empty list
+#'
+#' Keys are matched exactly: `$ui` would also match the older flat
+#' `ui/resourceUri` key, and read its string as the `ui` object.
+#' @noRd
+tool_ui_meta <- function(tool) {
+  meta <- tool[["_meta"]]
+  ui <- if (is.list(meta)) meta[["ui"]]
+  if (is.list(ui)) ui else list()
 }
 
 #' Who may call a tool, from `_meta.ui.visibility` (both, by default)
 #' @noRd
 tool_wire_visible_to <- function(tool, audience = c("model", "app")) {
   audience <- match.arg(audience)
-  visibility <- tool[["_meta"]]$ui$visibility
+  visibility <- tool_ui_meta(tool)[["visibility"]]
   is.null(visibility) || audience %in% unlist(visibility)
 }
 

@@ -304,8 +304,10 @@
     // light background and have no dark mode: keep them light and leave
     // their colors alone.
     var lightOnly = hasClass(root, "shinymcp-bs3") || hasClass(root, "shinymcp-bs4");
+    // host_styles = FALSE: the app keeps its own theme, colors, and fonts.
+    var ownStyles = config.hostStyles === false;
 
-    if (ctx.theme === "light" || ctx.theme === "dark") {
+    if (!ownStyles && (ctx.theme === "light" || ctx.theme === "dark")) {
       var theme = lightOnly ? "light" : ctx.theme;
       root.setAttribute("data-theme", theme);
       root.setAttribute("data-bs-theme", theme);
@@ -315,7 +317,7 @@
       root.lang = ctx.locale;
     }
     var styles = ctx.styles || {};
-    if (styles.variables && typeof styles.variables === "object" && config.hostStyles !== false && !lightOnly) {
+    if (styles.variables && typeof styles.variables === "object" && !ownStyles && !lightOnly) {
       each(keys(styles.variables), function (name) {
         var value = styles.variables[name];
         if (name.indexOf("--") !== 0 || typeof value !== "string") return;
@@ -325,7 +327,7 @@
         });
       });
     }
-    if (styles.css && typeof styles.css.fonts === "string" && !byId("shinymcp-host-fonts")) {
+    if (!ownStyles && styles.css && typeof styles.css.fonts === "string" && !byId("shinymcp-host-fonts")) {
       var style = document.createElement("style");
       style.id = "shinymcp-host-fonts";
       style.textContent = styles.css.fonts;

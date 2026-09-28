@@ -254,6 +254,30 @@ test_that("normalize_json_schema reaches every keyword that holds schemas", {
   expect_match(json, '"definitions":{}', fixed = TRUE)
 })
 
+test_that("normalize_json_schema writes required property names as arrays", {
+  schema <- normalize_json_schema(list(
+    type = "object",
+    dependentRequired = list(credit_card = "billing_address"),
+    dependencies = list(a = "b", c = list(properties = list())),
+    properties = list(
+      inner = list(type = "object", dependentRequired = list())
+    )
+  ))
+  json <- as.character(to_json(schema))
+
+  expect_match(
+    json,
+    '"dependentRequired":{"credit_card":["billing_address"]}',
+    fixed = TRUE
+  )
+  expect_match(
+    json,
+    '"dependencies":{"a":["b"],"c":{"properties":{}}}',
+    fixed = TRUE
+  )
+  expect_match(json, '"dependentRequired":{},', fixed = TRUE)
+})
+
 # ---- JSON Schema back to ellmer types ----
 
 test_that("schema_to_ellmer_types builds ellmer types from JSON Schema", {
