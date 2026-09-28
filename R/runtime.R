@@ -862,7 +862,8 @@ ShinyRuntime <- R6::R6Class(
           inst$session
         )
         if (!is.null(value)) {
-          values[[msg$id]] <- value$value
+          # `[<-` with list() keeps an input the update cleared, as NULL.
+          values[msg$id] <- list(value$value)
         }
       }
       values
@@ -2126,12 +2127,10 @@ implied_input_value <- function(msg, spec, session) {
     !is.null(message[["options"]]) &&
       kind %in% c("select-multiple", "checkbox-group")
   ) {
-    values <- option_values(message[["options"]])
-    selected <- attr(values, "selected")
-    new <- if (length(selected)) selected else intersect(current, values)
-    if (length(new) == 0) {
-      new <- NULL
-    }
+    # New options replace the old ones, selection included, so only the
+    # values they mark as selected remain.
+    selected <- attr(option_values(message[["options"]]), "selected")
+    new <- if (length(selected)) selected
     return(if (identical(new, current)) NULL else list(value = new))
   }
   NULL

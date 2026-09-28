@@ -958,6 +958,50 @@ test_that("other update*Input() calls are applied the way the browser would", {
   expect_match(rt_text(res), "cg = b, d; rb = \"z\"", fixed = TRUE)
 })
 
+test_that("updates that clear a multi-value input clear it in the session", {
+  skip_if_not_installed("shiny")
+  ui <- shiny::fluidPage(
+    shiny::numericInput("step", "Step", 0),
+    shiny::checkboxGroupInput("cg", "CG", c("a", "b"), selected = "a"),
+    shiny::selectInput(
+      "sm",
+      "SM",
+      c("p", "q"),
+      selected = "p",
+      multiple = TRUE
+    ),
+    shiny::checkboxGroupInput(
+      "new",
+      "New",
+      c("x", "y"),
+      selected = c("x", "y")
+    ),
+    shiny::textOutput("o")
+  )
+  server <- function(input, output, session) {
+    shiny::observeEvent(input$step, {
+      if (input$step == 1) {
+        shiny::updateCheckboxGroupInput(session, "cg", selected = character(0))
+        shiny::updateSelectInput(session, "sm", selected = character(0))
+        # New choices without a selection leave nothing selected, even a
+        # value that is among them, as in the browser.
+        shiny::updateCheckboxGroupInput(session, "new", choices = c("y", "z"))
+      }
+    })
+    output$o <- shiny::renderText(paste(
+      length(input$cg),
+      length(input$sm),
+      length(input$new)
+    ))
+  }
+  app <- rt_app(ui, server, name = "cleared")
+  view <- rt_meta(rt_open(app, list(step = 1)))
+  expect_identical(view$outputs$o$value, "0 0 0")
+  for (id in c("cg", "sm", "new")) {
+    expect_null(rt_session_input(app, view$instance, id))
+  }
+})
+
 test_that("input update loops are cut off instead of hanging", {
   skip_if_not_installed("shiny")
   ui <- shiny::fluidPage(
@@ -3134,13 +3178,27 @@ test_that("implied_input_value() mirrors the browser's input bindings", {
     ),
     list(value = "c")
   )
-  # Multiple selects keep the values that remain.
+  # Multiple selects take their selection from the new options alone, as
+  # Shiny's binding and the page's do.
   expect_identical(
     implied_input_value(
       list(
         id = "many",
         message = list(
           options = '<option value="b">B</option><option value="z">Z</option>'
+        )
+      ),
+      list(id = "many", kind = "select-multiple"),
+      session
+    ),
+    list(value = NULL)
+  )
+  expect_identical(
+    implied_input_value(
+      list(
+        id = "many",
+        message = list(
+          options = '<option value="b" selected>B</option><option value="z">Z</option>'
         )
       ),
       list(id = "many", kind = "select-multiple"),
