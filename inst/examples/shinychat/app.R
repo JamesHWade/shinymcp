@@ -1,8 +1,9 @@
-# MCP Apps as shinychat tool results.
+# MCP Apps in a shinychat conversation.
 #
-# as_shinychat_tool() turns an app's tools into ellmer tools. When the model
-# calls one, shinychat shows the app, live, in the tool's card; the model
-# gets the tool's text and structured result.
+# mcp_chat_host() gives the model the apps' tools. When it calls one,
+# shinychat shows the app, live, in the tool's card. What the person then
+# does in a card reaches the model with their next message, and a message an
+# app suggests goes into the input box.
 #
 # Needs an API key for the model you choose (here ANTHROPIC_API_KEY).
 #   shiny::runApp(system.file("examples", "shinychat", package = "shinymcp"))
@@ -57,11 +58,15 @@ summary_app <- mcp_app(
   tools = list(ellmer::tool(
     function(dataset = "mtcars") {
       data <- getExportedValue("datasets", dataset)
-      list(summary = paste(utils::capture.output(summary(data)), collapse = "\n"))
+      list(
+        summary = paste(utils::capture.output(summary(data)), collapse = "\n")
+      )
     },
     name = "summarize_dataset",
     description = "Summarize one of R's built-in datasets, column by column.",
-    arguments = list(dataset = ellmer::type_enum(datasets, "The dataset to summarize.")),
+    arguments = list(
+      dataset = ellmer::type_enum(datasets, "The dataset to summarize.")
+    ),
     annotations = ellmer::tool_annotations(read_only_hint = TRUE)
   )),
   name = "dataset-summary",
@@ -76,10 +81,8 @@ ui <- page_fillable(
 )
 
 server <- function(input, output, session) {
-  client <- ellmer::chat("anthropic/claude-sonnet-5")
-  client$register_tool(as_shinychat_tool(faithful_app))
-  client$register_tool(as_shinychat_tool(summary_app))
-  chat_server("chat", client)
+  chat <- chat_server("chat", ellmer::chat("anthropic/claude-sonnet-5"))
+  mcp_chat_host(chat, list(faithful_app, summary_app))
 }
 
 shinyApp(ui, server)

@@ -9,7 +9,8 @@ Description: Builds MCP Apps, the Model Context Protocol extension that
     written with 'shiny' UI functions, calls the same tools as the person
     uses it. Includes an MCP server over standard input and output or HTTP,
     an endpoint for deploying apps to Posit Connect, a preview in the
-    browser, and hosts for showing apps in 'shiny' and 'shinychat'. Until
+    browser, and hosts that show apps from any MCP server in 'shiny' apps
+    and 'shinychat' conversations. Until
     'shiny' serves apps to MCP clients itself, an existing 'shiny' app can
     also be served as it is.
 Depends: R (>= 4.3.0)

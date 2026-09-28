@@ -15,9 +15,12 @@ sandboxed iframe and talk to over postMessage JSON-RPC.
 - **Serving.** `serve()` (stdio and Streamable HTTP), `mcp_endpoint()`
   (an endpoint inside a Shiny app, for Posit Connect), both MCP eras: the
   handshake versions 2024-11-05 to 2025-11-25 and stateless 2026-07-28.
-- **Hosting.** `preview_app()`, `mcp_host_ui()`/`mcp_host_server()`, and
-  `as_shinychat_tool()` show apps made with shinymcp, in the same R
-  process, the way a chat client does. They are not general MCP clients.
+- **Hosting.** `mcp_chat_host()` (shinychat conversations) and
+  `mcp_host_ui()`/`mcp_host_server()` (a pane of any Shiny app) show MCP
+  Apps the way a chat client does, from apps in this process or any MCP
+  server through `mcp_client()`. R holds every connection; the page's
+  requests reach R over the Shiny session. `preview_app()` is a separate,
+  browser-side host for development. `design/hosting.md` is the design.
 - **Live Shiny apps (transitional).** `as_mcp_app()` serves a Shiny app as
   it is: the server function runs in R, one `MockShinySession` per view of
   the app, and the page sends input changes to it through an app-only view
@@ -62,9 +65,12 @@ shinymcp/
 │   ├── serve.R                # serve()
 │   ├── endpoint.R             # mcp_endpoint() for Posit Connect and Shiny Server
 │   │   # Hosts
-│   ├── host-base.R            # Host state shared by the Shiny and shinychat hosts
-│   ├── host-shiny.R           # mcp_host_ui(), mcp_host_server()
-│   ├── shinychat.R            # as_shinychat_tool(), mcp_content_result()
+│   ├── client.R               # mcp_client(), McpClient: remote servers, both eras
+│   ├── host-source.R          # Sources: in-process apps or a client, one interface
+│   ├── host-base.R            # Instance state shared by panes and cards
+│   ├── host-shiny.R           # The session registry, attach, the page's requests; panes
+│   ├── shinychat.R            # as_shinychat_tool(), mcp_content_result(): cards
+│   ├── chat-host.R            # mcp_chat_host(): tools, context before each message
 │   ├── preview.R              # preview_app()
 │   │   # Shared
 │   ├── utils.R
@@ -171,6 +177,26 @@ clients keep from the model. Dependencies the page already has are left
 out; in results for the model, large ones go by name and the page fetches
 them through the view tool.
 
+### Hosts
+
+A card (shinychat) or pane carries a descriptor, not the page: instance
+id, source key, tool, arguments, and the result when there is one. The
+host script sends it to R to attach (`shinymcp_host_event` input, type
+`attach`); R answers with the page from `resources/read` (cached per
+session) over the `shinymcp-host-attached` message. A card restored with
+a saved conversation attaches the same way: R recreates the instance if
+the session registered its source, and never calls the tool for it. The
+page's requests come in as `request` events and go to the instance's
+source (`R/host-source.R`: an in-process `McpServer` run from `later()`,
+or an `McpClient`), only for `tools/call` of tools visible to the app,
+resource reads, and `ping`. Everything is asynchronous (promises), so a
+remote long poll doesn't block the session.
+
+`mcp_chat_host()` adds each open card's model context to the model's
+input from `Chat$on_request_start()`: a user turn of its own before the
+person's message (never before tool results), removed in
+`on_request_end()` once the reply has no tool requests left.
+
 ### Live runtime (transitional)
 
 `ShinyRuntime` gives each live app two tools: the model's tool (named
@@ -210,8 +236,8 @@ config (`#shinymcp-config`) at the end of `<body>`.
 **Core** (Imports): cli, htmltools, jsonlite, methods, R6, rlang,
 stats, tools, utils
 **Optional** (Suggests): base64enc, bslib, DT, ellmer, ggplot2, grDevices,
-htmlwidgets, httpuv, knitr, later, palmerpenguins, promises, rmarkdown,
-shiny, shinychat, shinyWidgets, testthat, withr
+htmlwidgets, httpuv, httr2, knitr, later, palmerpenguins, promises,
+rmarkdown, S7, shiny, shinychat, shinyWidgets, testthat, withr
 
 Suggests must be guarded at every call site (`rlang::check_installed()` or
 `requireNamespace()`), since R CMD check builds without them.

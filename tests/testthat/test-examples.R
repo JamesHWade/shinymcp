@@ -83,6 +83,19 @@ test_that("the posit-connect example is a Shiny app with an MCP endpoint", {
   expect_true(inherits(app$mcpServer, "McpServer"))
 })
 
+test_that("the remote-host server serves its app", {
+  require_pkgs(c("shiny", "ellmer"))
+  env <- new.env()
+  env$serve <- function(app, ...) app
+  served <- source(
+    file.path(example_dir("remote-host"), "server.R"),
+    local = env
+  )$value
+  expect_s3_class(served, "McpApp")
+  result <- served$run_tool("faithful_histogram", list(bins = 10))
+  expect_false(isTRUE(result$isError))
+})
+
 test_that("the local-clients server serves both of its apps", {
   require_pkgs(c("shiny", "ellmer"))
   env <- new.env()
@@ -100,6 +113,7 @@ test_that("the local-clients server serves both of its apps", {
 shiny_examples <- list(
   "shinychat" = c("shiny", "bslib", "ellmer", "shinychat"),
   "shiny-host" = c("shiny", "bslib", "ellmer"),
+  "remote-host" = c("shiny", "bslib", "ellmer"),
   "rpharma-hangout" = c("shiny", "bslib", "ellmer", "shinychat")
 )
 

@@ -120,9 +120,17 @@ Other ways to run an app:
   deploy on Posit Connect, Shiny Server, or shinyapps.io. Apps built from
   tools keep nothing between calls, so they run in as many processes as
   the server starts.
-* `as_shinychat_tool()` shows apps as tool results in a
-  [shinychat](https://posit-dev.github.io/shinychat/) conversation, and
-  `mcp_host_ui()` with `mcp_host_server()` embeds them in any Shiny app.
+
+## Showing apps in Shiny
+
+shinymcp also does the chat client's part, in Shiny.
+`mcp_chat_host()` puts apps in a
+[shinychat](https://posit-dev.github.io/shinychat/) conversation: the
+model opens them, and what the person does in them reaches the model with
+their next message. `mcp_host_ui()` and `mcp_host_server()` put an app in
+a pane of any Shiny app. The apps can be built with shinymcp, or come from
+any MCP server through `mcp_client()`, including Shiny apps served with
+Shiny's own MCP support.
 
 ## What the page can do
 
@@ -166,7 +174,8 @@ into `~/.claude/skills/`.
   inputs, outputs, results, and tools only the page may call.
 * [Running an app](https://jameshwade.github.io/shinymcp/articles/deployment.html):
   chat clients, HTTP, and Posit Connect.
-* [Apps in shinychat and Shiny](https://jameshwade.github.io/shinymcp/articles/hosting.html).
+* [Hosting MCP Apps in Shiny](https://jameshwade.github.io/shinymcp/articles/hosting.html):
+  in a shinychat conversation or a pane, from any MCP server.
 * [Rewriting a Shiny app as tools](https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.html).
 * [Serving a Shiny app as it is](https://jameshwade.github.io/shinymcp/articles/shiny-apps.html).
 * [How shinymcp works](https://jameshwade.github.io/shinymcp/articles/protocol.html).

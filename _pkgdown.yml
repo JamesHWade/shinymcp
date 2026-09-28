@@ -60,10 +60,16 @@ reference:
       - preview_app
       - shinymcp-options
 
-  - title: Show it in Shiny and shinychat
+  - title: Host apps in Shiny
+    desc: >
+      Show MCP Apps, from this process or any MCP server, in a shinychat
+      conversation or a pane of a Shiny app.
     contents:
-      - as_shinychat_tool
+      - mcp_chat_host
       - mcp_host_ui
+      - as_shinychat_tool
+      - mcp_client
+      - McpClient
 
   - title: Serving a Shiny app as it is
     desc: >

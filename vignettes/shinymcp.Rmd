@@ -175,7 +175,7 @@ the Old Faithful waiting times with 30 bins".
 
 * `vignette("tools")` covers inputs, outputs, and results in more depth,
   and tools only the page may call.
-* `vignette("hosting")` puts apps in shinychat conversations and Shiny
-  dashboards.
+* `vignette("hosting")` shows apps, yours or any MCP server's, in shinychat
+  conversations and Shiny dashboards.
 * `vignette("rewriting-as-tools")` turns a Shiny app you already have into
   an app like this one.

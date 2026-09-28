@@ -25,7 +25,9 @@ Shiny is gaining MCP support of its own
 runs Shiny's own JavaScript against a real session, where shinymcp has
 stand-ins for both. Once it is released, it will be the way to serve a live
 app, and shinymcp will stop doing so; this article will then cover moving
-an app over. Until then, `as_mcp_app()` works as described here, and it
+an app over. shinymcp will still show such apps in Shiny apps and shinychat
+conversations, through `mcp_client()`; see `vignette("hosting")`. Until
+then, `as_mcp_app()` works as described here, and it
 gets bug fixes but no new features. For something the model should be
 able to use on its own, rewrite that part of the app as tools instead; see
 `vignette("rewriting-as-tools")`.

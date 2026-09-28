@@ -27,8 +27,9 @@ model receives from each call.
 
 | Example | What it shows |
 |---|---|
-| [`shinychat`](shinychat) | Apps as tool results in a shinychat conversation, with `as_shinychat_tool()`. |
+| [`shinychat`](shinychat) | Apps in a shinychat conversation, with `mcp_chat_host()`: the model opens them, and what the person does in them reaches the model. |
 | [`shiny-host`](shiny-host) | An app inside a Shiny app, with the context it gives the model shown alongside. |
+| [`remote-host`](remote-host) | An app from another MCP server, such as one deployed on Posit Connect, in a Shiny app, with `mcp_client()`. |
 
 ## Larger examples
 

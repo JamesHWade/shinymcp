@@ -58,6 +58,17 @@ doesn't do them:
    from the Shiny team; the branch declares arguments by hand in
    `mcpConfigure(arguments = )`.
 
+**Update, 2026-09-28.** Items 1 to 4 have example implementations on a
+fork of the branch: `JamesHWade/shiny`, branch
+`claude/shinymcp-comprehensive-revamp-du3uns`, described in its
+`mcp/proposed-changes.md`. Item 1 takes a different route from shinymcp's:
+`mcpConfigure(result = function(arguments) ...)` computes the result from
+the arguments instead of running the server function during the call,
+which would run its side effects twice. Item 2 holds Shiny's
+initialization until the tool input arrives and writes the arguments into
+the inputs' markup, so the first render uses them. Checked in a browser
+through shinymcp's hosts, over both of the branch's transports.
+
 And in shinymcp:
 
 - `mcp_endpoint()` needs a way to serve tool apps next to a Shiny app, for
@@ -108,8 +119,8 @@ Tests, examples, docs:
   support. The live sections of `vignette("troubleshooting")` and the
   skill's "serving the app as it is" route go.
 - Suggests used only by the live runtime or its examples and tests:
-  `later` (check the hosts first; `R/host-shiny.R` and `R/shinychat.R`
-  use it too), `shinyWidgets`, and `DT`.
+  `shinyWidgets` and `DT`. `later` stays: the hosts run in-process calls
+  from it.
 
 No deprecation release: shinymcp isn't on CRAN, and NEWS carries the
 migration notes.
@@ -130,5 +141,6 @@ Names as of the branch; check them against the release.
 | `is_mcp_session()` | `isMcpSession()` |
 | `bindMcp()` on a live app | `mcpConfigure(arguments = )` |
 | `mcp_endpoint(shiny_app)` | Shiny serves `/mcp` itself |
+| `mcp_host_server(id, as_mcp_app(shiny_app))`, and chat cards of a live app | serve the app with Shiny, host it with `mcp_client("<app>/mcp")` |
 | Outputs in the result of the call that opens the app | none; rewrite what the model must read as tools |
 | Clients that can't show apps | none; tools |

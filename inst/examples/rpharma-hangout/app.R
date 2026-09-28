@@ -1970,7 +1970,7 @@ server <- function(input, output, session) {
 
   safety_host <- mcp_host_server(
     "safety",
-    app = safety_card,
+    safety_card,
     trigger = "submit",
     height = "520px",
     arguments = list(
@@ -1982,7 +1982,7 @@ server <- function(input, output, session) {
   )
   enrollment_host <- mcp_host_server(
     "enrollment",
-    app = enrollment_card,
+    enrollment_card,
     trigger = "submit",
     height = "520px",
     arguments = list(

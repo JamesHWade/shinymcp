@@ -62,7 +62,8 @@ opens the app, called when the card is shown.}
 \item{text}{Plain-text fallback shown where the app can't render.}
 }
 \value{
-For one tool, an \code{\link[ellmer:tool]{ellmer::tool()}}; for several, a list of them.
+For one tool, an \code{\link[ellmer:tool]{ellmer::tool()}}; for several, a named list of
+them.
 }
 \description{
 \code{as_shinychat_tool()} turns the tools of an app, or of a remote MCP

@@ -108,8 +108,18 @@ unprompted. `mcp_endpoint()` adds the same HTTP endpoint to a Shiny app.
 
 ## Hosts
 
-`preview_app()`, `mcp_host_ui()`, and `as_shinychat_tool()` are the client
-side: they show the page in a sandboxed iframe, answer its requests in R,
-and pass tool calls and results to it, as a chat client does. They host
-apps made with shinymcp in the same R process, not apps from other MCP
-servers.
+`mcp_chat_host()`, `mcp_host_server()`, and `preview_app()` are the client
+side: they show the page in a sandboxed iframe and pass tool calls and
+results to it, as a chat client does.
+
+In a Shiny app, the page's requests travel over the Shiny session to R,
+which passes them to the app's server: an `McpServer` in the same process,
+or a remote one through `mcp_client()`, which speaks both protocol eras
+and keeps each result's `_meta`. R passes on only the requests a page may
+make: tools visible to the app, resource reads, and `ping`. A card or pane
+carries the tool call that opened it (tool, arguments, result) rather than
+the page; when it starts, the host reads the page for it, and a card
+restored with a saved conversation starts the same way.
+
+`preview_app()` is the exception: its page talks to the endpoint over
+HTTP itself, as a browser-based client would.

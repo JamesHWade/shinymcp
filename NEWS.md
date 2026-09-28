@@ -43,11 +43,25 @@ section.
 
 ## Hosts
 
+* New `mcp_chat_host()` hosts apps in a shinychat conversation. The model
+  opens them with their tools; before each message the person sends, it is
+  told what each open app reports about what it shows; a message an app
+  suggests goes to the chat's input box; and a restored conversation shows
+  its apps again without calling their tools.
+* New `mcp_client()` connects to any MCP server over HTTP, in either
+  protocol era, keeping the `_meta` MCP Apps rely on. Every host takes a
+  client where it takes an app, so a Shiny app can show apps deployed on
+  Posit Connect, Shiny apps served with Shiny's own MCP support, and apps
+  written in other languages. The connection and its credentials stay in
+  R.
+* `mcp_host_ui()` and `mcp_host_server()` host an app in a pane of any
+  Shiny app. The pane's tool is called in R, and `open()` calls it again
+  with other arguments. `as_shinychat_tool()` makes the cards on their own.
+* A host passes on only the requests an app's page may make: tools visible
+  to the app, resource reads, and `ping`.
 * `preview_app()` shows the app as a chat client does, with panels for what
   the model receives, the context the app sends, tool calls, protocol
   messages, and the server's tools.
-* `mcp_host_ui()` and `mcp_host_server()` host apps in any Shiny app;
-  `as_shinychat_tool()` shows them live in shinychat conversations.
 
 ## Rewriting apps as tools
 
