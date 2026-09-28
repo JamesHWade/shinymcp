@@ -17,8 +17,8 @@ disconnects (stdio) or you interrupt it (HTTP).
 The server speaks MCP protocol versions 2024-11-05 through 2025-11-25
 (with an `initialize` handshake) and 2026-07-28 (stateless, no
 handshake), and the MCP Apps extension (2026-01-26). Clients that don't
-support MCP Apps still get every tool; they see text results instead of
-the app.
+support MCP Apps still get every tool the model may call, and see text
+results instead of the app; tools only an app may call are left out.
 
 ## Usage
 

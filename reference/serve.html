@@ -13,8 +13,8 @@ to Posit Connect, use mcp_endpoint() instead.
 The server speaks MCP protocol versions 2024-11-05 through 2025-11-25
 (with an initialize handshake) and 2026-07-28 (stateless, no
 handshake), and the MCP Apps extension (2026-01-26). Clients that don't
-support MCP Apps still get every tool; they see text results instead of
-the app."><meta property="og:description" content="serve() starts an MCP server for an app and blocks until the client
+support MCP Apps still get every tool the model may call, and see text
+results instead of the app; tools only an app may call are left out."><meta property="og:description" content="serve() starts an MCP server for an app and blocks until the client
 disconnects (stdio) or you interrupt it (HTTP).
 type = &quot;stdio&quot;, the default, is for desktop clients such as Claude
 Desktop, VS Code, and Goose, which start the R process themselves and
@@ -28,8 +28,8 @@ to Posit Connect, use mcp_endpoint() instead.
 The server speaks MCP protocol versions 2024-11-05 through 2025-11-25
 (with an initialize handshake) and 2026-07-28 (stateless, no
 handshake), and the MCP Apps extension (2026-01-26). Clients that don't
-support MCP Apps still get every tool; they see text results instead of
-the app."><meta property="og:image" content="https://jameshwade.github.io/shinymcp/logo.png"></head><body>
+support MCP Apps still get every tool the model may call, and see text
+results instead of the app; tools only an app may call are left out."><meta property="og:image" content="https://jameshwade.github.io/shinymcp/logo.png"></head><body>
     <a href="#main" class="visually-hidden-focusable">Skip to contents</a>
 
 
@@ -93,8 +93,8 @@ to Posit Connect, use <code><a href="mcp_endpoint.html">mcp_endpoint()</a></code
 </ul><p>The server speaks MCP protocol versions 2024-11-05 through 2025-11-25
 (with an <code>initialize</code> handshake) and 2026-07-28 (stateless, no
 handshake), and the MCP Apps extension (2026-01-26). Clients that don't
-support MCP Apps still get every tool; they see text results instead of
-the app.</p>
+support MCP Apps still get every tool the model may call, and see text
+results instead of the app; tools only an app may call are left out.</p>
     </div>
 
     <div class="section level2">
