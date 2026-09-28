@@ -260,6 +260,46 @@ test_that("MCP clients run the Shiny app's server function through the endpoint"
   endpoint$mcpServer$apps[[1]]$runtime()$close_all()
 })
 
+test_that("a shinyAppDir() app runs in its directory, and the process stays put", {
+  skip_if_not_installed("shiny")
+  local_app_dir_side_effects()
+  # Its global.R defines a value in the global environment, as Shiny's does.
+  withr::defer(suppressWarnings(rm("greeting", envir = globalenv())))
+  dir <- withr::local_tempdir()
+  writeLines("greeting <- 'Hello'", file.path(dir, "global.R"))
+  writeLines("from its directory", file.path(dir, "note.txt"))
+  writeLines(
+    "shiny::fluidPage(shiny::textOutput('note'))",
+    file.path(dir, "ui.R")
+  )
+  writeLines(
+    paste(
+      "function(input, output, session) output$note <-",
+      "shiny::renderText(paste(greeting, readLines('note.txt')))"
+    ),
+    file.path(dir, "server.R")
+  )
+  here <- getwd()
+  endpoint <- suppressPackageStartupMessages(
+    mcp_endpoint(shiny::shinyAppDir(dir), name = "notes")
+  )
+  expect_identical(getwd(), here)
+  app <- endpoint$mcpServer$apps[[1]]
+  res <- app$run_tool("notes", list())
+  expect_identical(
+    res$structuredContent$outputs$note,
+    "Hello from its directory"
+  )
+  expect_identical(getwd(), here)
+
+  # runApp() changes into the app's directory for browsers, and back when
+  # the app stops.
+  endpoint$onStart()
+  expect_identical(normalizePath(getwd()), normalizePath(dir))
+  endpoint$onStop()
+  expect_identical(getwd(), here)
+})
+
 test_that("a Shiny app can have apps built from tools next to it", {
   skip_if_not_installed("shiny")
   started <- FALSE

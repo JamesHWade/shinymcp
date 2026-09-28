@@ -241,6 +241,11 @@ http_dispatch <- function(
       )
     ))
   }
+  # A request whose id can't be used is invalid whatever its headers say,
+  # and no error can carry that id back: the server answers it, with none.
+  if ("id" %in% names(message) && is.null(request_id(message))) {
+    return(list(response = server$handle(message, transport)))
+  }
   meta_version <- meta_protocol_version(message)
   is_initialize <- identical(message[["method"]], "initialize")
 
@@ -250,7 +255,7 @@ http_dispatch <- function(
     if (!is.null(problem)) {
       return(list(
         response = jsonrpc_error(
-          message[["id"]] %||% NULL,
+          request_id(message),
           RPC_HEADER_MISMATCH,
           problem,
           status = 400L
@@ -267,7 +272,7 @@ http_dispatch <- function(
   ) {
     return(list(
       response = jsonrpc_error(
-        message[["id"]] %||% NULL,
+        request_id(message),
         RPC_INVALID_REQUEST,
         paste("Unsupported MCP-Protocol-Version:", header_version),
         data = list(
@@ -289,7 +294,7 @@ http_dispatch <- function(
       # The client must start a new session.
       return(list(
         response = jsonrpc_error(
-          message[["id"]] %||% NULL,
+          request_id(message),
           RPC_INVALID_REQUEST,
           "Session not found",
           status = 404L

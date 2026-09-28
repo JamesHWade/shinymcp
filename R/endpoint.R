@@ -84,17 +84,21 @@ mcp_endpoint <- function(
     apps <- as_app_list(apps)
     base <- x
   } else if (inherits(x, "shiny.appobj")) {
-    # Start the app now, as runApp() would, so its UI can be built (a
-    # shinyAppDir() app's ui.R may use what global.R defines). runApp() then
-    # finds it started, and stops it as usual.
-    if (is.function(x$onStart)) {
-      x$onStart()
-      x$onStart <- NULL
-    }
+    # Start the app now, once, as runApp() would, so its UI can be built (a
+    # shinyAppDir() app's ui.R may use what global.R defines), then change
+    # back: other code shares the process. After that, starting it only
+    # changes into its directory: the live app does for each call, and
+    # runApp() does for browsers, then stops the app as usual.
+    lifecycle <- app_lifecycle(on_start = x$onStart)
+    lifecycle$start()
+    dir <- lifecycle$dir()
+    enter <- if (!is.null(dir)) function() setwd(dir)
     started <- x
+    started$onStart <- enter
     started$onStop <- NULL
     apps <- list(as_mcp_app(started, ...))
     base <- x
+    base$onStart <- enter
   } else {
     apps <- as_app_list(x)
     base <- NULL

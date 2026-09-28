@@ -567,6 +567,38 @@ test_that("a method or name that isn't a string is refused, not a header mismatc
   }
 })
 
+test_that("a request whose id can't be used gets Invalid Request with a null id", {
+  handler <- new_handler()
+  meta <- '"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}'
+  refused <- function(response, info) {
+    expect_equal(response$status, 400L, info = info)
+    expect_equal(serving_body(response)$error$code, -32600L, info = info)
+    expect_match(response$body, '"id":null', fixed = TRUE, info = info)
+  }
+  for (id in c('{"a":1}', "[1,2]", "true")) {
+    # Modern, with a mirrored header that doesn't match the body.
+    body <- sprintf(
+      '{"jsonrpc":"2.0","id":%s,"method":"ping","params":{%s}}',
+      id,
+      meta
+    )
+    headers <- list(
+      `MCP-Protocol-Version` = "2026-07-28",
+      `Mcp-Method` = "tools/list"
+    )
+    refused(handler(serving_request(body, headers = headers)), id)
+    # Legacy, in a session the server doesn't know, or naming a version it
+    # doesn't speak.
+    body <- sprintf('{"jsonrpc":"2.0","id":%s,"method":"ping"}', id)
+    for (headers in list(
+      list(`Mcp-Session-Id` = "nope"),
+      list(`MCP-Protocol-Version` = "1999-01-01")
+    )) {
+      refused(handler(serving_request(body, headers = headers)), id)
+    }
+  }
+})
+
 test_that("a request body is parsed as JSON text, never read as a file path", {
   path <- tempfile(fileext = ".json")
   on.exit(unlink(path), add = TRUE)
