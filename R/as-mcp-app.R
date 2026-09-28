@@ -69,7 +69,9 @@
 #'
 #' @param x A Shiny app (from [shiny::shinyApp()] or [shiny::shinyAppDir()]),
 #'   a path to an app directory (with `app.R`, or `ui.R` and `server.R`), or
-#'   an [McpApp] (returned unchanged).
+#'   an [McpApp] (returned unchanged). An `app.R` may build an [McpApp]
+#'   instead of a Shiny app; its tools run, and its page is built, in the
+#'   app's directory.
 #' @param name App name, used for the `ui://<name>` resource and the tool
 #'   name. Defaults to the directory name for a path, otherwise
 #'   `"shiny-app"`.
@@ -263,6 +265,11 @@ source_app_file <- function(app_file) {
   env <- new.env(parent = app_support_env(dirname(app_file)))
   env$serve <- function(...) invisible(NULL)
   env$preview_app <- function(...) invisible(NULL)
+  # Apps made while the file loads keep its directory, and run their tools
+  # and build their page there, as a Shiny app's code runs in its own.
+  outer_dir <- the$app_dir
+  the$app_dir <- normalizePath(dirname(app_file))
+  on.exit(the$app_dir <- outer_dir, add = TRUE)
   sourced <- tryCatch(
     source(app_file, local = env, chdir = TRUE),
     error = function(e) {

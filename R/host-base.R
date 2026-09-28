@@ -25,7 +25,8 @@ new_mcp_host_state <- function(
   state$arguments <- arguments %||% json_object()
   state$result <- result
   state$title <- title %||% state$source$title
-  # Without a title of its own, an instance takes its page's.
+  # Without a title of its own, an instance takes its tool's or its page's.
+  state$title_given <- !is.null(title)
   state$default_title <- is.null(title)
   # Bridge settings for in-process pages (trigger, debounce).
   state$config <- config

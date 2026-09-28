@@ -590,6 +590,53 @@ test_that("an app.R that builds an McpApp returns it, without serving it", {
   expect_identical(app$name, "from-file")
 })
 
+test_that("an McpApp from an app.R runs its tools and page in its directory", {
+  dir <- withr::local_tempdir()
+  dir.create(file.path(dir, "www"))
+  writeLines(".from-www { color: red; }", file.path(dir, "www", "app.css"))
+  writeLines("from the app's folder", file.path(dir, "data.txt"))
+  write_app_file(
+    dir,
+    c(
+      "shinymcp::mcp_app(",
+      "  htmltools::tagList(",
+      "    htmltools::tags$link(rel = 'stylesheet', href = 'app.css'),",
+      "    shinymcp::mcp_text('out')",
+      "  ),",
+      "  tools = list(list(",
+      "    name = 'read',",
+      "    fun = function() list(out = readLines('data.txt'))",
+      "  )),",
+      "  resources = list(",
+      "    `data://notes` = function() readLines('data.txt')",
+      "  ),",
+      "  name = 'from-dir',",
+      "  www = 'www'",
+      ")"
+    )
+  )
+  here <- getwd()
+  app <- as_mcp_app(dir)
+
+  expect_identical(app$call_tool("read")$out, "from the app's folder")
+  expect_false(isTRUE(app$run_tool("read")$isError))
+  expect_match(app$html_resource(), ".from-www { color: red; }", fixed = TRUE)
+  expect_match(
+    app$read_resource("data://notes")$text,
+    "from the app's folder",
+    fixed = TRUE
+  )
+  expect_identical(getwd(), here)
+
+  # An app made outside an app.R runs where it's called.
+  elsewhere <- mcp_app(
+    mcp_text("out"),
+    tools = list(list(name = "wd", fun = function() list(out = getwd()))),
+    name = "here"
+  )
+  expect_identical(elsewhere$call_tool("wd")$out, here)
+})
+
 test_that("bad paths and broken app files give validation errors", {
   expect_error(
     as_mcp_app(file.path(tempdir(), "no-such-app")),

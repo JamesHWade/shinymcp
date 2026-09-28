@@ -571,6 +571,17 @@ test_that("files the UI refers to locally are written into the page", {
   )
 })
 
+test_that("a relative www is the working directory's when the app is made", {
+  parent <- withr::local_tempdir()
+  dir.create(file.path(parent, "www"))
+  writeLines(".from-www { color: red; }", file.path(parent, "www", "app.css"))
+  ui <- htmltools::tags$link(rel = "stylesheet", href = "app.css")
+  app <- withr::with_dir(parent, mcp_app(ui, www = "www"))
+
+  withr::local_dir(withr::local_tempdir())
+  expect_match(app$html_resource(), ".from-www { color: red; }", fixed = TRUE)
+})
+
 test_that("paths added with addResourcePath() are found without www", {
   skip_if_not_installed("shiny")
   dir <- withr::local_tempdir()

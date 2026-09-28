@@ -144,8 +144,12 @@ McpApp <- R6::R6Class(
           class = "shinymcp_error_validation"
         )
       }
-      private$.www <- www
+      # Relative paths are the working directory's now, not when the page
+      # is built.
+      private$.www <- if (!is.null(www)) normalizePath(www)
       private$.runtime <- runtime
+      # An app made while its app.R loads runs in that file's directory.
+      private$.dir <- the$app_dir
       invisible(self)
     },
 
@@ -155,7 +159,7 @@ McpApp <- R6::R6Class(
     #' @param config Named list merged into the bridge configuration. Hosts
     #'   use it to pass their own settings; apps rarely need it.
     html_resource = function(config = NULL) {
-      build_app_html(self, private, config)
+      private$in_dir(build_app_html(self, private, config))
     },
 
     #' @description The app's `ui://` resource URI.
@@ -218,7 +222,7 @@ McpApp <- R6::R6Class(
       compact_list(list(
         uri = spec$uri,
         mimeType = spec$mime_type,
-        text = coerce_resource_text(spec$content_fn()),
+        text = coerce_resource_text(private$in_dir(spec$content_fn())),
         `_meta` = spec$meta
       ))
     },
@@ -281,10 +285,10 @@ McpApp <- R6::R6Class(
         list(caller = "model", transport = "in-process"),
         context %||% list()
       )
-      with_request_context(
+      private$in_dir(with_request_context(
         context,
         tool$handler(arguments %||% list(), context)
-      )
+      ))
     },
 
     #' @description Run a tool and return an MCP `tools/call` result.
@@ -303,7 +307,7 @@ McpApp <- R6::R6Class(
       context = list(),
       raw = FALSE
     ) {
-      result <- private$run_tool_parts(name, arguments, context)
+      result <- private$in_dir(private$run_tool_parts(name, arguments, context))
       if (raw) result else result$result
     },
 
@@ -442,9 +446,20 @@ McpApp <- R6::R6Class(
     .images = TRUE,
     .www = NULL,
     .runtime = NULL,
+    .dir = NULL,
     .ui_outputs = NULL,
     .rendered = NULL,
     .page_deps = NULL,
+
+    # Evaluate `expr` in the directory of the app.R the app was made in.
+    in_dir = function(expr) {
+      if (is.null(private$.dir)) {
+        return(expr)
+      }
+      old <- setwd(private$.dir)
+      on.exit(setwd(old), add = TRUE)
+      expr
+    },
 
     find_tool = function(name) {
       tool <- private$.tools[[name %||% ""]]

@@ -936,8 +936,13 @@ mcp_host_server <- function(
               host_tool(state$source, state$source$tools(), tool)
             }
             state$tool <- tool
+            # The title follows the tool, unless the host gave one.
+            if (!isTRUE(state$title_given)) {
+              state$title <- state$source$title
+              state$default_title <- TRUE
+            }
             state$ready <- if (!is.null(definition)) {
-              promises::promise_resolve(definition)
+              promises::promise_resolve(settle_host_tool(state, definition))
             }
             # The tool may be another app's, with a trigger and debounce of
             # its own; the pane's settings still come first.

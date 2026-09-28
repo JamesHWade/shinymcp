@@ -1210,6 +1210,47 @@ test_that("opening another app's tool in a pane takes that app's trigger", {
   }
 })
 
+test_that("a pane's title follows the tool it opens", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  apps <- list(
+    mcp_app(
+      mcp_text("a"),
+      tools = list(list(
+        name = "show_a",
+        title = "Show A",
+        fun = function() list(a = "A")
+      )),
+      name = "first"
+    ),
+    mcp_app(
+      mcp_text("b"),
+      tools = list(list(
+        name = "show_b",
+        title = "Show B",
+        fun = function() list(b = "B")
+      )),
+      name = "second"
+    )
+  )
+  capture <- helper_capture_session()
+  shiny::testServer(
+    function(id) mcp_host_server(id, apps, tool = "show_a"),
+    args = list(id = "h"),
+    session = capture$session,
+    {
+      host <- session$returned
+      state <- capture$session$userData$.shinymcp_hosts$instances[[
+        host$instance_id()
+      ]]
+      expect_equal(state$title, "Show A")
+      helper_drain()
+      host$open(tool = "show_b")
+      expect_equal(state$title, "Show B")
+    }
+  )
+})
+
 test_that("mcp_host_server() commands reach the page", {
   skip_if_not_installed("shiny")
   capture <- helper_capture_session()

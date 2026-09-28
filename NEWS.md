@@ -26,7 +26,11 @@ section.
 * `mcp_submit_button()` places the apply button for
   `mcp_app(trigger = "submit")`.
 * `mcp_app(www = )` writes a folder of scripts, stylesheets, and images
-  into the page.
+  into the page. A relative `www` is read from the working directory the
+  app is made in.
+* An app built in an `app.R` and loaded from its directory (`serve()`,
+  `as_mcp_app()`, `mcp_endpoint()`) runs its tools and builds its page in
+  that directory, as a Shiny app's code runs in its own.
 * `mcp_app(theme = )` refuses a UI that is already a page, instead of
   nesting two pages.
 * Plots are drawn at the size of their output. The page tells each tool

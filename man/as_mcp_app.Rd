@@ -31,7 +31,9 @@ as_mcp_app(x, ...)
 \arguments{
 \item{x}{A Shiny app (from \code{\link[shiny:shinyApp]{shiny::shinyApp()}} or \code{\link[shiny:shinyAppDir]{shiny::shinyAppDir()}}),
 a path to an app directory (with \code{app.R}, or \code{ui.R} and \code{server.R}), or
-an \link{McpApp} (returned unchanged).}
+an \link{McpApp} (returned unchanged). An \code{app.R} may build an \link{McpApp}
+instead of a Shiny app; its tools run, and its page is built, in the
+app's directory.}
 
 \item{...}{Passed on to \code{\link[=mcp_app]{mcp_app()}}, for example \code{csp},
 \code{prefers_border}, \code{images}, or \code{www} (which defaults to the app
