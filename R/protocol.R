@@ -104,8 +104,9 @@ negotiate_protocol_version <- function(requested) {
 #' Does a client's capabilities object declare MCP Apps support?
 #'
 #' Clients declare `capabilities.extensions["io.modelcontextprotocol/ui"]`
-#' with the MIME types they render. A missing `mimeTypes` is read as the
-#' default HTML profile.
+#' as an object listing the MIME types they render. An object without
+#' `mimeTypes` is read as the default HTML profile; anything but an object
+#' (`false`, a string) declares nothing.
 #' @param capabilities The client's capabilities (a list).
 #' @noRd
 capabilities_support_ui <- function(capabilities) {
@@ -115,10 +116,10 @@ capabilities_support_ui <- function(capabilities) {
     return(FALSE)
   }
   ui <- capabilities$extensions[[SHINYMCP_UI_EXTENSION_ID]]
-  if (is.null(ui)) {
+  if (!is_json_object(ui)) {
     return(FALSE)
   }
-  if (!is_json_object(ui) || is.null(ui$mimeTypes)) {
+  if (is.null(ui$mimeTypes)) {
     return(TRUE)
   }
   SHINYMCP_UI_MIME_TYPE %in% unlist(ui$mimeTypes, use.names = FALSE)

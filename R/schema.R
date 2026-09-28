@@ -258,6 +258,9 @@ prepare_tool_arguments <- function(
     )
   }
   arguments <- arguments[!vapply(arguments, is.null, logical(1))]
+  # Converting loses whether a value was an array (`["a"]` and `"a"` both
+  # become "a"), so arrays and objects are checked as they came.
+  sent <- arguments
 
   if (isTRUE(convert)) {
     for (nm in names(arguments)) {
@@ -282,7 +285,8 @@ prepare_tool_arguments <- function(
       arguments,
       schema,
       fun = fun,
-      types = isTRUE(convert) && isTRUE(check_types)
+      types = isTRUE(convert) && isTRUE(check_types),
+      sent = sent
     )
   }
 
@@ -303,8 +307,16 @@ prepare_tool_arguments <- function(
 #' correct the call.
 #' @param types Whether to check types: not for tools that take raw JSON,
 #'   nor for schemas guessed from a function's defaults.
+#' @param sent The arguments before conversion, for checking arrays and
+#'   objects.
 #' @noRd
-check_tool_arguments <- function(arguments, schema, fun = NULL, types = TRUE) {
+check_tool_arguments <- function(
+  arguments,
+  schema,
+  fun = NULL,
+  types = TRUE,
+  sent = arguments
+) {
   if (is.null(schema)) {
     return(invisible())
   }
@@ -327,7 +339,11 @@ check_tool_arguments <- function(arguments, schema, fun = NULL, types = TRUE) {
     return(invisible())
   }
   for (nm in intersect(names(arguments), names(schema$properties))) {
-    problem <- argument_problem(arguments[[nm]], schema$properties[[nm]])
+    problem <- argument_problem(
+      arguments[[nm]],
+      schema$properties[[nm]],
+      sent = sent[[nm]]
+    )
     if (!is.null(problem)) {
       shinymcp_abort(
         "{.arg {nm}} must be {problem}.",
@@ -339,7 +355,7 @@ check_tool_arguments <- function(arguments, schema, fun = NULL, types = TRUE) {
 }
 
 #' @noRd
-argument_problem <- function(x, prop) {
+argument_problem <- function(x, prop, sent = x) {
   type <- setdiff(as.character(unlist(prop$type)), "null")
   allowed <- unlist(prop$enum)
   if (length(allowed) && is.atomic(x) && length(x) == 1) {
@@ -363,8 +379,31 @@ argument_problem <- function(x, prop) {
     number = if (!(scalar && is.numeric(x))) "a number",
     integer = if (!(scalar && is.numeric(x) && x == round(x))) "a whole number",
     boolean = if (!(scalar && is.logical(x))) "true or false",
+    array = if (!is_array_argument(sent)) "an array",
+    object = if (!is_object_argument(sent)) "an object",
     NULL
   )
+}
+
+#' Is an argument a JSON array, or an object, as it was sent?
+#'
+#' Parsed JSON has arrays as unnamed lists and objects as named ones. A
+#' value from R counts as jsonlite would send it: a vector of other than one
+#' value, a data frame, or an `I()` value is an array; one value alone isn't.
+#' @noRd
+is_array_argument <- function(x) {
+  if (is.data.frame(x)) {
+    return(TRUE)
+  }
+  if (is.list(x)) {
+    return(is.null(names(x)))
+  }
+  is.atomic(x) && (length(x) != 1 || inherits(x, "AsIs"))
+}
+
+#' @noRd
+is_object_argument <- function(x) {
+  is_json_object(x) && !is.data.frame(x)
 }
 
 #' @noRd

@@ -156,7 +156,10 @@ work too, with `name`, `description`, `fun`, and optionally `inputSchema`,
 The model's arguments are checked against the schema before the function
 runs: required arguments must be there, and values must have the declared
 type and, for choices, one of the listed values. A problem goes back to the
-model as a tool error it can correct.
+model as a tool error it can correct. Arguments you pass from R, to
+`$call_tool()` for instance, are read as a client would send them: a vector
+of one value is one value, not an array, so write an array of one as
+`list(x)`.
 
 Some tools shouldn't be the model's to call: saving a result, sending an
 order, anything the person should decide. `tool_visibility` hides a tool

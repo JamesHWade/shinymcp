@@ -67,7 +67,7 @@ test_that("notifications and client responses get no reply", {
 
 test_that("a line that isn't JSON gets a parse error", {
   server <- McpServer$new(serving_app())
-  for (line in c("{not json", "Content-Length: 42", "null")) {
+  for (line in c("{not json", "Content-Length: 42", "nul")) {
     expect_equal(
       stdio_handle_line(server, line, list(transport = "stdio")),
       '{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"Parse error"}}'
@@ -75,15 +75,17 @@ test_that("a line that isn't JSON gets a parse error", {
   }
 })
 
-test_that("a line holding a JSON scalar gets an invalid request error", {
+test_that("a line holding a JSON scalar or null gets an invalid request error", {
   server <- McpServer$new(serving_app())
-  for (line in c("42", '"ping"', "true")) {
+  for (line in c("42", '"ping"', "true", "null", " null ")) {
     reply <- from_json(stdio_handle_line(
       server,
       line,
       list(transport = "stdio")
     ))
-    expect_equal(reply$error$code, -32600L)
+    expect_equal(reply$error$code, -32600L, label = line)
+    expect_true("id" %in% names(reply))
+    expect_null(reply$id)
   }
 })
 

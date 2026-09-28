@@ -87,6 +87,35 @@ test_that("an empty mimeTypes list does not declare MCP Apps support", {
   ))
 })
 
+test_that("a UI extension that isn't an object declares no MCP Apps support", {
+  declared <- function(value) {
+    from_json(sprintf(
+      '{"extensions":{"io.modelcontextprotocol/ui":%s}}',
+      value
+    ))
+  }
+  for (value in c("false", "true", "0", '"text/html;profile=mcp-app"', "[1]")) {
+    expect_false(capabilities_support_ui(declared(value)), label = value)
+  }
+
+  # Such a client is served as one without MCP Apps: no app-only tools.
+  server <- McpServer$new(serving_app())
+  session <- server$new_session()
+  server$handle(
+    serving_rpc(
+      "initialize",
+      list(protocolVersion = "2025-06-18", capabilities = declared("false"))
+    ),
+    list(session = session)
+  )
+  expect_false(session$client_supports_ui)
+  listed <- server$handle(
+    serving_rpc("tools/list", id = 2),
+    list(session = session)
+  )
+  expect_equal(tool_names(listed), c("echo", "boom"))
+})
+
 # ---- JSON-RPC helpers ----
 
 test_that("jsonrpc_response() and jsonrpc_error() build JSON-RPC 2.0 messages", {

@@ -14,7 +14,10 @@ section.
 ## Apps built from tools
 
 * Tool arguments from the model are checked against declared schemas;
-  a missing or mistyped argument goes back to the model as a tool error.
+  a missing or mistyped argument, including one value where the schema
+  asks for an array, goes back to the model as a tool error. Arguments
+  passed from R count as a client would send them: write an array of one
+  value as `list(x)`.
 * `mcp_tool_result()` sets a result's text and structured data.
 * A tool that takes a button's id runs when the button is pressed, not
   whenever its other inputs change. The page doesn't run tools annotated
@@ -73,6 +76,9 @@ section.
   `mcp_content_result()` needs its `tool` named for a remote server.
 * A host passes on only the requests an app's page may make: tools visible
   to the app, resource reads, and `ping`.
+* A chat host passes the model's arguments on as it sent them, so an array
+  of one value reaches the app, or a remote server, as an array. `value_fn`
+  gets them as parsed JSON, with arrays as lists.
 * `preview_app()` shows the app as a chat client does, with panels for what
   the model receives, the context the app sends, tool calls, protocol
   messages, and the server's tools.

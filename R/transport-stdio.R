@@ -39,8 +39,10 @@ serve_stdio <- function(server, input = file("stdin"), output = stdout()) {
 #' Handle one line of input and return the JSON to write, or NULL
 #' @noRd
 stdio_handle_line <- function(server, line, context) {
-  message <- tryCatch(from_json(line), error = function(e) NULL)
-  if (is.null(message)) {
+  # A line holding `null` parses (to NULL) and is answered as an invalid
+  # request, like any other JSON that isn't a message.
+  message <- tryCatch(from_json(line), error = function(e) e)
+  if (inherits(message, "error")) {
     return(as.character(to_json(jsonrpc_error(
       NULL,
       RPC_PARSE_ERROR,

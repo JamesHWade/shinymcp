@@ -40,9 +40,9 @@ default the first the model may call that shows one. Name it for a
 remote server.}
 
 \item{value_fn}{Optional function computing the value returned to the
-model. It can take any of \code{result} (the MCP result), \code{arguments}, and,
-for apps in this process, \code{raw_result} (what the tool function
-returned).}
+model. It can take any of \code{result} (the MCP result), \code{arguments} (the
+model's, as parsed JSON: arrays are lists), and, for apps in this
+process, \code{raw_result} (what the tool function returned).}
 
 \item{summary}{Optional text shown in the card when it can't show the
 app, or a function taking the same arguments as \code{value_fn}.}
@@ -59,7 +59,9 @@ taking the same arguments as \code{value_fn}). Default to the tool's title.}
 \item{value}{For \code{mcp_content_result()}, the value for the model.}
 
 \item{arguments}{For \code{mcp_content_result()}, arguments for the tool that
-opens the app, called when the card is shown.}
+opens the app, called when the card is shown, as a client would send
+them. A vector of one value is one value; write an array of one as
+\code{list(x)}.}
 
 \item{text}{Plain-text fallback shown where the app can't render.}
 }

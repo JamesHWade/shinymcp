@@ -97,7 +97,8 @@ or a minute.
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{name}}{Tool name.}
-      \item{\code{arguments}}{Named list of arguments.}
+      \item{\code{arguments}}{Named list of arguments, sent as JSON. A vector of
+one value goes as one value; write an array of one as \code{list(x)}.}
     }
     \if{html}{\out{</div>}}
   }

@@ -259,7 +259,9 @@ returned it. Useful in tests.
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{name}}{Tool name.}
-      \item{\code{arguments}}{Named list of arguments, as a client would send them.}
+      \item{\code{arguments}}{Named list of arguments, as a client would send them.
+A vector of one value is one value; write an array of one as
+\code{list(x)}.}
       \item{\code{context}}{Request context; see \code{\link[=mcp_request]{mcp_request()}}.}
     }
     \if{html}{\out{</div>}}
@@ -280,7 +282,9 @@ returned it. Useful in tests.
     \if{html}{\out{<div class="arguments">}}
     \describe{
       \item{\code{name}}{Tool name.}
-      \item{\code{arguments}}{Named list of arguments.}
+      \item{\code{arguments}}{Named list of arguments, as a client would send them.
+A vector of one value is one value; write an array of one as
+\code{list(x)}.}
       \item{\code{context}}{Request context. \code{caller = "app"} marks calls from the
 app's own UI, and \code{images = FALSE} asks for a result without image
 blocks for the model.}

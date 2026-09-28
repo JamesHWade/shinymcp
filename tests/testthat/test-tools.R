@@ -791,3 +791,87 @@ test_that("the model's arguments are checked against the schema", {
   expect_true(from_app$isError)
   expect_match(text(from_app), "is missing", fixed = TRUE)
 })
+
+test_that("arrays and objects are checked as they were sent", {
+  seen <- NULL
+  app <- mcp_app(
+    htmltools::div(),
+    tools = list(list(
+      name = "tag",
+      description = "Tag",
+      fun = function(tags, opts = NULL) {
+        seen <<- list(tags = tags, opts = opts)
+        "ok"
+      },
+      inputSchema = list(
+        type = "object",
+        properties = list(
+          tags = list(type = "array", items = list(type = "string")),
+          opts = list(type = "object")
+        ),
+        required = "tags"
+      )
+    ))
+  )
+  sent <- function(json) {
+    app$run_tool("tag", from_json(json))$content[[1]]$text
+  }
+
+  expect_identical(sent('{"tags":"a"}'), "Error: `tags` must be an array.")
+  expect_identical(
+    sent('{"tags":{"k":"a"}}'),
+    "Error: `tags` must be an array."
+  )
+  expect_identical(
+    sent('{"tags":["a"],"opts":5}'),
+    "Error: `opts` must be an object."
+  )
+  expect_identical(
+    sent('{"tags":["a"],"opts":["k"]}'),
+    "Error: `opts` must be an object."
+  )
+
+  expect_identical(sent('{"tags":["a"],"opts":{"k":1}}'), "ok")
+  expect_identical(seen$tags, "a")
+  expect_identical(seen$opts, list(k = 1L))
+  expect_identical(sent('{"tags":[],"opts":{}}'), "ok")
+
+  # Values from R count as they would be sent as JSON.
+  from_r <- function(...) app$run_tool("tag", list(...))$content[[1]]$text
+  expect_identical(from_r(tags = c("a", "b")), "ok")
+  expect_identical(from_r(tags = list("a")), "ok")
+  expect_identical(from_r(tags = I("a")), "ok")
+  expect_identical(from_r(tags = "a"), "Error: `tags` must be an array.")
+  expect_identical(
+    from_r(tags = list("a"), opts = data.frame(k = 1)),
+    "Error: `opts` must be an object."
+  )
+})
+
+test_that("ellmer tools' arrays and objects are checked as they were sent", {
+  skip_if_not_installed("ellmer")
+  tool <- as_mcp_tool(explore_tool())
+  call <- function(json) tool$handler(from_json(json), list())
+
+  expect_error(
+    call('{"species":"Adelie","tags":"a"}'),
+    "`tags` must be an array.",
+    fixed = TRUE,
+    class = "shinymcp_error_arguments"
+  )
+  expect_error(
+    call('{"species":"Adelie","opts":[1]}'),
+    "`opts` must be an object.",
+    fixed = TRUE,
+    class = "shinymcp_error_arguments"
+  )
+  expect_error(
+    call('{"species":"Adelie","rows":{"x":1,"y":"a"}}'),
+    "`rows` must be an array.",
+    fixed = TRUE,
+    class = "shinymcp_error_arguments"
+  )
+  out <- call('{"species":"Adelie","tags":["a"],"rows":[{"x":1,"y":"a"}]}')
+  expect_identical(out$tags, "a")
+  expect_equal(nrow(out$rows), 1)
+})

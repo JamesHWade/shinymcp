@@ -23,9 +23,9 @@
 #'   default the first the model may call that shows one. Name it for a
 #'   remote server.
 #' @param value_fn Optional function computing the value returned to the
-#'   model. It can take any of `result` (the MCP result), `arguments`, and,
-#'   for apps in this process, `raw_result` (what the tool function
-#'   returned).
+#'   model. It can take any of `result` (the MCP result), `arguments` (the
+#'   model's, as parsed JSON: arrays are lists), and, for apps in this
+#'   process, `raw_result` (what the tool function returned).
 #' @param summary Optional text shown in the card when it can't show the
 #'   app, or a function taking the same arguments as `value_fn`.
 #' @param title,icon Card title and icon (a string or tag, or a function
@@ -107,12 +107,16 @@ shinychat_tools <- function(
       class = "shinymcp_error_validation"
     )
   }
+  # The model's arguments go to the source as it sent them: ellmer's
+  # conversion would make an array of one value a single value, which the
+  # tool then refuses.
   lapply(definitions, function(definition) {
     ellmer::tool(
       shinychat_tool_function(source, definition, session, card),
       name = definition$name,
       description = definition$description %||% definition$title %||% "",
       arguments = schema_to_ellmer_types(definition$inputSchema %||% list()),
+      convert = FALSE,
       annotations = shinychat_annotations(definition, card$title)
     )
   })
@@ -320,7 +324,9 @@ live_card_result <- function(
 #' @rdname as_shinychat_tool
 #' @param value For `mcp_content_result()`, the value for the model.
 #' @param arguments For `mcp_content_result()`, arguments for the tool that
-#'   opens the app, called when the card is shown.
+#'   opens the app, called when the card is shown, as a client would send
+#'   them. A vector of one value is one value; write an array of one as
+#'   `list(x)`.
 #' @param text Plain-text fallback shown where the app can't render.
 #' @export
 mcp_content_result <- function(

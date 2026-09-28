@@ -831,7 +831,9 @@ handle_host_event <- function(session, registry, event) {
 #'   model may call that shows an app. A remote server's tools are listed
 #'   without holding up the session, so a tool it doesn't have is reported
 #'   in the pane rather than as an error.
-#' @param arguments Named list of arguments for that call.
+#' @param arguments Named list of arguments for that call, as a client
+#'   would send them. A vector of one value is one value; write an array of
+#'   one as `list(x)`.
 #' @param trigger,debounce_ms For apps made with shinymcp in this process:
 #'   override the app's own `trigger` and `debounce_ms`. `trigger =
 #'   "manual"` shows a Run button and calls tools only when it's pressed or

@@ -60,14 +60,14 @@ mocked_chat <- function(responses, env = parent.frame()) {
 
 reply <- function(text) list(role = "assistant", content = text)
 
-tool_call <- function(name) {
+tool_call <- function(name, arguments = "{}") {
   list(
     role = "assistant",
     content = NULL,
     tool_calls = list(list(
       id = "call_1",
       type = "function",
-      `function` = list(name = name, arguments = "{}")
+      `function` = list(name = name, arguments = arguments)
     ))
   )
 }
@@ -265,6 +265,56 @@ test_that("the context stays through tool rounds and isn't added to them", {
 
   roles <- vapply(client$get_turns(), function(t) S7::prop(t, "role"), "")
   expect_equal(roles, c("user", "assistant", "user", "assistant"))
+})
+
+test_that("the model's arrays reach apps and remote servers as arrays", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("httr2", "1.1.0")
+  seen <- NULL
+  tagger <- mcp_app(
+    htmltools::div(),
+    tools = list(list(
+      name = "tag",
+      description = "Tag.",
+      fun = function(tags) {
+        seen <<- tags
+        paste(tags, collapse = "+")
+      },
+      inputSchema = list(
+        type = "object",
+        properties = list(
+          tags = list(type = "array", items = list(type = "string"))
+        ),
+        required = list("tags")
+      )
+    )),
+    name = "tagger"
+  )
+  remote <- serving_client(McpServer$new(tagger), name = "remote-tagger")
+
+  for (source in list(tagger, remote$client)) {
+    seen <- NULL
+    mock <- mocked_chat(list(
+      tool_call("tag", '{"tags":["a"]}'),
+      reply("Done.")
+    ))
+    mock$client$register_tool(as_shinychat_tool(source))
+    mock$client$chat("Tag it.", echo = "none")
+    expect_identical(seen, "a")
+  }
+
+  calls <- Filter(
+    function(request) {
+      !is.null(request$body) &&
+        identical(
+          jsonlite::parse_json(rawToChar(request$body))$method,
+          "tools/call"
+        )
+    },
+    remote$requests()
+  )
+  sent <- jsonlite::parse_json(rawToChar(calls[[1]]$body))
+  expect_identical(sent$params$arguments, list(tags = list("a")))
 })
 
 test_that("with nothing to report, the request is unchanged", {

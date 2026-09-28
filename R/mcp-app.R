@@ -272,6 +272,8 @@ McpApp <- R6::R6Class(
     #'   returned it. Useful in tests.
     #' @param name Tool name.
     #' @param arguments Named list of arguments, as a client would send them.
+    #'   A vector of one value is one value; write an array of one as
+    #'   `list(x)`.
     #' @param context Request context; see [mcp_request()].
     call_tool = function(name, arguments = list(), context = list()) {
       tool <- private$find_tool(name)
@@ -287,7 +289,9 @@ McpApp <- R6::R6Class(
 
     #' @description Run a tool and return an MCP `tools/call` result.
     #' @param name Tool name.
-    #' @param arguments Named list of arguments.
+    #' @param arguments Named list of arguments, as a client would send them.
+    #'   A vector of one value is one value; write an array of one as
+    #'   `list(x)`.
     #' @param context Request context. `caller = "app"` marks calls from the
     #'   app's own UI, and `images = FALSE` asks for a result without image
     #'   blocks for the model.

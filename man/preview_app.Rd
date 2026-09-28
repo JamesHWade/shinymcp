@@ -15,7 +15,9 @@ preview_app(
 \arguments{
 \item{app}{An \link{McpApp}, a list of apps, a Shiny app, or a path to one.}
 
-\item{arguments}{Named list of arguments for the first call.}
+\item{arguments}{Named list of arguments for the first call, as a
+client would send them. A vector of one value is one value; write an
+array of one as \code{list(x)}.}
 
 \item{tool}{Name of the tool to call first. Defaults to the first tool
 the model can call.}

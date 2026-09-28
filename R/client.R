@@ -147,7 +147,8 @@ McpClient <- R6::R6Class(
 
     #' @description Call a tool.
     #' @param name Tool name.
-    #' @param arguments Named list of arguments.
+    #' @param arguments Named list of arguments, sent as JSON. A vector of
+    #'   one value goes as one value; write an array of one as `list(x)`.
     #' @return The `tools/call` result: a list with `content`, and possibly
     #'   `structuredContent`, `_meta`, and `isError`.
     call_tool = function(name, arguments = NULL) {
