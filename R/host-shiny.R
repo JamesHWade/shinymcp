@@ -368,12 +368,7 @@ register_shiny_host_instance <- function(
   interaction <- if (!is.null(tool)) {
     source$interaction(tool, trigger, debounce_ms)
   }
-  config <- if (!is.null(interaction)) {
-    compact_list(list(
-      trigger = interaction$trigger,
-      debounceMs = interaction$debounce_ms
-    ))
-  }
+  config <- interaction_config(interaction)
   state <- new_mcp_host_state(
     source,
     instance_id = instance_id,
@@ -403,6 +398,17 @@ register_shiny_host_instance <- function(
       trigger = interaction$trigger
     )
   )
+}
+
+#' The part of a page's configuration a host sets: trigger and debounce
+#' @noRd
+interaction_config <- function(interaction) {
+  if (!is.null(interaction)) {
+    compact_list(list(
+      trigger = interaction$trigger,
+      debounceMs = interaction$debounce_ms
+    ))
+  }
 }
 
 #' A pane's trigger and debounce: the host's settings, else the app's
@@ -923,6 +929,7 @@ mcp_host_server <- function(
       list(
         instance_id = shiny::reactive(state$instance_id),
         open = function(arguments = NULL, tool = NULL) {
+          switched <- NULL
           if (!is.null(tool)) {
             # Checked now for an app in this process, else when it opens.
             definition <- if (in_process_source(state$source)) {
@@ -932,11 +939,15 @@ mcp_host_server <- function(
             state$ready <- if (!is.null(definition)) {
               promises::promise_resolve(definition)
             }
+            # The tool may be another app's, with a trigger and debounce of
+            # its own; the pane's settings still come first.
+            switched <- state$source$interaction(tool, trigger, debounce_ms)
+            state$config <- interaction_config(switched)
           }
           state$arguments <- arguments %||% json_object()
           state$result <- NULL
           state$attached <- FALSE
-          send_host_command(root, state, "reopen")
+          send_host_command(root, state, "reopen", trigger = switched$trigger)
           start_host_call(root, state)
           invisible()
         },

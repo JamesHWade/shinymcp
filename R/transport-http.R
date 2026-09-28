@@ -313,12 +313,14 @@ http_dispatch <- function(
 #' The protocol version a request names in `_meta`, or NULL
 #'
 #' Read before the server checks the message, so params or `_meta` that
-#' aren't objects count as naming none; the server refuses them.
+#' aren't objects, and a version that isn't a string, count as naming none;
+#' the server refuses them.
 #' @noRd
 meta_protocol_version <- function(message) {
   params <- message$params
   meta <- if (is_json_object(params)) params[["_meta"]]
-  if (is_json_object(meta)) meta[[META_PROTOCOL_VERSION]]
+  version <- if (is_json_object(meta)) meta[[META_PROTOCOL_VERSION]]
+  if (is_string(version)) version
 }
 
 #' Is a session id one this server handed out and still holds?

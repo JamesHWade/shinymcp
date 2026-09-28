@@ -1154,12 +1154,13 @@
   }
 
   // Load the app again, from a new attach: after the pane's tool is called
-  // with other arguments.
-  function reopenShinyHost(instanceId) {
+  // with other arguments. A tool from another app brings its own trigger.
+  function reopenShinyHost(instanceId, trigger) {
     var entry = hosts[instanceId];
     if (!entry) return;
     var container = entry.container;
     var config = entry.config;
+    if (trigger) config.trigger = trigger;
     var done = function () {
       if (hosts[instanceId] !== entry) return;
       delete hosts[instanceId];
@@ -1260,7 +1261,7 @@
           });
           break;
         case "reopen":
-          reopenShinyHost(msg.instanceId);
+          reopenShinyHost(msg.instanceId, msg.trigger);
           break;
         default:
           runCommand(entry, msg);

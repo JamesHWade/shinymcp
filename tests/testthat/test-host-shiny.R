@@ -1164,6 +1164,52 @@ test_that("mcp_host_server() opens the app again with other arguments", {
   )
 })
 
+test_that("opening another app's tool in a pane takes that app's trigger", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  apps <- list(
+    mcp_app(
+      mcp_text("a"),
+      tools = list(list(name = "show_a", fun = function() list(a = "A"))),
+      name = "first",
+      trigger = "submit"
+    ),
+    mcp_app(
+      mcp_text("b"),
+      tools = list(list(name = "show_b", fun = function() list(b = "B"))),
+      name = "second",
+      debounce_ms = 800
+    )
+  )
+  for (pane_trigger in list(NULL, "manual")) {
+    capture <- helper_capture_session()
+    shiny::testServer(
+      function(id) {
+        mcp_host_server(id, apps, tool = "show_a", trigger = pane_trigger)
+      },
+      args = list(id = "h"),
+      session = capture$session,
+      {
+        host <- session$returned
+        id <- host$instance_id()
+        state <- capture$session$userData$.shinymcp_hosts$instances[[id]]
+        expect_equal(state$config$trigger, pane_trigger %||% "submit")
+        helper_drain()
+
+        host$open(tool = "show_b")
+        expected <- pane_trigger %||% "debounce"
+        expect_equal(state$config$trigger, expected)
+        expect_equal(state$config$debounceMs, 800)
+        commands <- capture$messages("shinymcp-host-command")
+        expect_equal(
+          commands[[1]],
+          list(instanceId = id, command = "reopen", trigger = expected)
+        )
+      }
+    )
+  }
+})
+
 test_that("mcp_host_server() commands reach the page", {
   skip_if_not_installed("shiny")
   capture <- helper_capture_session()

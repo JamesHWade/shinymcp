@@ -495,6 +495,20 @@ test_that("params that aren't an object get invalid params, not an internal erro
   }
 })
 
+test_that("a protocol version in _meta that isn't a string gets invalid params", {
+  handler <- new_handler()
+  headers <- list(`MCP-Protocol-Version` = "2026-07-28", `Mcp-Method` = "ping")
+  for (version in c('{"v":"2026-07-28"}', '["2026-07-28"]', "20260728")) {
+    body <- sprintf(
+      '{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":%s}}}',
+      version
+    )
+    response <- handler(serving_request(body, headers = headers))
+    expect_equal(response$status, 400L, info = version)
+    expect_equal(serving_body(response)$error$code, -32602L, info = version)
+  }
+})
+
 test_that("a request body is parsed as JSON text, never read as a file path", {
   path <- tempfile(fileext = ".json")
   on.exit(unlink(path), add = TRUE)
