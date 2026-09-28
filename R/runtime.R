@@ -1203,8 +1203,17 @@ read_upload <- function(value) {
   limit <- getOption("shiny.maxRequestSize", 5 * 1024^2)
   dir <- tempfile("shinymcp-upload-")
   dir.create(dir, recursive = TRUE)
+  # Until the files are handed over, a failure removes them.
+  kept <- FALSE
+  on.exit(if (!kept) unlink(dir, recursive = TRUE), add = TRUE)
   rows <- lapply(seq_along(files), function(i) {
     f <- files[[i]]
+    if (!is.list(f)) {
+      shinymcp_abort(
+        "Each uploaded file must be an object with its {.field name} and {.field data}.",
+        class = "shinymcp_error_arguments"
+      )
+    }
     bytes <- jsonlite::base64_dec(f$data %||% "")
     ext <- tools::file_ext(f$name %||% "")
     path <- file.path(dir, paste0(i - 1, if (nzchar(ext)) paste0(".", ext)))
@@ -1219,13 +1228,13 @@ read_upload <- function(value) {
   })
   out <- do.call(rbind, rows)
   if (sum(out$size) > limit) {
-    unlink(dir, recursive = TRUE)
     shinymcp_abort(
       "Uploads are limited to {round(limit / 1024^2, 1)} MB (the {.code shiny.maxRequestSize} option).",
       class = "shinymcp_error_arguments"
     )
   }
   attr(out, "dir") <- dir
+  kept <- TRUE
   out
 }
 

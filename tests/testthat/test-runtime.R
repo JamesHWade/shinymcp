@@ -3613,6 +3613,35 @@ test_that("files the page uploads reach the server as Shiny's data frame", {
   expect_false(file.exists(datapath))
 })
 
+test_that("an upload that can't be read leaves no files behind", {
+  skip_if_not_installed("shiny")
+  uploads <- function() list.files(tempdir(), pattern = "^shinymcp-upload-")
+  before <- uploads()
+  ui <- shiny::fluidPage(shiny::fileInput("upload", "Upload"))
+  upload <- function(files) {
+    app <- rt_app(ui, function(input, output, session) NULL, name = "broken")
+    rt_update(
+      app,
+      rt_meta(rt_open(app)),
+      inputs = list(upload = files),
+      changed = "upload",
+      kinds = list(upload = list(kind = "file"))
+    )
+  }
+
+  res <- upload(list("not a file"))
+  expect_true(res$isError)
+  expect_match(res$content[[1]]$text, "must be an object", fixed = TRUE)
+  withr::with_options(list(shiny.maxRequestSize = 10), {
+    res <- upload(list(list(
+      name = "big.txt",
+      data = jsonlite::base64_enc(charToRaw(strrep("x", 100)))
+    )))
+  })
+  expect_true(res$isError)
+  expect_setequal(uploads(), before)
+})
+
 test_that("uploads over shiny.maxRequestSize are refused", {
   skip_if_not_installed("shiny")
   withr::local_options(shiny.maxRequestSize = 10)

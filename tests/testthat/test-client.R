@@ -35,6 +35,31 @@ test_that("mcp_client() checks its arguments and names the server by URL", {
   )
 })
 
+test_that("credentials in a server's URL are used, never shown", {
+  url <- "https://user:s3cret@example.com/mcp/"
+  expect_equal(mcp_client(url)$name, "example.com/mcp")
+
+  requested <- NULL
+  client <- McpClient$new(
+    url,
+    transport = function(request, async = FALSE, timeout = 60) {
+      requested <<- request$url
+      stop("no route to host")
+    }
+  )
+  expect_false(any(grepl("s3cret", capture.output(print(client)))))
+  err <- tryCatch(client$request("ping"), error = function(e) e)
+  expect_s3_class(err, "shinymcp_error_client")
+  expect_false(grepl("s3cret", conditionMessage(err)))
+  # The requests themselves go to the URL as given.
+  expect_equal(requested, url)
+  # Only the part before the host is dropped.
+  expect_equal(
+    url_without_credentials("http://a:b@c@host:8080/mcp?next=x@y"),
+    "http://host:8080/mcp?next=x@y"
+  )
+})
+
 test_that("the client prints its server", {
   fx <- serving_client(client_server())
   expect_output(print(fx$client), "<McpClient> 127.0.0.1/mcp")
