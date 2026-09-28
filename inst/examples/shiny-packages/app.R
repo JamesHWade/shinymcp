@@ -13,7 +13,10 @@
 library(shiny)
 library(shinymcp)
 
-cars <- data.frame(model = rownames(mtcars), mtcars[c("mpg", "cyl", "hp", "wt")])
+cars <- data.frame(
+  model = rownames(mtcars),
+  mtcars[c("mpg", "cyl", "hp", "wt")]
+)
 rownames(cars) <- NULL
 
 ui <- fluidPage(
@@ -95,4 +98,8 @@ app <- as_mcp_app(
   description = "Browse the 1974 Motor Trend cars by number of cylinders, select cars in the table to compare them, or upload your own."
 )
 
-if (interactive()) preview_app(app) else serve(app)
+if (interactive()) {
+  preview_app(app)
+} else {
+  serve(app)
+}

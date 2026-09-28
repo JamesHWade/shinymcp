@@ -38,4 +38,8 @@ app <- mcp_app(
   title = "Dataset summary"
 )
 
-if (interactive()) preview_app(app) else serve(app)
+if (interactive()) {
+  preview_app(app)
+} else {
+  serve(app)
+}

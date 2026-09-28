@@ -56,7 +56,9 @@ summary_app <- mcp_app(
   tools = list(ellmer::tool(
     function(dataset = "mtcars") {
       data <- getExportedValue("datasets", dataset)
-      list(summary = paste(utils::capture.output(summary(data)), collapse = "\n"))
+      list(
+        summary = paste(utils::capture.output(summary(data)), collapse = "\n")
+      )
     },
     name = "summarize_dataset",
     description = "Summarize one of R's built-in datasets, column by column.",

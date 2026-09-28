@@ -49,4 +49,8 @@ show_dataset <- ellmer::tool(
 
 app <- mcp_app(ui, tools = list(show_dataset), name = "dashboard")
 
-if (interactive()) preview_app(app) else serve(app)
+if (interactive()) {
+  preview_app(app)
+} else {
+  serve(app)
+}

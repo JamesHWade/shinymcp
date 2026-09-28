@@ -40,7 +40,14 @@ histogram_server <- function(id) {
 
     output$plot <- renderPlot({
       par(mar = c(4, 4, 1, 1))
-      hist(values(), breaks = input$bins, col = "#5b8db8", border = "white", main = NULL, xlab = NULL)
+      hist(
+        values(),
+        breaks = input$bins,
+        col = "#5b8db8",
+        border = "white",
+        main = NULL,
+        xlab = NULL
+      )
     })
 
     output$stats <- renderPrint(summary(values()))
@@ -54,4 +61,8 @@ app <- mcp_tool_module(
   description = "Draw a histogram of Old Faithful eruptions or of car fuel economy."
 )
 
-if (interactive()) preview_app(app) else serve(app)
+if (interactive()) {
+  preview_app(app)
+} else {
+  serve(app)
+}

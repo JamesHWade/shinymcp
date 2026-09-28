@@ -80,7 +80,10 @@ server <- function(input, output, session) {
     if (is.null(context)) {
       "Nothing yet. Change the input in the app."
     } else {
-      paste(vapply(context$content, function(block) block$text, ""), collapse = "\n")
+      paste(
+        vapply(context$content, function(block) block$text, ""),
+        collapse = "\n"
+      )
     }
   })
 

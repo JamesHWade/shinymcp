@@ -24,7 +24,14 @@ ui <- page_sidebar(
   sidebar = sidebar(
     checkboxGroupInput("class", "Vehicle class", classes, selected = classes) |>
       bindMcp(),
-    sliderInput("displ", "Engine size (litres)", 1.6, 7, value = c(1.6, 7), step = 0.1) |>
+    sliderInput(
+      "displ",
+      "Engine size (litres)",
+      1.6,
+      7,
+      value = c(1.6, 7),
+      step = 0.1
+    ) |>
       bindMcp(),
     radioButtons("metric", "Mileage", c("Highway" = "hwy", "City" = "cty")) |>
       bindMcp(),
@@ -48,7 +55,8 @@ ui <- page_sidebar(
 
 server <- function(input, output, session) {
   cars <- reactive({
-    keep <- mpg$class %in% input$class &
+    keep <- mpg$class %in%
+      input$class &
       mpg$displ >= input$displ[1] &
       mpg$displ <= input$displ[2]
     validate(need(any(keep), "No cars match these filters."))
@@ -68,7 +76,11 @@ server <- function(input, output, session) {
       ink <- if (dark) "#e6e6e3" else "#262624"
       p <- ggplot(cars(), aes(displ, .data[[input$metric]], colour = class)) +
         geom_point(size = 2.2, alpha = 0.85) +
-        labs(x = "Engine size (litres)", y = paste(metric_label(), "mpg"), colour = NULL) +
+        labs(
+          x = "Engine size (litres)",
+          y = paste(metric_label(), "mpg"),
+          colour = NULL
+        ) +
         theme_minimal(base_size = 14, ink = ink, paper = "transparent")
       if (input$trend) {
         p <- p +
@@ -131,4 +143,8 @@ app <- as_mcp_app(
   )
 )
 
-if (interactive()) preview_app(app) else serve(app)
+if (interactive()) {
+  preview_app(app)
+} else {
+  serve(app)
+}

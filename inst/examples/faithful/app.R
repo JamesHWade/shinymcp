@@ -60,4 +60,8 @@ app <- as_mcp_app(
   description = "Show a histogram of waiting times between Old Faithful eruptions."
 )
 
-if (interactive()) preview_app(app) else serve(app)
+if (interactive()) {
+  preview_app(app)
+} else {
+  serve(app)
+}
