@@ -103,7 +103,10 @@
       join("style-src 'self' 'unsafe-inline'", resources),
       join("connect-src 'self'", connect),
       join("img-src 'self' data: blob:", resources),
-      join("font-src 'self' data:", resources),
+      // As the specification says, and as chat clients do: fonts only from
+      // declared domains, never inlined, so a page that needs a font it
+      // can't have looks here as it will there.
+      join("font-src 'self'", resources),
       join("media-src 'self' data: blob:", resources),
       "frame-src " + (frames || "'none'"),
       "object-src 'none'",

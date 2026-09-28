@@ -571,10 +571,11 @@ build_tool_result <- function(
       list(outputs = lapply(entries, view_payload)),
       view
     ))
+    structured <- data %||% lapply(entries, function(e) json_safe(e$model))
+    # structuredContent is an object: with nothing in it, `{}`, not `[]`.
     result <- list(
       content = content,
-      structuredContent = data %||%
-        lapply(entries, function(e) json_safe(e$model))
+      structuredContent = if (length(structured)) structured else json_object()
     )
   }
 

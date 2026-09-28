@@ -830,6 +830,15 @@ test_that("mcp_tool_result() with no outputs is a text result", {
   expect_equal(result$content[[1]]$text, "Nothing to show")
   expect_equal(result$structuredContent, list(count = 0))
   expect_null(result$isError)
+
+  # With neither outputs nor data, the structured content is an empty
+  # object, never an array.
+  bare <- build_tool_result(mcp_tool_result(text = "Done"))
+  expect_match(
+    as.character(to_json(bare)),
+    '"structuredContent":{}',
+    fixed = TRUE
+  )
 })
 
 test_that("mcp_tool_result() outputs must be named", {
