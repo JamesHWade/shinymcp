@@ -1,17 +1,16 @@
 pandoc: 3.8.3
-pkgdown: 2.2.0
+pkgdown: 2.2.1
 pkgdown_sha: ~
 articles:
-  adding-to-a-client: adding-to-a-client.html
-  automatic-conversion: automatic-conversion.html
-  choose-the-right-migration-path: choose-the-right-migration-path.html
-  converting-shiny-apps: converting-shiny-apps.html
-  debugging-shinymcp: debugging-shinymcp.html
-  mcp-apps-protocol: mcp-apps-protocol.html
-  shinymcp-by-example: shinymcp-by-example.html
-  use-cases: use-cases.html
-  use-shinymcp-with-shinychat: use-shinymcp-with-shinychat.html
-last_built: 2026-06-16T13:13Z
+  deployment: deployment.html
+  hosting: hosting.html
+  protocol: protocol.html
+  rewriting-as-tools: rewriting-as-tools.html
+  shiny-apps: shiny-apps.html
+  shinymcp: shinymcp.html
+  tools: tools.html
+  troubleshooting: troubleshooting.html
+last_built: 2026-09-28T19:33Z
 urls:
   reference: https://jameshwade.github.io/shinymcp/reference
   article: https://jameshwade.github.io/shinymcp/articles

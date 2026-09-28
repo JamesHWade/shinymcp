@@ -5,7 +5,7 @@
 <meta charset="utf-8">
 <meta http-equiv="X-UA-Compatible" content="IE=edge">
 <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-<title>shinymcp - Shiny Apps Inside AI Chat • shinymcp</title>
+<title>shinymcp • shinymcp</title>
 <!-- favicons --><link rel="icon" type="image/png" sizes="96x96" href="favicon-96x96.png">
 <link rel="icon" type="”image/svg+xml”" href="favicon.svg">
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
@@ -13,13 +13,13 @@
 <link rel="manifest" href="site.webmanifest">
 <script src="lightswitch.js"></script><script src="deps/jquery-3.6.0/jquery-3.6.0.min.js"></script><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
 <link href="deps/bootstrap-5.3.8/bootstrap.min.css" rel="stylesheet">
-<script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
+<script src="deps/bootstrap-5.3.8/bootstrap.bundle.min.js"></script><link href="deps/Inter-0.4.10/font.css" rel="stylesheet">
+<link href="deps/JetBrains_Mono-0.4.10/font.css" rel="stylesheet">
+<link href="deps/font-awesome-6.5.2/css/all.min.css" rel="stylesheet">
 <link href="deps/font-awesome-6.5.2/css/v4-shims.min.css" rel="stylesheet">
-<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><script src="extra.js"></script><meta property="og:title" content="shinymcp - Shiny Apps Inside AI Chat">
-<meta name="description" content="Convert Shiny apps into MCP Apps that render interactive UIs directly inside AI chat interfaces like Claude Desktop.
-">
-<meta property="og:description" content="Convert Shiny apps into MCP Apps that render interactive UIs directly inside AI chat interfaces like Claude Desktop.
-">
+<script src="deps/headroom-0.11.0/headroom.min.js"></script><script src="deps/headroom-0.11.0/jQuery.headroom.min.js"></script><script src="deps/bootstrap-toc-1.0.1/bootstrap-toc.min.js"></script><script src="deps/clipboard.js-2.0.11/clipboard.min.js"></script><script src="deps/search-1.0.0/autocomplete.jquery.min.js"></script><script src="deps/search-1.0.0/fuse.min.js"></script><script src="deps/search-1.0.0/mark.min.js"></script><!-- pkgdown --><script src="pkgdown.js"></script><meta property="og:title" content="shinymcp">
+<meta name="description" content="Build MCP Apps for AI chat clients from R functions and Shiny UI.">
+<meta property="og:description" content="Build MCP Apps for AI chat clients from R functions and Shiny UI.">
 <meta property="og:image" content="https://jameshwade.github.io/shinymcp/logo.png">
 </head>
 <body>
@@ -39,21 +39,23 @@
 
     <div id="navbar" class="collapse navbar-collapse ms-3">
       <ul class="navbar-nav me-auto">
-<li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item"><a class="nav-link" href="articles/shinymcp.html">Get started</a></li>
 <li class="nav-item dropdown">
   <button class="nav-link dropdown-toggle" type="button" id="dropdown-articles" data-bs-toggle="dropdown" aria-expanded="false" aria-haspopup="true">Articles</button>
   <ul class="dropdown-menu" aria-labelledby="dropdown-articles">
-<li><a class="dropdown-item" href="articles/shinymcp-by-example.html">shinymcp by example</a></li>
-    <li><a class="dropdown-item" href="articles/use-cases.html">Use Cases</a></li>
-    <li><a class="dropdown-item" href="articles/converting-shiny-apps.html">Converting Shiny Apps</a></li>
-    <li><a class="dropdown-item" href="articles/automatic-conversion.html">Automatic Conversion</a></li>
-    <li><a class="dropdown-item" href="articles/choose-the-right-migration-path.html">Choose Migration Path</a></li>
-    <li><a class="dropdown-item" href="articles/use-shinymcp-with-shinychat.html">Use with shinychat</a></li>
-    <li><a class="dropdown-item" href="articles/mcp-apps-protocol.html">MCP Apps Protocol</a></li>
-    <li><a class="dropdown-item" href="articles/adding-to-a-client.html">Add to Claude, VS Code, or Goose</a></li>
-    <li><a class="dropdown-item" href="articles/debugging-shinymcp.html">Debugging shinymcp</a></li>
+<li><a class="dropdown-item" href="articles/tools.html">Building an app from tools</a></li>
+    <li><a class="dropdown-item" href="articles/deployment.html">Running an app</a></li>
+    <li><a class="dropdown-item" href="articles/hosting.html">Hosting MCP Apps in Shiny</a></li>
+    <li><a class="dropdown-item" href="articles/rewriting-as-tools.html">Rewriting a Shiny app as tools</a></li>
+    <li><hr class="dropdown-divider"></li>
+    <li><h6 class="dropdown-header" data-toc-skip>More</h6></li>
+    <li><a class="dropdown-item" href="articles/shiny-apps.html">Serving a Shiny app as it is</a></li>
+    <li><a class="dropdown-item" href="articles/protocol.html">How shinymcp works</a></li>
+    <li><a class="dropdown-item" href="articles/troubleshooting.html">Troubleshooting</a></li>
   </ul>
 </li>
+<li class="nav-item"><a class="nav-link" href="reference/index.html">Reference</a></li>
+<li class="nav-item"><a class="nav-link" href="news/index.html">Changelog</a></li>
       </ul>
 <ul class="navbar-nav">
 <li class="nav-item"><form class="form-inline" role="search">
@@ -75,216 +77,182 @@
   </div>
 </nav><div class="container template-home">
 <div class="row">
-  <main id="main" class="col-md-9"><div class="smc-hero">
-<span class="smc-chip"><span class="dot"></span> R package · works with Claude Desktop &amp; shinychat</span>
+  <main id="main" class="col-md-9"><div class="section level1">
 <div class="page-header">
-<img src="logo.png" class="logo" alt=""><h1 class="smc-title">
-Your Shiny app, <span class="smc-grad">live inside the chat.</span>
+<img src="logo.png" class="logo" alt=""><h1 id="shinymcp-">shinymcp 
+<a class="anchor" aria-label="anchor" href="#shinymcp-"></a>
 </h1>
 </div>
-<p class="smc-lede">
-shinymcp turns Shiny interfaces and R computations into <strong>MCP Apps</strong> — interactive cards that run inside AI chat, Shiny hosts, and shinychat.
-</p>
-<div class="smc-actions">
-<p><a class="btn smc-btn smc-btn-primary" href="#quick-start">Get started →</a> <a class="external-link btn smc-btn smc-btn-ghost" href="https://github.com/JamesHWade/shinymcp">View on GitHub</a></p>
-</div>
-<div class="smc-install">
-<span class="smc-prompt">&gt;</span> <code>pak::pak(“JamesHWade/shinymcp”)</code>
-</div>
-</div>
-<div id="smc-demo" class="smc-demo-frame" data-logo="logo.png">
+<!-- badges: start -->
 
-</div>
-<p class="smc-demo-cap">
-↑ static MCP App mock-up — change an input to preview the UI flow. The quick start below shows the real R-backed bridge.
-</p>
-<div class="smc-section">
-<h2 id="start-with-a-path">
-Three ways in
-</h2>
-<p class="smc-section-lede">
-Start from scratch, move an app you already ship, or wire MCP cards into a chat assistant.
-</p>
-<div class="smc-paths">
-<a class="smc-path" href="#quick-start">
-<div class="smc-path-tag">
-Build
-</div>
-<h3>
-Create an MCP App
-</h3>
-<p>
-Use the Shiny and bslib inputs you already know, add MCP output targets, and bind them to R tools.
-</p>
-<span class="smc-path-more">Jump to quick start →</span> </a> <a class="smc-path" href="articles/converting-shiny-apps.html">
-<div class="smc-path-tag">
-Convert
-</div>
-<h3>
-Move an existing Shiny app
-</h3>
-<p>
-Flatten reactive groups into tool functions. The workflow users see stays the same.
-</p>
-<span class="smc-path-more">Read the guide →</span> </a> <a class="smc-path" href="articles/use-shinymcp-with-shinychat.html">
-<div class="smc-path-tag">
-Integrate
-</div>
-<h3>
-Render apps inside shinychat
-</h3>
-<p>
-Return MCP cards from chat tools, with state sync and a full-screen mode.
-</p>
-<p><span class="smc-path-more">Read the guide →</span> </p></a>
-</div>
-</div>
+<p>shinymcp builds <a href="https://modelcontextprotocol.io/docs/extensions/apps" class="external-link">MCP Apps</a> in R. An MCP App is a tool with a page: a chat client that supports the MCP Apps extension, such as Claude, ChatGPT, or VS Code, shows the page in the conversation, and the person can keep working with it. In shinymcp the tools are R functions and the page is Shiny UI. The model can call the tools on their own, in any MCP client, and the page calls the same tools as the person uses it.</p>
+<p><img src="reference/figures/demo.gif" alt="A Shiny app exploring the Palmer penguins, open in a Claude Desktop conversation" width="100%"></p>
 <div class="section level2">
-<h2 id="quick-start">Quick start<a class="anchor" aria-label="anchor" href="#quick-start"></a>
+<h2 id="installation">Installation<a class="anchor" aria-label="anchor" href="#installation"></a>
 </h2>
-<p>An MCP App has two parts: UI components that render in the chat interface, and tools that run R code when inputs change. Use standard shiny or bslib inputs — the bridge finds them by matching tool argument names to element <code>id</code> attributes.</p>
 <div class="sourceCode" id="cb1"><pre class="downlit sourceCode r">
-<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/JamesHWade/shinymcp" class="external-link">shinymcp</a></span><span class="op">)</span></span>
-<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://rstudio.github.io/bslib/" class="external-link">bslib</a></span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">ui</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/page_sidebar.html" class="external-link">page_sidebar</a></span><span class="op">(</span></span>
-<span>  theme <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/bs_theme.html" class="external-link">bs_theme</a></span><span class="op">(</span>preset <span class="op">=</span> <span class="st">"shiny"</span><span class="op">)</span>,</span>
-<span>  title <span class="op">=</span> <span class="st">"Dataset Explorer"</span>,</span>
-<span>  sidebar <span class="op">=</span> <span class="fu"><a href="https://rstudio.github.io/bslib/reference/sidebar.html" class="external-link">sidebar</a></span><span class="op">(</span></span>
-<span>    <span class="co"># Standard shiny input — auto-detected because id matches tool arg "dataset"</span></span>
-<span>    <span class="fu">shiny</span><span class="fu">::</span><span class="fu"><a href="https://rdrr.io/pkg/shiny/man/selectInput.html" class="external-link">selectInput</a></span><span class="op">(</span><span class="st">"dataset"</span>, <span class="st">"Choose dataset"</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"mtcars"</span>, <span class="st">"iris"</span>, <span class="st">"pressure"</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="op">)</span>,</span>
-<span>  <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card.html" class="external-link">card</a></span><span class="op">(</span></span>
-<span>    <span class="fu"><a href="https://rstudio.github.io/bslib/reference/card_body.html" class="external-link">card_header</a></span><span class="op">(</span><span class="st">"Summary"</span><span class="op">)</span>,</span>
-<span>    <span class="fu"><a href="reference/mcp_text.html">mcp_text</a></span><span class="op">(</span><span class="st">"summary"</span><span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">tools</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
-<span>  <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/tool.html" class="external-link">tool</a></span><span class="op">(</span></span>
-<span>    fun <span class="op">=</span> <span class="kw">function</span><span class="op">(</span><span class="va">dataset</span> <span class="op">=</span> <span class="st">"mtcars"</span><span class="op">)</span> <span class="op">{</span></span>
-<span>      <span class="va">data</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://rdrr.io/r/base/get.html" class="external-link">get</a></span><span class="op">(</span><span class="va">dataset</span>, envir <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/ns-internal.html" class="external-link">asNamespace</a></span><span class="op">(</span><span class="st">"datasets"</span><span class="op">)</span><span class="op">)</span></span>
-<span>      <span class="fu"><a href="https://rdrr.io/r/base/paste.html" class="external-link">paste</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/utils/capture.output.html" class="external-link">capture.output</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/summary.html" class="external-link">summary</a></span><span class="op">(</span><span class="va">data</span><span class="op">)</span><span class="op">)</span>, collapse <span class="op">=</span> <span class="st">"\n"</span><span class="op">)</span></span>
-<span>    <span class="op">}</span>,</span>
-<span>    name <span class="op">=</span> <span class="st">"get_summary"</span>,</span>
-<span>    description <span class="op">=</span> <span class="st">"Get summary statistics for the selected dataset"</span>,</span>
-<span>    arguments <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>dataset <span class="op">=</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/type_boolean.html" class="external-link">type_string</a></span><span class="op">(</span><span class="st">"Dataset name"</span><span class="op">)</span><span class="op">)</span></span>
-<span>  <span class="op">)</span></span>
-<span><span class="op">)</span></span>
-<span></span>
-<span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/mcp_app.html">mcp_app</a></span><span class="op">(</span><span class="va">ui</span>, <span class="va">tools</span>, name <span class="op">=</span> <span class="st">"dataset-explorer"</span><span class="op">)</span></span>
-<span><span class="fu"><a href="reference/serve.html">serve</a></span><span class="op">(</span><span class="va">app</span><span class="op">)</span></span></code></pre></div>
-<p>Save this as <code>app.R</code>, register it in your Claude Desktop config, and restart. When the tool runs, the UI appears inline in the conversation. Change the dropdown and the tool runs again and updates the output — no page reload.</p>
-<div class="smc-section">
-<h2 id="how-it-works">
-A lightweight bridge, no npm
-</h2>
-<p class="smc-section-lede">
-MCP Apps render inside sandboxed iframes. A small JavaScript bridge handles the round-trip via postMessage and JSON-RPC.
-</p>
-<div class="smc-steps">
-<div class="smc-step">
-<span class="smc-step-n">01</span>
-<div>
-<h4>
-User changes an input
-</h4>
-<p>
-The bridge matches tool argument names to element ids, then collects every value.
-</p>
-</div>
-</div>
-<div class="smc-step">
-<span class="smc-step-n">02</span>
-<div>
-<h4>
-Bridge sends tools/call
-</h4>
-<p>
-A JSON-RPC request travels over postMessage from the sandboxed iframe to the host chat client.
-</p>
-</div>
-</div>
-<div class="smc-step">
-<span class="smc-step-n">03</span>
-<div>
-<h4>
-Host proxies to your R process
-</h4>
-<p>
-The MCP host forwards the call to the MCP server running your R session.
-</p>
-</div>
-</div>
-<div class="smc-step">
-<span class="smc-step-n">04</span>
-<div>
-<h4>
-Your tool function runs
-</h4>
-<p>
-Plain R executes and returns a named list of results: a base64 plot, a table, summary text.
-</p>
-</div>
-</div>
-<div class="smc-step">
-<span class="smc-step-n">05</span>
-<div>
-<h4>
-Outputs update in place
-</h4>
-<p>
-The bridge routes each value to the matching output element. No page reload, no redeploy.
-</p>
-</div>
-</div>
-</div>
-</div>
+<code class="sourceCode R"><span><span class="co"># install.packages("pak")</span></span>
+<span><span class="fu">pak</span><span class="fu">::</span><span class="fu"><a href="https://pak.r-lib.org/reference/pak.html" class="external-link">pak</a></span><span class="op">(</span><span class="st">"JamesHWade/shinymcp"</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
-<h2 id="component-reference">Component reference<a class="anchor" aria-label="anchor" href="#component-reference"></a>
+<h2 id="an-app-from-a-tool">An app from a tool<a class="anchor" aria-label="anchor" href="#an-app-from-a-tool"></a>
 </h2>
-<p>Inputs are standard shiny / bslib elements, auto-detected by <code>id</code>. Outputs map one-to-one onto familiar Shiny render functions.</p>
-<table class="table">
-<colgroup>
-<col width="33%">
-<col width="33%">
-<col width="33%">
-</colgroup>
-<thead><tr>
-<th>Shiny</th>
-<th>shinymcp</th>
-<th>Notes</th>
-</tr></thead>
-<tbody>
-<tr>
-<td>
-<code>textOutput()</code> / <code>verbatimTextOutput()</code>
-</td>
-<td><code><a href="reference/mcp_text.html">mcp_text()</a></code></td>
-<td>Renders in a monospace block</td>
-</tr>
-<tr>
-<td><code>plotOutput()</code></td>
-<td><code><a href="reference/mcp_plot.html">mcp_plot()</a></code></td>
-<td>Tool returns a base64-encoded PNG</td>
-</tr>
-<tr>
-<td><code>tableOutput()</code></td>
-<td><code><a href="reference/mcp_table.html">mcp_table()</a></code></td>
-<td>Tool returns an HTML table string</td>
-</tr>
-<tr>
-<td><code>htmlOutput()</code></td>
-<td><code><a href="reference/mcp_html.html">mcp_html()</a></code></td>
-<td>Tool returns raw HTML</td>
-</tr>
-</tbody>
-</table>
-<p>For a full worked example, see <code><a href="articles/converting-shiny-apps.html">vignette("converting-shiny-apps")</a></code>. For the complete component list, see the <a href="reference/index.html">reference index</a>.</p>
+<div class="sourceCode" id="cb2"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://shiny.posit.co/" class="external-link">shiny</a></span><span class="op">)</span></span>
+<span><span class="kw"><a href="https://rdrr.io/r/base/library.html" class="external-link">library</a></span><span class="op">(</span><span class="va"><a href="https://github.com/JamesHWade/shinymcp" class="external-link">shinymcp</a></span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">faithful_histogram</span> <span class="op">&lt;-</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/tool.html" class="external-link">tool</a></span><span class="op">(</span></span>
+<span>  <span class="kw">function</span><span class="op">(</span><span class="va">bins</span> <span class="op">=</span> <span class="fl">20</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>      histogram <span class="op">=</span> <span class="fu"><a href="reference/mcp_result.html">mcp_result_plot</a></span><span class="op">(</span></span>
+<span>        <span class="kw">function</span><span class="op">(</span><span class="op">)</span> <span class="fu"><a href="https://rdrr.io/r/graphics/hist.html" class="external-link">hist</a></span><span class="op">(</span><span class="va">faithful</span><span class="op">$</span><span class="va">waiting</span>, breaks <span class="op">=</span> <span class="va">bins</span>, main <span class="op">=</span> <span class="cn">NULL</span>, xlab <span class="op">=</span> <span class="st">"Minutes"</span><span class="op">)</span>,</span>
+<span>        text <span class="op">=</span> <span class="st">"Histogram of waiting times between eruptions."</span></span>
+<span>      <span class="op">)</span>,</span>
+<span>      caption <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/sprintf.html" class="external-link">sprintf</a></span><span class="op">(</span><span class="st">"%d eruptions; median wait %d minutes."</span>, <span class="fu"><a href="https://rdrr.io/r/base/nrow.html" class="external-link">nrow</a></span><span class="op">(</span><span class="va">faithful</span><span class="op">)</span>, <span class="fu"><a href="https://rdrr.io/r/stats/median.html" class="external-link">median</a></span><span class="op">(</span><span class="va">faithful</span><span class="op">$</span><span class="va">waiting</span><span class="op">)</span><span class="op">)</span></span>
+<span>    <span class="op">)</span></span>
+<span>  <span class="op">}</span>,</span>
+<span>  name <span class="op">=</span> <span class="st">"faithful_histogram"</span>,</span>
+<span>  description <span class="op">=</span> <span class="st">"Show a histogram of waiting times between Old Faithful eruptions."</span>,</span>
+<span>  arguments <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span></span>
+<span>    bins <span class="op">=</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/type_boolean.html" class="external-link">type_integer</a></span><span class="op">(</span><span class="st">"Number of bins, 5 to 50."</span>, required <span class="op">=</span> <span class="cn">FALSE</span><span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  annotations <span class="op">=</span> <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/tool_annotations.html" class="external-link">tool_annotations</a></span><span class="op">(</span>read_only_hint <span class="op">=</span> <span class="cn">TRUE</span><span class="op">)</span></span>
+<span><span class="op">)</span></span>
+<span></span>
+<span><span class="va">app</span> <span class="op">&lt;-</span> <span class="fu"><a href="reference/mcp_app.html">mcp_app</a></span><span class="op">(</span></span>
+<span>  ui <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/fluidPage.html" class="external-link">fluidPage</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/sliderInput.html" class="external-link">sliderInput</a></span><span class="op">(</span><span class="st">"bins"</span>, <span class="st">"Number of bins"</span>, min <span class="op">=</span> <span class="fl">5</span>, max <span class="op">=</span> <span class="fl">50</span>, value <span class="op">=</span> <span class="fl">20</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/plotOutput.html" class="external-link">plotOutput</a></span><span class="op">(</span><span class="st">"histogram"</span><span class="op">)</span>,</span>
+<span>    <span class="fu"><a href="https://rdrr.io/pkg/shiny/man/textOutput.html" class="external-link">textOutput</a></span><span class="op">(</span><span class="st">"caption"</span><span class="op">)</span></span>
+<span>  <span class="op">)</span>,</span>
+<span>  tools <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">faithful_histogram</span><span class="op">)</span>,</span>
+<span>  name <span class="op">=</span> <span class="st">"faithful"</span></span>
+<span><span class="op">)</span></span></code></pre></div>
+<p>Names connect the two halves. The tool’s argument <code>bins</code> takes its value from the input with that id, and the list it returns fills the outputs <code>histogram</code> and <code>caption</code>. When the person moves the slider, the page calls the tool again.</p>
+<p>The model calls the same tool, and reads what it returns, whether or not its client can show the page:</p>
+<div class="sourceCode" id="cb3"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">result</span> <span class="op">&lt;-</span> <span class="va">app</span><span class="op">$</span><span class="fu">run_tool</span><span class="op">(</span><span class="st">"faithful_histogram"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>bins <span class="op">=</span> <span class="fl">30</span><span class="op">)</span><span class="op">)</span></span>
+<span><span class="fu"><a href="https://rdrr.io/r/base/cat.html" class="external-link">cat</a></span><span class="op">(</span><span class="va">result</span><span class="op">$</span><span class="va">content</span><span class="op">[[</span><span class="fl">1</span><span class="op">]</span><span class="op">]</span><span class="op">$</span><span class="va">text</span><span class="op">)</span></span>
+<span><span class="co">#&gt; histogram: Histogram of waiting times between eruptions.</span></span>
+<span><span class="co">#&gt; </span></span>
+<span><span class="co">#&gt; caption: 272 eruptions; median wait 76 minutes.</span></span></code></pre></div>
+<p>The plot reaches it as an image, too. Each result is split three ways: text and compact structured data for the model, and what the page draws (HTML, images, widget data), which clients pass to the page and keep from the model. Results can hold text, tables, plots, images, HTML, and htmlwidgets.</p>
+<p><code>preview_app(app)</code> opens the app in your browser the way a chat client shows it, next to what the model receives from each call.</p>
+</div>
+<div class="section level2">
+<h2 id="use-it-from-a-chat-client">Use it from a chat client<a class="anchor" aria-label="anchor" href="#use-it-from-a-chat-client"></a>
+</h2>
+<p>Save the app in a file that ends with <code>serve(app)</code> and register the file with your client. For Claude Desktop, in <strong>Settings &gt; Developer &gt; Edit Config</strong>:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode json"><code class="sourceCode json"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="fu">{</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>  <span class="dt">"mcpServers"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>    <span class="dt">"faithful"</span><span class="fu">:</span> <span class="fu">{</span></span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>      <span class="dt">"command"</span><span class="fu">:</span> <span class="st">"Rscript"</span><span class="fu">,</span></span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>      <span class="dt">"args"</span><span class="fu">:</span> <span class="ot">[</span><span class="st">"/path/to/app.R"</span><span class="ot">]</span></span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>    <span class="fu">}</span></span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="fu">}</span></span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a><span class="fu">}</span></span></code></pre></div>
+<p>Other ways to run an app:</p>
+<ul>
+<li>
+<code>serve(app, type = "http")</code> serves it over HTTP, for clients that connect to a URL.</li>
+<li>
+<code>mcp_endpoint(app)</code> makes it a Shiny app that serves MCP at <code>/mcp</code>, to deploy on Posit Connect, Shiny Server, or shinyapps.io. Apps built from tools keep nothing between calls, so they run in as many processes as the server starts.</li>
+</ul>
+</div>
+<div class="section level2">
+<h2 id="showing-apps-in-shiny">Showing apps in Shiny<a class="anchor" aria-label="anchor" href="#showing-apps-in-shiny"></a>
+</h2>
+<p>shinymcp also does the chat client’s part, in Shiny. <code><a href="reference/mcp_chat_host.html">mcp_chat_host()</a></code> puts apps in a <a href="https://posit-dev.github.io/shinychat/" class="external-link">shinychat</a> conversation: the model opens them, and what the person does in them reaches the model with their next message. <code><a href="reference/mcp_host_ui.html">mcp_host_ui()</a></code> and <code><a href="reference/mcp_host_ui.html">mcp_host_server()</a></code> put an app in a pane of any Shiny app. The apps can be built with shinymcp, or come from any MCP server through <code><a href="reference/mcp_client.html">mcp_client()</a></code>, including Shiny apps served with Shiny’s own MCP support.</p>
+</div>
+<div class="section level2">
+<h2 id="what-the-page-can-do">What the page can do<a class="anchor" aria-label="anchor" href="#what-the-page-can-do"></a>
+</h2>
+<p>The page is the UI you give <code><a href="reference/mcp_app.html">mcp_app()</a></code>, with shinymcp’s JavaScript in place of Shiny’s. It takes Shiny’s inputs and bslib’s, inputs from packages that register a Shiny input binding (shinyWidgets, for example), and the small <code>mcp_*()</code> components shinymcp provides. It draws every kind of output: text, tables, plots, HTML, and htmlwidgets such as plotly, DT, and leaflet. Conditional panels show and hide, buttons run the tools that take their id, and the page tells the model what the person chose.</p>
+<p>Anything from another website, such as map tiles or a script from a CDN, needs a <code>csp</code> declaration: chat clients block the rest.</p>
+</div>
+<div class="section level2">
+<h2 id="a-shiny-app-you-already-have">A Shiny app you already have<a class="anchor" aria-label="anchor" href="#a-shiny-app-you-already-have"></a>
+</h2>
+<p>There are two ways to put an existing Shiny app in a chat:</p>
+<ul>
+<li>
+<strong>Rewrite the part the model should use as tools.</strong> The UI stays as it is; the server function becomes R functions. See <a href="https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.html">Rewriting a Shiny app as tools</a>.</li>
+<li>
+<strong>Serve the whole app as it is</strong> with <code><a href="reference/as_mcp_app.html">as_mcp_app()</a></code>. Its server function keeps running in R, one session each time the app opens. Shiny is gaining MCP support of its own (<a href="https://github.com/rstudio/shiny/pull/4407" class="external-link">rstudio/shiny#4407</a>). Once it is released, it will be the way to do this, and shinymcp will stop serving live apps. See <a href="https://jameshwade.github.io/shinymcp/articles/shiny-apps.html">Serving a Shiny app as it is</a>.</li>
+</ul>
+<p>shinymcp comes with a <a href="https://github.com/JamesHWade/shinymcp/tree/main/inst/skills/convert-shiny-app" class="external-link">skill</a> that takes a coding agent through either one. For Claude Code, copy its folder, <code>system.file("skills", "convert-shiny-app", package = "shinymcp")</code>, into <code>~/.claude/skills/</code>.</p>
+</div>
+<div class="section level2">
+<h2 id="learn-more">Learn more<a class="anchor" aria-label="anchor" href="#learn-more"></a>
+</h2>
+<ul>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/shinymcp.html">Get started</a>: a first app, from preview to Claude Desktop.</li>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/tools.html">Building an app from tools</a>: inputs, outputs, results, and tools only the page may call.</li>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/deployment.html">Running an app</a>: chat clients, HTTP, and Posit Connect.</li>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/hosting.html">Hosting MCP Apps in Shiny</a>: in a shinychat conversation or a pane, from any MCP server.</li>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.html">Rewriting a Shiny app as tools</a>.</li>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/shiny-apps.html">Serving a Shiny app as it is</a>.</li>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/protocol.html">How shinymcp works</a>.</li>
+<li>
+<a href="https://jameshwade.github.io/shinymcp/articles/troubleshooting.html">Troubleshooting</a>.</li>
+</ul>
+<p>The <a href="https://github.com/JamesHWade/shinymcp/tree/main/inst/examples" class="external-link">examples</a> folder has runnable apps for each of these.</p>
+</div>
+</div>
+  </main><aside class="col-md-3"><div class="links">
+<h2 data-toc-skip>Links</h2>
+<ul class="list-unstyled">
+<li><a href="https://github.com/JamesHWade/shinymcp/" class="external-link">Browse source code</a></li>
+<li><a href="https://github.com/JamesHWade/shinymcp/issues" class="external-link">Report a bug</a></li>
+</ul>
 </div>
 
-  </main><aside class="col-md-3"></aside>
+<div class="license">
+<h2 data-toc-skip>License</h2>
+<ul class="list-unstyled">
+<li><a href="LICENSE.html">Full license</a></li>
+<li><small><a href="https://opensource.org/licenses/mit-license.php" class="external-link">MIT</a> + file <a href="LICENSE-text.html">LICENSE</a></small></li>
+</ul>
+</div>
+
+<div class="community">
+<h2 data-toc-skip>Community</h2>
+<ul class="list-unstyled">
+<li><a href="CODE_OF_CONDUCT.html">Code of conduct</a></li>
+</ul>
+</div>
+
+<div class="citation">
+<h2 data-toc-skip>Citation</h2>
+<ul class="list-unstyled">
+<li><a href="authors.html#citation">Citing shinymcp</a></li>
+</ul>
+</div>
+
+<div class="developers">
+<h2 data-toc-skip>Developers</h2>
+<ul class="list-unstyled">
+<li>James Wade <br><small class="roles"> Author, maintainer </small>   </li>
+</ul>
+</div>
+
+<div class="dev-status">
+<h2 data-toc-skip>Dev status</h2>
+<ul class="list-unstyled">
+<li><a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="https://img.shields.io/badge/lifecycle-experimental-orange.svg" alt="Lifecycle: experimental"></a></li>
+<li><a href="https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml" class="external-link"><img src="https://github.com/JamesHWade/shinymcp/actions/workflows/R-CMD-check.yaml/badge.svg" alt="R-CMD-check"></a></li>
+<li><a href="https://app.codecov.io/gh/JamesHWade/shinymcp" class="external-link"><img src="https://codecov.io/gh/JamesHWade/shinymcp/graph/badge.svg" alt="Codecov test coverage"></a></li>
+</ul>
+</div>
+
+  </aside>
 </div>
 
 
@@ -293,7 +261,7 @@ The bridge routes each value to the matching output element. No page reload, no 
 </div>
 
 <div class="pkgdown-footer-right">
-  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.0.</p>
+  <p>Site built with <a href="https://pkgdown.r-lib.org/" class="external-link">pkgdown</a> 2.2.1.</p>
 </div>
 
     </footer>

@@ -1,22 +1,20 @@
 # Articles
 
-### All vignettes
+### Guides
 
-- [Adding your app to Claude Desktop, VS Code, or
-  Goose](https://jameshwade.github.io/shinymcp/articles/adding-to-a-client.md):
-- [Automatic Shiny App
-  Conversion](https://jameshwade.github.io/shinymcp/articles/automatic-conversion.md):
-- [Choose the right migration
-  path](https://jameshwade.github.io/shinymcp/articles/choose-the-right-migration-path.md):
-- [Converting Shiny Apps to MCP
-  Apps](https://jameshwade.github.io/shinymcp/articles/converting-shiny-apps.md):
-- [Debugging
-  shinymcp](https://jameshwade.github.io/shinymcp/articles/debugging-shinymcp.md):
-- [The MCP Apps Protocol in
-  shinymcp](https://jameshwade.github.io/shinymcp/articles/mcp-apps-protocol.md):
-- [shinymcp by
-  example](https://jameshwade.github.io/shinymcp/articles/shinymcp-by-example.md):
-- [shinymcp use
-  cases](https://jameshwade.github.io/shinymcp/articles/use-cases.md):
-- [Use shinymcp with
-  shinychat](https://jameshwade.github.io/shinymcp/articles/use-shinymcp-with-shinychat.md):
+- [Building an app from
+  tools](https://jameshwade.github.io/shinymcp/articles/tools.md):
+- [Running an
+  app](https://jameshwade.github.io/shinymcp/articles/deployment.md):
+- [Hosting MCP Apps in
+  Shiny](https://jameshwade.github.io/shinymcp/articles/hosting.md):
+- [Rewriting a Shiny app as
+  tools](https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.md):
+
+### More
+
+- [Serving a Shiny app as it
+  is](https://jameshwade.github.io/shinymcp/articles/shiny-apps.md):
+- [How shinymcp
+  works](https://jameshwade.github.io/shinymcp/articles/protocol.md):
+- [Troubleshooting](https://jameshwade.github.io/shinymcp/articles/troubleshooting.md):

@@ -1,0 +1,274 @@
+# Building an app from tools
+
+An app made with
+[`mcp_app()`](https://jameshwade.github.io/shinymcp/reference/mcp_app.md)
+has two halves: tools, which are R functions the model can call on its
+own, and a page of inputs and outputs that calls the same functions when
+the person using it changes something. Nothing runs between calls. Every
+answer depends only on its arguments, so any R process can give it, and
+the tools are as useful in chat clients that can’t show the page, or to
+other agents, as in ones that can.
+
+To start from a Shiny app you already have, see
+[`vignette("rewriting-as-tools")`](https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.md).
+
+## A first app
+
+``` r
+
+library(shinymcp)
+
+summarize_dataset <- ellmer::tool(
+  function(dataset = "mtcars") {
+    data <- getExportedValue("datasets", dataset)
+    list(
+      rows = nrow(data),
+      summary = paste(capture.output(summary(data)), collapse = "\n")
+    )
+  },
+  name = "summarize_dataset",
+  description = "Summarize one of R's built-in datasets, column by column.",
+  arguments = list(
+    dataset = ellmer::type_enum(c("mtcars", "faithful"), "The dataset to summarize.")
+  )
+)
+
+app <- mcp_app(
+  ui = htmltools::tagList(
+    mcp_select("dataset", "Dataset", c("mtcars", "faithful")),
+    mcp_text("rows"),
+    mcp_text("summary")
+  ),
+  tools = list(summarize_dataset),
+  name = "datasets"
+)
+```
+
+Names connect the two halves. The tool’s argument `dataset` takes its
+value from the input with id `dataset`, and the list the tool returns
+fills the outputs with ids `rows` and `summary`. When the person picks
+another dataset, the page calls every tool that takes `dataset` and
+fills in what they return.
+
+`$call_tool()` runs a tool and returns its R value, which is what you
+want in tests:
+
+``` r
+
+str(app$call_tool("summarize_dataset", list(dataset = "faithful")))
+#> List of 2
+#>  $ rows   : int 272
+#>  $ summary: chr "   eruptions        waiting    \n Min.   :1.600   Min.   :43.0  \n 1st Qu.:2.163   1st Qu.:58.0  \n Median :4.0"| __truncated__
+```
+
+`$run_tool()` returns what an MCP client receives:
+
+``` r
+
+result <- app$run_tool("summarize_dataset", list(dataset = "faithful"))
+cat(result$content[[1]]$text)
+#> rows: 272
+#> 
+#> summary:
+#>    eruptions        waiting    
+#>  Min.   :1.600   Min.   :43.0  
+#>  1st Qu.:2.163   1st Qu.:58.0  
+#>  Median :4.000   Median :76.0  
+#>  Mean   :3.488   Mean   :70.9  
+#>  3rd Qu.:4.454   3rd Qu.:82.0  
+#>  Max.   :5.100   Max.   :96.0
+```
+
+Try it with `preview_app(app)`, and see
+[`vignette("deployment")`](https://jameshwade.github.io/shinymcp/articles/deployment.md)
+for putting it in a chat client.
+
+## Inputs
+
+Any input that has the argument’s name as its id works: Shiny’s
+([`selectInput()`](https://rdrr.io/pkg/shiny/man/selectInput.html),
+[`sliderInput()`](https://rdrr.io/pkg/shiny/man/sliderInput.html),
+[`dateRangeInput()`](https://rdrr.io/pkg/shiny/man/dateRangeInput.html),
+…), bslib’s, and the small ones shinymcp provides,
+[`mcp_select()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)
+and its relatives, which need neither package. When an id can’t match
+the argument, because two tools share the page or a module prefixed it,
+mark the element with `mcp_input(tag, id = "argument")`.
+
+By default the page calls tools a quarter of a second after the person
+stops changing inputs. `mcp_app(trigger = "change")` calls on every
+change, and `trigger = "submit"` waits for an apply button, which
+[`mcp_submit_button()`](https://jameshwade.github.io/shinymcp/reference/mcp_submit_button.md)
+places (otherwise the page adds one at the bottom). Buttons made with
+[`mcp_action_button()`](https://jameshwade.github.io/shinymcp/reference/mcp_select.md)
+or
+[`shiny::actionButton()`](https://rdrr.io/pkg/shiny/man/actionButton.html)
+call the tools that take their id when pressed. Those tools run only
+then, as an
+[`eventReactive()`](https://rdrr.io/pkg/shiny/man/observeEvent.html)
+would, and not when their other inputs change.
+
+## Outputs and results
+
+[`mcp_text()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md),
+[`mcp_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md),
+[`mcp_table()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md),
+and
+[`mcp_html()`](https://jameshwade.github.io/shinymcp/reference/mcp_plot.md)
+make the elements results are drawn into. Shiny’s output functions work
+too, matched by id the same way. A plot is drawn at the size of its
+output: the page tells each tool call how big its plot outputs are, and
+calls again when one changes size. A call the page didn’t make, such as
+the model’s, draws at 800 by 500 pixels, which the page shows scaled to
+fit until it has asked for the right size. Give
+[`mcp_result_plot()`](https://jameshwade.github.io/shinymcp/reference/mcp_result.md)
+a `width` and `height` to draw at a size of your own.
+
+A tool can return plain values: a string, a number, a data frame, an
+htmltools tag, a ggplot object. The `mcp_result_*()` functions say more
+about a value and what the model should read for it:
+
+``` r
+
+list(
+  summary = mcp_result_text(text, model_value = list(n = nrow(data))),
+  table = mcp_result_table(head(data, 20)),
+  plot = mcp_result_plot(function() hist(data$mpg), text = "Histogram of mpg"),
+  report = mcp_result_pdf("report.pdf")
+)
+```
+
+Each result is split three ways, because it has three readers:
+
+- **Text** in `content`, for the model and for clients that can’t show
+  the app. By default it joins each output’s text.
+- **Structured data** in `structuredContent`, for the model: one value
+  per output, such as a table’s rows or the `model_value` you gave.
+- **What the page draws** (HTML, images, widget data and their
+  JavaScript) in `_meta`, which clients pass to the page and keep from
+  the model.
+
+[`mcp_tool_result()`](https://jameshwade.github.io/shinymcp/reference/mcp_tool_result.md)
+writes the first two yourself, for example to lead with the identifiers
+the model should quote back, or to report an error the model should act
+on:
+
+``` r
+
+mcp_tool_result(
+  answer = sprintf("%d per group.", n),
+  curve = mcp_result_plot(draw_curve),
+  text = sprintf("The study needs %d participants per group.", n),
+  data = list(n_per_group = n, power = power)
+)
+```
+
+The
+[`sample-size`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/sample-size)
+example is a complete app in this style.
+
+## Tools
+
+[`ellmer::tool()`](https://ellmer.tidyverse.org/reference/tool.html) is
+the most direct way to write a tool: its argument types become the JSON
+Schema the model sees, and its annotations (`read_only_hint` and the
+rest) tell clients what the tool does. Plain lists work too, with
+`name`, `description`, `fun`, and optionally `inputSchema`,
+`outputSchema`, and `annotations`.
+
+The model’s arguments are checked against the schema before the function
+runs: required arguments must be there, and values must have the
+declared type and, for choices, one of the listed values. A problem goes
+back to the model as a tool error it can correct. Arguments you pass
+from R, to `$call_tool()` for instance, are read as a client would send
+them: a vector of one value is one value, not an array, so write an
+array of one as `list(x)`.
+
+Some tools shouldn’t be the model’s to call: saving a result, sending an
+order, anything the person should decide. `tool_visibility` hides a tool
+from the model while the page can still call it. Give such a tool the id
+of a button as an argument, and it runs when the person presses the
+button, with the other inputs it takes as they are:
+
+``` r
+
+save_choice <- ellmer::tool(
+  function(save, dataset) {
+    saveRDS(dataset, "choice.rds")
+    list(status = paste("Saved", dataset))
+  },
+  name = "save_choice",
+  description = "Save the chosen dataset.",
+  arguments = list(
+    save = ellmer::type_integer("Times the Save button was pressed."),
+    dataset = ellmer::type_string("The dataset to save.")
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = FALSE)
+)
+
+mcp_app(
+  ui = htmltools::tagList(
+    mcp_select("dataset", "Dataset", c("mtcars", "faithful")),
+    mcp_action_button("save", "Save"),
+    mcp_text("status")
+  ),
+  tools = list(save_choice),
+  tool_visibility = list(save_choice = "app")
+)
+```
+
+The page never runs a tool annotated with `read_only_hint = FALSE` or
+`destructive_hint = TRUE` on its own, to fill in outputs when it opens
+or because an input it takes changed. It runs when the person presses a
+button it takes, so give such a tool one.
+
+`tool_outputs` declares the outputs each tool returns
+(`list(explore = c("scatter", "stats"))`), which gives it an
+`outputSchema`.
+
+## Telling the model what the person did
+
+After the person changes something, the page tells the model on its next
+turn which values they chose. Set `mcp_app(model_context = FALSE)` to
+turn that off. The page’s JavaScript can also do it directly, with
+`window.shinymcp.updateModelContext()`, and post a message into the chat
+with `window.shinymcp.sendMessage()`.
+
+## Look and feel
+
+The UI can be a whole page, such as
+[`bslib::page_sidebar()`](https://rstudio.github.io/bslib/reference/page_sidebar.html),
+or a fragment; give a fragment a theme with
+`mcp_app(theme = bslib::bs_theme())`. By default the page takes the chat
+client’s colors and fonts when it provides them, and a page built on
+Bootstrap 5 (bslib) follows the client’s dark mode, so the app matches
+the conversation around it. `host_styles = FALSE` keeps your own theme.
+
+Everything the page needs is written into it, because chat clients show
+apps under a Content Security Policy that blocks other sources. Files
+the UI loads by relative path come from `www`
+(`mcp_app(ui, tools, www = "www")`). Anything from another site needs a
+`csp` declaration, such as
+`csp = list(resource_domains = "https://cdn.example.com")`.
+
+## Loading data on demand
+
+A page that needs more data than a result should carry (a large table, a
+map layer) can read it when it needs it. Declare it with `resources`,
+and read it from the page’s JavaScript with
+`window.shinymcp.readResource()`:
+
+``` r
+
+mcp_app(
+  ui,
+  tools,
+  resources = list(
+    "ui://datasets/stations.json" = function() jsonlite::toJSON(stations)
+  )
+)
+```
+
+The
+[`feature-tour`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/feature-tour)
+example uses this and the rest of the page’s JavaScript API.

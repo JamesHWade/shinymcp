@@ -1,18 +1,30 @@
-# Create an MCP App from a Shiny module
+# Serve a Shiny module as an MCP App
 
-Wraps a standard Shiny module (UI function + server function) as an
+Wraps a Shiny module (a UI function, and a server function, that take an
+`id`) as an
 [McpApp](https://jameshwade.github.io/shinymcp/reference/McpApp.md). The
-module UI is rendered with MCP-compatible attributes, and a tool
-definition is created that maps to the module's inputs and outputs. If a
-`handler` is provided, the tool is fully functional; otherwise, a stub
-handler is generated as a placeholder.
+module's UI is the page.
+
+With `handler`, a function of your own computes the module's outputs, as
+tools for
+[`mcp_app()`](https://jameshwade.github.io/shinymcp/reference/mcp_app.md)
+do: its arguments are the module's input ids, without the namespace, and
+it returns a list named by output ids.
+
+Without it, the module's server function runs live, as with
+[`as_mcp_app()`](https://jameshwade.github.io/shinymcp/reference/as_mcp_app.md),
+and the tool the model calls takes the module's inputs by their
+un-namespaced ids.
+
+The same module can be shown in a shinychat conversation with
+`shinychat::chat_tool_module()` and served here to MCP clients.
 
 ## Usage
 
 ``` r
 mcp_tool_module(
   module_ui,
-  module_server,
+  module_server = NULL,
   name,
   description,
   handler = NULL,
@@ -26,36 +38,32 @@ mcp_tool_module(
 
 - module_ui:
 
-  A Shiny module UI function that accepts an `id` argument (e.g.,
-  `function(id) { ns <- NS(id); tagList(...) }`).
+  A module UI function, `function(id)`.
 
 - module_server:
 
-  A Shiny module server function. Currently stored as metadata for
-  future headless Shiny session support, which will allow the module
-  server to execute reactively when tools are called.
+  A module server function, `function(id, ...)`, that calls
+  [`shiny::moduleServer()`](https://rdrr.io/pkg/shiny/man/moduleServer.html).
+  Not needed with `handler`.
 
 - name:
 
-  Tool/app name. Used in `ui://` resource URIs.
+  App and tool name.
 
 - description:
 
-  Human-readable description of what the tool does.
+  What the module does, for the model.
 
 - handler:
 
-  Optional tool handler function. If provided, this function is called
-  when the MCP tool is invoked. Its arguments should match the module's
-  input IDs. If `NULL`, a stub handler is generated.
+  Optional function to use instead of running `module_server`.
 
 - arguments:
 
-  Optional list of
-  [`ellmer::type_string()`](https://ellmer.tidyverse.org/reference/type_boolean.html),
-  [`ellmer::type_number()`](https://ellmer.tidyverse.org/reference/type_boolean.html),
-  etc. for the tool's input schema. If `NULL`, arguments are
-  auto-detected from the rendered module UI.
+  With `handler`, optional
+  [`ellmer::tool()`](https://ellmer.tidyverse.org/reference/tool.html)
+  argument types. Without them, the input schema is guessed from the
+  handler's defaults.
 
 - version:
 
@@ -63,18 +71,38 @@ mcp_tool_module(
 
 - ...:
 
-  Additional arguments stored as module metadata (e.g., shared reactive
-  values to pass to the module server when headless support lands).
+  Extra arguments passed to `module_server`.
 
 ## Value
 
-An [McpApp](https://jameshwade.github.io/shinymcp/reference/McpApp.md)
-object.
+An [McpApp](https://jameshwade.github.io/shinymcp/reference/McpApp.md).
 
-## Details
+## Shiny's own MCP support
 
-This mirrors `shinychat::chat_tool_module()` for the MCP runtime — the
-same module can be used in both contexts.
+Shiny is gaining MCP support of its own
+(<https://github.com/rstudio/shiny/pull/4407>). Once it is released, it
+will be the way to put a live Shiny app in a chat, and shinymcp will
+stop serving live apps.
+[`as_mcp_app()`](https://jameshwade.github.io/shinymcp/reference/as_mcp_app.md),
+[`mcp_endpoint()`](https://jameshwade.github.io/shinymcp/reference/mcp_endpoint.md),
+and `mcp_tool_module()` will take only apps built from tools, and
+[`bindMcp()`](https://jameshwade.github.io/shinymcp/reference/bindMcp.md)
+and the helpers for server functions
+([`mcp_model_context()`](https://jameshwade.github.io/shinymcp/reference/mcp_model_context.md),
+[`mcp_host_context()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_context.md),
+and the rest) will be removed. For something the model should be able to
+use on its own, rewrite that part of the app as tools with
+[`mcp_app()`](https://jameshwade.github.io/shinymcp/reference/mcp_app.md);
+see
+[`vignette("rewriting-as-tools")`](https://jameshwade.github.io/shinymcp/articles/rewriting-as-tools.md).
+
+## See also
+
+Other apps:
+[`McpApp`](https://jameshwade.github.io/shinymcp/reference/McpApp.md),
+[`as_mcp_app()`](https://jameshwade.github.io/shinymcp/reference/as_mcp_app.md),
+[`bindMcp()`](https://jameshwade.github.io/shinymcp/reference/bindMcp.md),
+[`mcp_app()`](https://jameshwade.github.io/shinymcp/reference/mcp_app.md)
 
 ## Examples
 
@@ -82,36 +110,36 @@ same module can be used in both contexts.
 if (FALSE) { # \dontrun{
 library(shiny)
 
-# Define a standard Shiny module
 hist_ui <- function(id) {
   ns <- NS(id)
   tagList(
-    sliderInput(ns("bins"), "Bins:", min = 5, max = 50, value = 25),
+    sliderInput(ns("bins"), "Bins", min = 5, max = 50, value = 20),
     plotOutput(ns("plot"), height = "250px")
   )
 }
 
-hist_server <- function(id, dataset) {
-  moduleServer(id, function(input, output, session) {
-    output$plot <- renderPlot({
-      hist(dataset(), breaks = input$bins, col = "#007bc2")
-    })
-  })
-}
-
-# Create and serve as MCP App
+# The module's UI, with a function in place of its server.
 app <- mcp_tool_module(
-  hist_ui, hist_server,
-  name = "histogram",
-  description = "Show an interactive histogram",
-  handler = function(bins = 25) {
-    tmp <- tempfile(fileext = ".png")
-    grDevices::png(tmp, width = 600, height = 250)
-    hist(faithful$eruptions, breaks = bins, col = "#007bc2")
-    grDevices::dev.off()
-    list(plot = base64enc::base64encode(tmp))
+  hist_ui,
+  name = "eruptions",
+  description = "Histogram of Old Faithful eruption times.",
+  handler = function(bins = 20) {
+    list(plot = mcp_result_plot(function() hist(faithful$eruptions, breaks = bins)))
   }
 )
-serve(app)
+preview_app(app)
+
+# The module's own server function, running live.
+hist_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    output$plot <- renderPlot(hist(faithful$eruptions, breaks = input$bins))
+  })
+}
+app <- mcp_tool_module(
+  hist_ui,
+  hist_server,
+  name = "eruptions",
+  description = "Histogram of Old Faithful eruption times."
+)
 } # }
 ```
