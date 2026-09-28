@@ -74,13 +74,13 @@ stdio_handle_line <- function(server, line, context) {
   as.character(to_json(strip_http_status(response)))
 }
 
-#' Is a parsed message a JSON-RPC batch (an array of messages)?
+#' Is a parsed message a JSON-RPC batch?
+#'
+#' Any array but an empty one: each entry that isn't a message gets an
+#' error of its own, as JSON-RPC 2.0 asks.
 #' @noRd
 is_json_batch <- function(message) {
-  is.list(message) &&
-    is.null(names(message)) &&
-    length(message) > 0 &&
-    is.list(message[[1]])
+  is.list(message) && is.null(names(message)) && length(message) > 0
 }
 
 #' The error for a batched message that must be sent on its own, or NULL

@@ -429,6 +429,24 @@ test_that("an entry in a batch that isn't a message gets its own error", {
   expect_equal(body[[1]]$result, setNames(list(), character()))
   expect_null(body[[2]]$id)
   expect_equal(body[[2]]$error$code, -32600L)
+
+  # Whatever comes first: an array of anything is a batch.
+  response <- handler(serving_request(
+    '[5, {"jsonrpc":"2.0","id":1,"method":"ping"}]'
+  ))
+  expect_equal(response$status, 200L)
+  body <- serving_body(response)
+  expect_length(body, 2)
+  expect_equal(body[[1]]$error$code, -32600L)
+  expect_equal(body[[2]]$id, 1L)
+  expect_equal(body[[2]]$result, setNames(list(), character()))
+
+  body <- serving_body(handler(serving_request("[1, 2]")))
+  expect_length(body, 2)
+  expect_equal(
+    vapply(body, function(r) r$error$code, integer(1)),
+    c(-32600L, -32600L)
+  )
 })
 
 test_that("a body that isn't JSON gets 400 with a parse error", {
@@ -452,7 +470,6 @@ test_that("JSON that isn't a JSON-RPC message is rejected with 400", {
     "42",
     '"ping"',
     "[]",
-    "[1, 2]",
     '{"id": 1, "method": "ping"}'
   )) {
     response <- handler(serving_request(body))
@@ -461,6 +478,20 @@ test_that("JSON that isn't a JSON-RPC message is rejected with 400", {
       serving_body(response)$error$code %in% c(-32700L, -32600L),
       info = body
     )
+  }
+})
+
+test_that("params that aren't an object get invalid params, not an internal error", {
+  handler <- new_handler()
+  for (body in c(
+    '{"jsonrpc":"2.0","id":1,"method":"ping","params":5}',
+    '{"jsonrpc":"2.0","id":1,"method":"ping","params":"x"}',
+    '{"jsonrpc":"2.0","id":1,"method":"ping","params":[1]}',
+    '{"jsonrpc":"2.0","id":1,"method":"ping","params":{"_meta":5}}'
+  )) {
+    response <- handler(serving_request(body))
+    expect_equal(response$status, 400L, info = body)
+    expect_equal(serving_body(response)$error$code, -32602L, info = body)
   }
 })
 

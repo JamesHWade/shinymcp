@@ -116,6 +116,32 @@ test_that("a batch line gets an array of replies", {
   expect_null(stdio_handle_line(server, notifications, context))
 })
 
+test_that("each entry of a batch that isn't a message gets its own error", {
+  server <- McpServer$new(serving_app())
+  context <- list(transport = "stdio", session = server$new_session())
+  reply <- from_json(stdio_handle_line(
+    server,
+    '[5, {"jsonrpc":"2.0","id":1,"method":"ping"}]',
+    context
+  ))
+  expect_length(reply, 2)
+  expect_null(reply[[1]]$id)
+  expect_equal(reply[[1]]$error$code, -32600L)
+  expect_equal(reply[[2]]$id, 1L)
+  expect_equal(reply[[2]]$result, setNames(list(), character()))
+
+  reply <- from_json(stdio_handle_line(server, "[1, 2]", context))
+  expect_equal(
+    vapply(reply, function(r) r$error$code, integer(1)),
+    c(-32600L, -32600L)
+  )
+  # An empty array isn't a batch: one error.
+  expect_equal(
+    from_json(stdio_handle_line(server, "[]", context))$error$code,
+    -32600L
+  )
+})
+
 test_that("the HTTP status attribute never reaches the JSON", {
   server <- McpServer$new(serving_app())
   context <- list(transport = "stdio")

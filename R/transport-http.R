@@ -241,7 +241,7 @@ http_dispatch <- function(
       )
     ))
   }
-  meta_version <- message$params[["_meta"]][[META_PROTOCOL_VERSION]]
+  meta_version <- meta_protocol_version(message)
   is_initialize <- identical(message$method, "initialize")
 
   if (!is.null(meta_version) && !is_initialize) {
@@ -310,6 +310,17 @@ http_dispatch <- function(
   list(response = server$handle(message, transport), headers = extra_headers)
 }
 
+#' The protocol version a request names in `_meta`, or NULL
+#'
+#' Read before the server checks the message, so params or `_meta` that
+#' aren't objects count as naming none; the server refuses them.
+#' @noRd
+meta_protocol_version <- function(message) {
+  params <- message$params
+  meta <- if (is_json_object(params)) params[["_meta"]]
+  if (is_json_object(meta)) meta[[META_PROTOCOL_VERSION]]
+}
+
 #' Is a session id one this server handed out and still holds?
 #' @noRd
 known_session <- function(sessions, session_id) {
@@ -324,7 +335,7 @@ known_session <- function(sessions, session_id) {
 #' @return NULL when valid, otherwise a message for the HeaderMismatch error.
 #' @noRd
 check_modern_headers <- function(message, headers) {
-  version <- message$params[["_meta"]][[META_PROTOCOL_VERSION]]
+  version <- meta_protocol_version(message)
   header_version <- headers[["mcp-protocol-version"]]
   if (is.null(header_version)) {
     return("Header mismatch: MCP-Protocol-Version header is required.")
