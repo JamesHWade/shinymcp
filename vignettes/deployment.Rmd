@@ -147,8 +147,18 @@ Chat clients connect to the content's URL followed by `mcp`, for example
 content's URL itself get the preview page. Try it locally with
 `shiny::runApp()`: the preview is at `/` and the endpoint at `/mcp`.
 
-Given a Shiny app, `mcp_endpoint()` keeps it for people who open the URL,
-and serves the same app, live, to chat clients through `as_mcp_app()`:
+To deploy a Shiny app for people and an MCP App for chat clients together,
+give `mcp_endpoint()` both. People who open the URL get the Shiny app, and
+chat clients get the MCP App at `/mcp`. The two can share their UI and
+functions, the MCP App running a tool where the Shiny app runs a server
+function:
+
+```{r}
+shinyApp(ui, server) |> mcp_endpoint(apps = app)
+```
+
+Given a Shiny app alone, `mcp_endpoint()` serves the same app, live, to
+chat clients through `as_mcp_app()`:
 
 ```{r}
 shinyApp(ui, server) |>

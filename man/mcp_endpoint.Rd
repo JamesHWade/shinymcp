@@ -6,6 +6,7 @@
 \usage{
 mcp_endpoint(
   x,
+  apps = NULL,
   path = "/mcp",
   allowed_origins = NULL,
   allowed_hosts = NULL,
@@ -15,6 +16,10 @@ mcp_endpoint(
 }
 \arguments{
 \item{x}{An \link{McpApp}, a list of apps, or a Shiny app.}
+
+\item{apps}{When \code{x} is a Shiny app, the apps to serve to MCP clients
+next to it: an \link{McpApp} or a list of them. Without \code{apps}, the Shiny
+app itself is served, live.}
 
 \item{path}{Endpoint path.}
 
@@ -29,7 +34,7 @@ host names other than \code{localhost} or an IP address are refused; see
 
 \item{preview}{For apps, whether browsers get a preview page at \code{/}.}
 
-\item{...}{Passed to \code{\link[=as_mcp_app]{as_mcp_app()}} when \code{x} is a Shiny app.}
+\item{...}{Passed to \code{\link[=as_mcp_app]{as_mcp_app()}} when \code{x} is a Shiny app served live.}
 }
 \value{
 A Shiny app object.
@@ -43,9 +48,11 @@ Deploy it like any Shiny app, then point MCP clients at
 \itemize{
 \item Given an \link{McpApp} (or a list of them), browsers visiting the app get
 the same preview page as \code{\link[=preview_app]{preview_app()}}.
-\item Given a Shiny app, browsers still get the Shiny app, and the endpoint
-serves it to MCP clients through \code{\link[=as_mcp_app]{as_mcp_app()}}. One deployment serves
-people and models.
+\item Given a Shiny app and \code{apps}, browsers get the Shiny app and MCP
+clients get the apps. One deployment serves people and models; the
+apps can share the Shiny app's UI and functions.
+\item Given a Shiny app alone, browsers still get the Shiny app, and the
+endpoint serves it, live, to MCP clients through \code{\link[=as_mcp_app]{as_mcp_app()}}.
 }
 
 Clients that speak the stateless MCP revision (2026-07-28) can reach
@@ -77,8 +84,11 @@ library(shinymcp)
 app <- mcp_app(ui, tools = list(summarize_dataset), name = "datasets")
 mcp_endpoint(app)
 
-# A Shiny app, served live to chat clients and as usual to browsers
+# A Shiny app for people, and an app built from tools for chat clients
 library(shiny)
+shinyApp(ui, server) |> mcp_endpoint(apps = app)
+
+# A Shiny app, served live to chat clients and as usual to browsers
 shinyApp(ui, server) |> mcp_endpoint(name = "explorer")
 }
 }

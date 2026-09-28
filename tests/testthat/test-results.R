@@ -46,10 +46,134 @@ test_that("typed constructors record their kind, value, and options", {
   expect_equal(pdf$options$filename, "Report.pdf")
 })
 
-test_that("the default plot scale comes from an option", {
+# The pixel size of a base64 PNG.
+png_dims <- function(b64) {
+  bytes <- jsonlite::base64_dec(b64)
+  c(
+    readBin(bytes[17:20], "integer", size = 4, endian = "big"),
+    readBin(bytes[21:24], "integer", size = 4, endian = "big")
+  )
+}
+
+test_that("the plot scale is the screen's density, else an option", {
   skip_if_not_installed("withr")
   withr::local_options(shinymcp.plot_scale = 3)
-  expect_equal(mcp_result_plot(draw_points)$options$scale, 3)
+  plot <- mcp_result_plot(draw_points, width = 100, height = 50)
+  expect_null(plot$options$scale)
+  expect_equal(png_dims(resolve_plot_output(plot)$image$data), c(300, 150))
+  expect_equal(
+    png_dims(resolve_plot_output(plot, pixel_ratio = 2)$image$data),
+    c(200, 100)
+  )
+  explicit <- mcp_result_plot(draw_points, width = 100, height = 50, scale = 1)
+  expect_equal(
+    png_dims(resolve_plot_output(explicit, pixel_ratio = 2)$image$data),
+    c(100, 50)
+  )
+})
+
+test_that("a plot without a size of its own follows its output's", {
+  plot <- mcp_result_plot(draw_points)
+  out <- resolve_plot_output(
+    plot,
+    size = list(width = 320, height = 180),
+    pixel_ratio = 1
+  )
+  expect_equal(
+    out$render[c("width", "height", "fit")],
+    list(width = 320, height = 180, fit = TRUE)
+  )
+  expect_equal(png_dims(out$image$data), c(320, 180))
+
+  # Without a size from the page: 800 by 500, and the page asks again.
+  default <- resolve_plot_output(plot, pixel_ratio = 1)$render
+  expect_equal(
+    default[c("width", "height", "fit")],
+    list(width = 800, height = 500, fit = TRUE)
+  )
+
+  # A plot with a size of its own keeps it.
+  fixed <- resolve_plot_output(
+    mcp_result_plot(draw_points, width = 300, height = 200),
+    size = list(width = 320, height = 180),
+    pixel_ratio = 1
+  )
+  expect_equal(fixed$render$width, 300)
+  expect_equal(fixed$render$height, 200)
+  expect_null(fixed$render$fit)
+})
+
+test_that("each plot in a result is drawn at its output's size", {
+  result <- build_tool_result(
+    list(a = mcp_result_plot(draw_points), b = mcp_result_plot(draw_points)),
+    sizes = list(a = list(width = 200, height = 100)),
+    pixel_ratio = 1
+  )
+  outputs <- view_of(result)$outputs
+  expect_equal(outputs$a$value$width, 200)
+  expect_equal(outputs$a$value$height, 100)
+  expect_equal(outputs$b$value$width, 800)
+
+  single <- build_tool_result(
+    mcp_result_plot(draw_points),
+    output_types = list(chart = "plot"),
+    sizes = list(chart = list(width = 150, height = 90)),
+    pixel_ratio = 1
+  )
+  expect_equal(view_of(single)$result$value$width, 150)
+})
+
+test_that("a page's call carries its outputs' sizes to the tool's plots", {
+  app <- mcp_app(
+    mcp_plot("chart"),
+    tools = list(list(
+      name = "draw",
+      fun = function() list(chart = mcp_result_plot(draw_points))
+    )),
+    name = "drawing"
+  )
+  server <- McpServer$new(app)
+  response <- server$handle(serving_rpc(
+    "tools/call",
+    list(
+      name = "draw",
+      `_meta` = list(
+        `shinymcp/caller` = "app",
+        `shinymcp/sizes` = list(
+          chart = list(width = 240, height = 160),
+          bogus = list(width = -1, height = 5)
+        ),
+        `shinymcp/pixelRatio` = 2
+      )
+    )
+  ))
+  chart <- response$result[["_meta"]][["shinymcp/view"]]$outputs$chart$value
+  expect_equal(chart$width, 240)
+  expect_equal(chart$height, 160)
+  expect_true(chart$fit)
+  png <- sub("^data:image/png;base64,", "", chart$src)
+  expect_equal(png_dims(png), c(480, 320))
+})
+
+test_that("output sizes and pixel ratios from a page are checked", {
+  expect_null(output_sizes(NULL))
+  expect_null(output_sizes(list()))
+  expect_null(output_sizes("x"))
+  expect_equal(
+    output_sizes(list(
+      a = list(width = 10, height = 20),
+      b = list(width = "x", height = 1),
+      c = list(width = 0, height = 1),
+      d = list(width = 20000, height = 1)
+    )),
+    list(a = list(width = 10, height = 20))
+  )
+  expect_equal(pixel_ratio(2.5), 2.5)
+  expect_equal(pixel_ratio(0.5), 1)
+  expect_equal(pixel_ratio(9), 3)
+  expect_null(pixel_ratio("2"))
+  expect_null(pixel_ratio(NA_real_))
+  expect_null(pixel_ratio(c(1, 2)))
 })
 
 # ---- Plain values ----

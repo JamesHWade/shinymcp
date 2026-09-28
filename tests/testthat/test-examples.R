@@ -41,8 +41,7 @@ app_examples <- list(
   "ggplot-builder" = list(
     pkgs = c("ellmer", "bslib", "ggplot2", "palmerpenguins"),
     args = list()
-  ),
-  "posit-connect" = list(pkgs = "shiny", args = list(bins = 30))
+  )
 )
 
 for (nm in names(app_examples)) {
@@ -72,8 +71,9 @@ test_that("the hello example renders through preview_app()", {
   expect_match(preview$url, "^http://127\\.0\\.0\\.1:")
 })
 
-test_that("the posit-connect example is a Shiny app with an MCP endpoint", {
-  require_pkgs("shiny")
+test_that("the posit-connect example is a Shiny app with an MCP App next to it", {
+  skip_on_cran()
+  require_pkgs(c("shiny", "ellmer"))
   env <- new.env()
   app <- source(
     file.path(example_dir("posit-connect"), "app.R"),
@@ -81,6 +81,14 @@ test_that("the posit-connect example is a Shiny app with an MCP endpoint", {
   )$value
   expect_s3_class(app, "shiny.appobj")
   expect_true(inherits(app$mcpServer, "McpServer"))
+  mcp <- app$mcpServer$apps[[1]]
+  expect_equal(mcp$name, "faithful")
+  result <- mcp$run_tool("faithful_histogram", list(bins = 30))
+  expect_false(isTRUE(result$isError))
+  expect_equal(
+    result$structuredContent$caption,
+    "Showing 272 eruptions to you."
+  )
 })
 
 test_that("the remote-host server serves its app", {

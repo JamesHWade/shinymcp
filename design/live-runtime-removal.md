@@ -71,10 +71,9 @@ through shinymcp's hosts, over both of the branch's transports.
 
 And in shinymcp:
 
-- `mcp_endpoint()` needs a way to serve tool apps next to a Shiny app, for
-  example `mcp_endpoint(shiny_app, apps = list(tool_app))`. Today a Shiny
-  app given to it is always served live, so without this the "one
-  deployment for people and models" story ends with the removal.
+- ~~`mcp_endpoint()` needs a way to serve tool apps next to a Shiny
+  app.~~ Done 2026-09-28: `mcp_endpoint(shiny_app, apps = list(tool_app))`,
+  shown in the `posit-connect` example.
 - Write the migration notes below into NEWS and the Shiny article, checked
   against the released API.
 
@@ -90,7 +89,7 @@ R:
   `mcp_host_context()`.
 - `mcp_tool_module()` without `handler` (the module's server running
   live). The `handler` form stays.
-- `mcp_endpoint()` for a Shiny app on its own (see above).
+- `mcp_endpoint()` for a Shiny app without `apps`.
 - `bindMcp()`. Its purpose is choosing what the model sees of a live app;
   in tool apps it duplicates `mcp_input()` and `mcp_output()`.
 - The live-only options: `shinymcp.max_views`, `shinymcp.view_timeout`,
@@ -113,8 +112,9 @@ Tests, examples, docs:
 - `test-runtime.R`, `test-runtime-inputs.R`, `helper-runtime.R`, and the
   live tests in `test-as-mcp-app.R`, `test-endpoint.R`,
   `test-mcp-tool-module.R`, and `test-examples.R`.
-- Examples: `faithful`, `fuel-economy`, `shiny-packages`, `shiny-module`,
-  and `posit-connect` (rewrite it for tool apps next to a Shiny app).
+- Examples: `faithful`, `fuel-economy`, `shiny-packages`, and
+  `shiny-module`. (`posit-connect` already serves a tool app next to its
+  Shiny app.)
 - `vignette("shiny-apps")` becomes a short page on moving to Shiny's
   support. The live sections of `vignette("troubleshooting")` and the
   skill's "serving the app as it is" route go.
@@ -140,7 +140,7 @@ Names as of the branch; check them against the release.
 | `mcp_host_context()` | `mcpHostContext()` |
 | `is_mcp_session()` | `isMcpSession()` |
 | `bindMcp()` on a live app | `mcpConfigure(arguments = )` |
-| `mcp_endpoint(shiny_app)` | Shiny serves `/mcp` itself |
+| `mcp_endpoint(shiny_app)` | Shiny serves `/mcp` itself, or `mcp_endpoint(shiny_app, apps = )` with the app rewritten as tools |
 | `mcp_host_server(id, as_mcp_app(shiny_app))`, and chat cards of a live app | serve the app with Shiny, host it with `mcp_client("<app>/mcp")` |
 | Outputs in the result of the call that opens the app | none; rewrite what the model must read as tools |
 | Clients that can't show apps | none; tools |

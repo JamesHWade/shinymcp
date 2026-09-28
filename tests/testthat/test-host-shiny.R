@@ -1467,3 +1467,23 @@ test_that("an instance without a title of its own takes its page's", {
   named <- new_mcp_host_state(fx$client, "r2", tool = "echo", title = "Mine")
   expect_false(named$default_title)
 })
+
+test_that("answers that arrive after the app closed go nowhere", {
+  skip_if_not_installed("later")
+  session <- helper_fake_session()
+  state <- new_mcp_host_state(host_app(), "i1", tool = "greet")
+  registry <- helper_host_registry(i1 = state)
+  calls <- 0
+  state$on_tool_call <- function(value) calls <<- calls + 1
+
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request("i1", "tools/call", list(name = "greet"))
+  )
+  mcp_host_dispose(state)
+  helper_drain()
+
+  expect_length(session$sent, 0)
+  expect_equal(calls, 0)
+})

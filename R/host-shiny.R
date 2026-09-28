@@ -636,6 +636,11 @@ handle_host_event <- function(session, registry, event) {
       promises::then(
         state$source$send_async(message, host_call_context(session)),
         onFulfilled = function(response) {
+          # Answers that arrive after the app closed (a long poll) go
+          # nowhere.
+          if (isTRUE(state$disposed)) {
+            return(invisible())
+          }
           if (identical(method, "tools/call") && !is.null(response$result)) {
             mcp_host_record_call(
               state,

@@ -1,9 +1,12 @@
 # Deploying an MCP App to Posit Connect
 
-`app.R` here is an ordinary Shiny app piped into `mcp_endpoint()`. The
-result is still a Shiny app, so anything that runs Shiny apps can host it:
-Posit Connect, Shiny Server, shinyapps.io, or `shiny::runApp()` on your own
-machine.
+`app.R` here is a Shiny app for people and an MCP App for chat clients, in
+one deployment. The two share their UI and the function that draws the
+plot; the MCP App runs a tool where the Shiny app runs a server function.
+`mcp_endpoint(apps = )` serves the MCP App at `/mcp` next to the Shiny app.
+The result is still a Shiny app, so anything that runs Shiny apps can host
+it: Posit Connect, Shiny Server, shinyapps.io, or `shiny::runApp()` on your
+own machine.
 
 ## Try it locally
 
@@ -66,18 +69,10 @@ VS Code (`.vscode/mcp.json`):
 }
 ```
 
-Inside the app, `session$user` is the Connect user the request came from,
-and tool functions can read it with `mcp_request()$user`.
+Connect tells the app who the user is: the Shiny app's server function
+sees them as `session$user`, and the tool as `mcp_request()$user`.
 
 ## Processes
 
-Each open view of a live Shiny app keeps its session in the R process that
-started it. If Connect runs the app in several processes, a request can
-reach a process that doesn't have that session. shinymcp then starts a new
-session from the inputs on the page, so the app keeps working, but anything
-the server function held outside its inputs starts over. For apps that
-keep such state, set **Max processes** to 1 in the content's runtime
-settings.
-
-Apps built from tools with `mcp_app()` keep no state between calls and can
-run in as many processes as you like.
+The MCP App keeps nothing between calls, so Connect can run it in as many
+processes as it likes.

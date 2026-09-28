@@ -1879,25 +1879,106 @@
     return out;
   }
 
+  // Each call says which libraries the page has, and how big its plot
+  // outputs are, so plots are drawn to fit.
   function callMeta() {
     var meta = { "shinymcp/caller": "app", "shinymcp/deps": keys(state.loadedDeps) };
+    var sizes = outputSizes();
+    if (keys(sizes).length) {
+      meta["shinymcp/sizes"] = sizes;
+      meta["shinymcp/pixelRatio"] = Math.min(window.devicePixelRatio || 1, 2);
+    }
     return meta;
   }
 
+  var pendingTools = {};
+
   function callTools(tools) {
     each(tools, function (tool) {
+      pendingTools[tool.name] = (pendingTools[tool.name] || 0) + 1;
+      var done = function () {
+        pendingTools[tool.name] -= 1;
+        markRecalculating(tool.outputs, false);
+      };
       markRecalculating(tool.outputs, true);
       callTool(tool.name, toolArguments(tool)).then(
         function (result) {
-          markRecalculating(tool.outputs, false);
+          done();
           handleResult(result, {});
         },
         function (err) {
-          markRecalculating(tool.outputs, false);
+          done();
           showError("The " + tool.name + " tool failed: " + err.message);
         }
       );
     });
+  }
+
+  // Plots drawn to fit an output whose size has changed since, or that were
+  // drawn before the page could say (the model's call that opened it).
+  function plotsToRefit() {
+    var ids = [];
+    each(document.querySelectorAll(".shiny-plot-output[id]"), function (el) {
+      var img = el.querySelector("img[data-shinymcp-fit]");
+      if (!img) return;
+      var w = parseFloat(img.getAttribute("data-shinymcp-width") || 0);
+      var h = parseFloat(img.getAttribute("data-shinymcp-height") || 0);
+      var ow = el.clientWidth;
+      var oh = el.clientHeight;
+      if (!w || !h || !ow || !oh) return;
+      if (Math.abs(ow - w) > Math.max(8, w * 0.05) || Math.abs(oh - h) > Math.max(8, h * 0.05)) {
+        ids.push(el.id);
+      }
+    });
+    return ids;
+  }
+
+  // The outputs each tool fills, as its results show when the app doesn't
+  // declare them.
+  var drawnBy = {};
+
+  function noteDrawn(view) {
+    if (!view || typeof view.tool !== "string") return;
+    var ids = [];
+    if (view.outputs) {
+      ids = keys(view.outputs);
+    } else if (view.result) {
+      var single = allOutputs();
+      if (single.length === 1) ids = [single[0].id];
+    }
+    if (ids.length) drawnBy[view.tool] = ids;
+  }
+
+  function drawsAny(tool, ids) {
+    var outputs = tool.outputs || drawnBy[tool.name] || [];
+    for (var i = 0; i < ids.length; i++) {
+      if (outputs.indexOf(ids[i]) >= 0) return true;
+    }
+    return false;
+  }
+
+  // The tools to call again for plots of the wrong size: those the page may
+  // run on its own, not already running.
+  function toolsToRefit() {
+    var ids = plotsToRefit();
+    if (!ids.length) return [];
+    return appTools().filter(function (t) {
+      return refreshesOutputs(t) && !pendingTools[t.name] && drawsAny(t, ids);
+    });
+  }
+
+  function observePlotFit() {
+    if (typeof ResizeObserver === "undefined") return;
+    var timer = null;
+    var observer = new ResizeObserver(function () {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(function () {
+        timer = null;
+        var tools = toolsToRefit();
+        if (tools.length) callTools(tools);
+      }, 300);
+    });
+    each(document.querySelectorAll(".shiny-plot-output[id]"), function (el) { observer.observe(el); });
   }
 
   function callTool(name, args) {
@@ -1915,10 +1996,12 @@
   }
 
   // After the host's first result, run the other tools once so every output
-  // fills in, except tools that change something or wait for a button.
+  // fills in, except tools that change something or wait for a button. The
+  // first tool runs again only if its plots were drawn at the wrong size.
   function fillRemainingOutputs(firstTool) {
+    var refit = toolsToRefit();
     var tools = appTools().filter(function (t) {
-      return t.name !== firstTool && refreshesOutputs(t);
+      return refreshesOutputs(t) && (t.name !== firstTool || refit.indexOf(t) >= 0);
     });
     if (tools.length) callTools(tools);
   }
@@ -2114,6 +2197,7 @@
       each(view.inputMessages || [], function (m) { receiveInputMessage(m.id, m.message); });
       if (view.outputs) renderOutputs(view.outputs);
       if (view.result) renderSingle(view.result);
+      if (MODE === "tools") noteDrawn(view);
       each(view.notifications || [], handleNotification);
       each(view.modals || [], handleModal);
       each(view.uiChanges || [], handleUiChange);
@@ -2193,6 +2277,7 @@
       observePlotSizes();
     } else {
       fillRemainingOutputs(state.entryTool);
+      observePlotFit();
     }
   }
 
@@ -2390,6 +2475,9 @@
     image.src = img.src;
     image.alt = img.alt || "";
     if (img.width) image.setAttribute("data-shinymcp-width", img.width);
+    if (img.height) image.setAttribute("data-shinymcp-height", img.height);
+    if (img.fit) image.setAttribute("data-shinymcp-fit", "");
+    else image.removeAttribute("data-shinymcp-fit");
     if (img.style) image.setAttribute("style", img.style);
     if (!existing) {
       el.innerHTML = "";

@@ -100,9 +100,12 @@ tools that take their id when pressed. Those tools run only then, as an
 
 `mcp_text()`, `mcp_plot()`, `mcp_table()`, and `mcp_html()` make the
 elements results are drawn into. Shiny's output functions work too, matched
-by id the same way. A plot is drawn at the size `mcp_result_plot()` gives
-it (800 by 500 pixels unless you say otherwise) and scaled to fit its
-output, so give it the shape of the box it goes in.
+by id the same way. A plot is drawn at the size of its output: the page
+tells each tool call how big its plot outputs are, and calls again when
+one changes size. A call the page didn't make, such as the model's, draws
+at 800 by 500 pixels, which the page shows scaled to fit until it has asked
+for the right size. Give `mcp_result_plot()` a `width` and `height` to
+draw at a size of your own.
 
 A tool can return plain values: a string, a number, a data frame, an
 htmltools tag, a ggplot object. The `mcp_result_*()` functions say more

@@ -11,9 +11,11 @@
 #'
 #' * Given an [McpApp] (or a list of them), browsers visiting the app get
 #'   the same preview page as [preview_app()].
-#' * Given a Shiny app, browsers still get the Shiny app, and the endpoint
-#'   serves it to MCP clients through [as_mcp_app()]. One deployment serves
-#'   people and models.
+#' * Given a Shiny app and `apps`, browsers get the Shiny app and MCP
+#'   clients get the apps. One deployment serves people and models; the
+#'   apps can share the Shiny app's UI and functions.
+#' * Given a Shiny app alone, browsers still get the Shiny app, and the
+#'   endpoint serves it, live, to MCP clients through [as_mcp_app()].
 #'
 #' Clients that speak the stateless MCP revision (2026-07-28) can reach
 #' any of several R processes behind a load balancer. Live Shiny apps keep
@@ -25,6 +27,9 @@
 #'
 #' @inheritSection as_mcp_app Shiny's own MCP support
 #' @param x An [McpApp], a list of apps, or a Shiny app.
+#' @param apps When `x` is a Shiny app, the apps to serve to MCP clients
+#'   next to it: an [McpApp] or a list of them. Without `apps`, the Shiny
+#'   app itself is served, live.
 #' @param path Endpoint path.
 #' @param allowed_origins Browser origins, besides the app's own, allowed to
 #'   call the endpoint. See [serve()].
@@ -34,7 +39,7 @@
 #'   host names other than `localhost` or an IP address are refused; see
 #'   [serve()].
 #' @param preview For apps, whether browsers get a preview page at `/`.
-#' @param ... Passed to [as_mcp_app()] when `x` is a Shiny app.
+#' @param ... Passed to [as_mcp_app()] when `x` is a Shiny app served live.
 #' @return A Shiny app object.
 #' @family serving
 #' @export
@@ -46,12 +51,16 @@
 #' app <- mcp_app(ui, tools = list(summarize_dataset), name = "datasets")
 #' mcp_endpoint(app)
 #'
-#' # A Shiny app, served live to chat clients and as usual to browsers
+#' # A Shiny app for people, and an app built from tools for chat clients
 #' library(shiny)
+#' shinyApp(ui, server) |> mcp_endpoint(apps = app)
+#'
+#' # A Shiny app, served live to chat clients and as usual to browsers
 #' shinyApp(ui, server) |> mcp_endpoint(name = "explorer")
 #' }
 mcp_endpoint <- function(
   x,
+  apps = NULL,
   path = "/mcp",
   allowed_origins = NULL,
   allowed_hosts = NULL,
@@ -59,7 +68,22 @@ mcp_endpoint <- function(
   ...
 ) {
   rlang::check_installed("shiny", reason = "to serve MCP from a Shiny app.")
-  if (inherits(x, "shiny.appobj")) {
+  if (!is.null(apps) && !inherits(x, "shiny.appobj")) {
+    shinymcp_abort(
+      "{.arg apps} goes with a Shiny app in {.arg x}; to serve apps alone, pass them as {.arg x}.",
+      class = "shinymcp_error_validation"
+    )
+  }
+  if (inherits(x, "shiny.appobj") && !is.null(apps)) {
+    if (...length() > 0) {
+      shinymcp_abort(
+        "{.arg ...} is for serving a Shiny app live; with {.arg apps}, set names and descriptions in {.fn mcp_app}.",
+        class = "shinymcp_error_validation"
+      )
+    }
+    apps <- as_app_list(apps)
+    base <- x
+  } else if (inherits(x, "shiny.appobj")) {
     # Start the app now, as runApp() would, so its UI can be built (a
     # shinyAppDir() app's ui.R may use what global.R defines). runApp() then
     # finds it started, and stops it as usual.

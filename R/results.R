@@ -63,10 +63,15 @@ is_mcp_result <- function(x) {
 #'   text for text and HTML outputs, the rows for tables, and `text` for
 #'   plots, images, PDFs, and widgets.
 #' @param text Plain-text version of the output.
-#' @param width,height Plot size in CSS pixels.
+#' @param width,height Plot size in CSS pixels. By default, the size of the
+#'   output the plot goes to, which the app's page reports when it calls the
+#'   tool, and 800 by 500 for calls it didn't make (such as the model's).
+#'   The page draws a plot of the wrong size to fit, then calls the tool
+#'   again for one of the right size.
 #' @param res Plot resolution in pixels per inch at 1x.
 #' @param scale Pixel density multiplier; `2` gives sharp plots on high
-#'   density screens at four times the file size.
+#'   density screens at four times the file size. By default, the screen's,
+#'   as the page reports it, else the `shinymcp.plot_scale` option (1.5).
 #' @param filename File name offered when the user downloads a PDF.
 #' @return A typed output value, to be returned from a tool inside a named
 #'   list or on its own.
@@ -114,10 +119,10 @@ mcp_result_plot <- function(
   plot,
   model_value = NULL,
   text = NULL,
-  width = 800,
-  height = 500,
+  width = NULL,
+  height = NULL,
   res = 96,
-  scale = getOption("shinymcp.plot_scale", 1.5)
+  scale = NULL
 ) {
   new_mcp_result(
     "plot",
@@ -212,7 +217,13 @@ is_tool_result <- function(x) {
 #' @return A list with `kind`, `render` (payload for the view), `model`
 #'   (model-facing value), `text`, and optionally `image` and `deps`.
 #' @noRd
-resolve_output <- function(value, skip_deps = character(), hint = NULL) {
+resolve_output <- function(
+  value,
+  skip_deps = character(),
+  hint = NULL,
+  size = NULL,
+  pixel_ratio = NULL
+) {
   if (!is_mcp_result(value)) {
     value <- as_typed_result(value, hint)
   }
@@ -228,7 +239,7 @@ resolve_output <- function(value, skip_deps = character(), hint = NULL) {
     html = resolve_html_output(value, skip_deps),
     widget = resolve_html_output(value, skip_deps, kind = "widget"),
     table = resolve_table_output(value),
-    plot = resolve_plot_output(value),
+    plot = resolve_plot_output(value, size, pixel_ratio),
     image = resolve_image_output(value),
     pdf = resolve_pdf_output(value),
     json = list(
@@ -331,24 +342,32 @@ resolve_table_output <- function(value) {
 }
 
 #' @noRd
-resolve_plot_output <- function(value) {
+resolve_plot_output <- function(value, size = NULL, pixel_ratio = NULL) {
   opts <- value$options
+  # A plot without a size of its own follows its output's, and the page
+  # asks again when that changes.
+  fit <- is.null(opts$width) || is.null(opts$height)
+  width <- opts$width %||% size$width %||% 800
+  height <- opts$height %||% size$height %||% 500
   png <- render_plot_png(
     value$value,
-    width = opts$width %||% 800,
-    height = opts$height %||% 500,
+    width = width,
+    height = height,
     res = opts$res %||% 96,
-    scale = opts$scale %||% 1.5
+    scale = opts$scale %||%
+      pixel_ratio %||%
+      getOption("shinymcp.plot_scale", 1.5)
   )
   text <- value$text %||% "A plot."
   list(
     kind = "plot",
-    render = list(
+    render = compact_list(list(
       src = paste0("data:image/png;base64,", png),
-      width = opts$width %||% 800,
-      height = opts$height %||% 500,
-      alt = text
-    ),
+      width = width,
+      height = height,
+      alt = text,
+      fit = if (fit) TRUE
+    )),
     image = list(data = png, mimeType = "image/png"),
     model = value$model_value %||% text,
     text = text
@@ -472,7 +491,9 @@ build_tool_result <- function(
   images = TRUE,
   skip_deps = character(),
   view = NULL,
-  output_types = NULL
+  output_types = NULL,
+  sizes = NULL,
+  pixel_ratio = NULL
 ) {
   text <- NULL
   data <- NULL
@@ -492,7 +513,14 @@ build_tool_result <- function(
     # A single unnamed value: the view routes it to its only output, whose
     # type says how to read it.
     hint <- if (length(output_types) == 1) output_types[[1]]
-    entry <- resolve_output(raw, skip_deps, hint = hint)
+    size <- if (length(output_types) == 1) sizes[[names(output_types)[[1]]]]
+    entry <- resolve_output(
+      raw,
+      skip_deps,
+      hint = hint,
+      size = size,
+      pixel_ratio = pixel_ratio
+    )
     limit <- getOption("shinymcp.max_text_chars", 4000)
     content <- list(text_block(
       text %||% truncate_text(entry$text %||% "", limit)
@@ -515,7 +543,13 @@ build_tool_result <- function(
     entries <- list()
     for (id in names(outputs)) {
       hint <- if (id %in% names(output_types)) output_types[[id]]
-      entry <- resolve_output(outputs[[id]], skip_deps = skip_deps, hint = hint)
+      entry <- resolve_output(
+        outputs[[id]],
+        skip_deps = skip_deps,
+        hint = hint,
+        size = sizes[[id]],
+        pixel_ratio = pixel_ratio
+      )
       skip_deps <- c(
         skip_deps,
         vapply(entry$deps %||% list(), function(d) d$name, character(1))

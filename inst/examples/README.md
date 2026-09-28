@@ -22,6 +22,7 @@ model receives from each call.
 | Example | What it shows |
 |---|---|
 | [`local-clients`](local-clients) | Claude Desktop, Claude Code, and VS Code, over stdio. |
+| [`posit-connect`](posit-connect) | One deployment on Posit Connect: a Shiny app for people, and an MCP App on the same UI for chat clients, with `mcp_endpoint(apps = )`. |
 
 ## Hosting apps in Shiny
 
@@ -51,4 +52,3 @@ doing once Shiny's own MCP support is released; see
 | [`fuel-economy`](fuel-economy) | A bslib dashboard. `bindMcp()` chooses what the model sees, `mcp_model_context()` tells it what the user did, `mcp_host_context()` follows the chat's theme, and the download button works. |
 | [`shiny-packages`](shiny-packages) | A Shiny app built on shinyWidgets and DT, with a file upload. The model reads the table's rows and hears which ones the person selected. |
 | [`shiny-module`](shiny-module) | A Shiny module served with `mcp_tool_module()`. |
-| [`posit-connect`](posit-connect) | One deployment that serves a Shiny app to browsers and, live, to chat clients, with `mcp_endpoint()`. |

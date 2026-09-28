@@ -565,7 +565,9 @@ McpServer <- R6::R6Class(
         headers = transport$headers,
         user = transport$user,
         groups = transport$groups,
-        view = meta[["shinymcp/view"]]
+        view = meta[["shinymcp/view"]],
+        sizes = output_sizes(meta[["shinymcp/sizes"]]),
+        pixel_ratio = pixel_ratio(meta[["shinymcp/pixelRatio"]])
       ))
     }
   )
@@ -650,4 +652,33 @@ error_response <- function(response) {
 #' @noRd
 unclass_error <- function(x) {
   x$response
+}
+
+#' The sizes of the page's outputs, as a page reports them with a call
+#'
+#' A named list of `list(width, height)` in CSS pixels; anything else is
+#' left out.
+#' @noRd
+output_sizes <- function(x) {
+  if (!is_json_object(x) || length(x) == 0) {
+    return(NULL)
+  }
+  ok <- function(v) is.numeric(v) && length(v) == 1 && v > 0 && v <= 10000
+  sizes <- list()
+  for (id in names(x)) {
+    size <- x[[id]]
+    if (is.list(size) && ok(size$width) && ok(size$height)) {
+      sizes[[id]] <- list(width = size$width, height = size$height)
+    }
+  }
+  if (length(sizes)) sizes
+}
+
+#' The screen's pixel density, as a page reports it, between 1 and 3
+#' @noRd
+pixel_ratio <- function(x) {
+  if (!is.numeric(x) || length(x) != 1 || is.na(x)) {
+    return(NULL)
+  }
+  min(max(x, 1), 3)
 }

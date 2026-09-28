@@ -287,6 +287,9 @@ On macOS, desktop clients don't see the shell's `PATH`; use the full path to
 
 For clients that connect to a URL, `serve(app, type = "http", port = 8080)`
 serves it at `http://127.0.0.1:8080/mcp`. To deploy to Posit Connect or
-Shiny Server, end `app.R` with `mcp_endpoint(app)`, or, for a Shiny app
-served as it is, `shinyApp(ui, server) |> mcp_endpoint(name = "sales")`.
-Chat clients connect to the content's URL followed by `/mcp`.
+Shiny Server, end `app.R` with `mcp_endpoint(app)`. To keep the Shiny app
+for people and serve the rewritten app to chat clients from the same
+deployment, end it with `shinyApp(ui, server) |> mcp_endpoint(apps = app)`;
+for a Shiny app served as it is, `shinyApp(ui, server) |>
+mcp_endpoint(name = "sales")`. Chat clients connect to the content's URL
+followed by `/mcp`.

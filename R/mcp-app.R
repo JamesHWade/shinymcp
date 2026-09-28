@@ -415,7 +415,9 @@ McpApp <- R6::R6Class(
           images = images,
           skip_deps = context$skip_deps %||% character(),
           view = list(tool = name),
-          output_types = private$ui_outputs()
+          output_types = private$ui_outputs(),
+          sizes = context$sizes,
+          pixel_ratio = context$pixel_ratio
         ),
         error = tool_error_result
       )

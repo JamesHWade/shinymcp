@@ -21,10 +21,10 @@ mcp_result_plot(
   plot,
   model_value = NULL,
   text = NULL,
-  width = 800,
-  height = 500,
+  width = NULL,
+  height = NULL,
   res = 96,
-  scale = getOption("shinymcp.plot_scale", 1.5)
+  scale = NULL
 )
 
 mcp_result_image(path_or_data, model_value = NULL, text = NULL)
@@ -42,12 +42,17 @@ plots, images, PDFs, and widgets.}
 
 \item{text}{Plain-text version of the output.}
 
-\item{width, height}{Plot size in CSS pixels.}
+\item{width, height}{Plot size in CSS pixels. By default, the size of the
+output the plot goes to, which the app's page reports when it calls the
+tool, and 800 by 500 for calls it didn't make (such as the model's).
+The page draws a plot of the wrong size to fit, then calls the tool
+again for one of the right size.}
 
 \item{res}{Plot resolution in pixels per inch at 1x.}
 
 \item{scale}{Pixel density multiplier; \code{2} gives sharp plots on high
-density screens at four times the file size.}
+density screens at four times the file size. By default, the screen's,
+as the page reports it, else the \code{shinymcp.plot_scale} option (1.5).}
 
 \item{filename}{File name offered when the user downloads a PDF.}
 }

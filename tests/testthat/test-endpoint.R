@@ -260,6 +260,61 @@ test_that("MCP clients run the Shiny app's server function through the endpoint"
   endpoint$mcpServer$apps[[1]]$runtime()$close_all()
 })
 
+test_that("a Shiny app can have apps built from tools next to it", {
+  skip_if_not_installed("shiny")
+  started <- FALSE
+  shiny_app <- live_shiny_app()
+  shiny_app$onStart <- function() started <<- TRUE
+  endpoint <- mcp_endpoint(shiny_app, apps = serving_app(name = "fx"))
+
+  # The Shiny app isn't served live, or started early.
+  expect_false(started)
+  expect_equal(
+    vapply(endpoint$mcpServer$apps, function(a) a$name, character(1)),
+    "fx"
+  )
+  expect_true(is.function(endpoint$onStart))
+
+  page <- get_page(endpoint)
+  expect_match(page$content, 'id="cyl"', fixed = TRUE)
+  tools <- serving_body(post_mcp(
+    endpoint,
+    serving_rpc("tools/list")
+  ))$result$tools
+  expect_equal(
+    vapply(tools, function(t) t$name, character(1)),
+    c("echo", "boom", "refresh")
+  )
+  result <- serving_body(post_mcp(
+    endpoint,
+    serving_rpc("tools/call", list(name = "echo", arguments = list(x = "hi")))
+  ))$result
+  expect_equal(result$structuredContent, list(out = "hi"))
+
+  two <- mcp_endpoint(
+    live_shiny_app(),
+    apps = list(
+      serving_app(name = "a"),
+      serving_app(name = "b", tools = list(serving_echo_tool("echo2")))
+    )
+  )
+  expect_length(two$mcpServer$apps, 2)
+})
+
+test_that("apps go with a Shiny app, and live-serving arguments don't", {
+  skip_if_not_installed("shiny")
+  expect_error(
+    mcp_endpoint(serving_app(), apps = serving_app(name = "other")),
+    "goes with a Shiny app",
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    mcp_endpoint(live_shiny_app(), apps = serving_app(), name = "cars"),
+    "is for serving a Shiny app live",
+    class = "shinymcp_error_validation"
+  )
+})
+
 # ---- Hosting platforms ----
 
 test_that("on_hosted_platform() recognizes Posit Connect and shinyapps.io", {

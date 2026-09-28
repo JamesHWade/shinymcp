@@ -25,6 +25,10 @@ section.
   into the page.
 * `mcp_app(theme = )` refuses a UI that is already a page, instead of
   nesting two pages.
+* Plots are drawn at the size of their output. The page tells each tool
+  call how big its plot outputs are and how dense the screen is, and calls
+  again when an output changes size; `mcp_result_plot()`'s `width`,
+  `height`, and `scale` set a size and density of their own.
 
 ## Protocol and serving
 
@@ -33,8 +37,10 @@ section.
   official MCP TypeScript client and the MCP Apps host SDK.
 * New `mcp_endpoint()` turns apps into a Shiny app that answers MCP at
   `/mcp`, for Posit Connect, Shiny Server, and shinyapps.io. Given a Shiny
-  app, it serves that app live to chat clients and as usual to browsers.
-  On Posit Connect, tools and server functions see the signed-in user.
+  app and `apps`, it serves the Shiny app to browsers and the apps to chat
+  clients, from one deployment; given a Shiny app alone, it serves that app
+  live to chat clients and as usual to browsers. On Posit Connect, tools
+  and server functions see the signed-in user.
 * The HTTP transport checks `Origin` and, on a local server, `Host`
   (against DNS rebinding); `serve()` gains `allowed_origins` and
   `allowed_hosts`.

@@ -30,6 +30,7 @@ Imports:
 Suggests:
     base64enc,
     bslib,
+    curl,
     DT,
     ellmer,
     ggplot2,

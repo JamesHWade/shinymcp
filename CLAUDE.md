@@ -177,6 +177,12 @@ clients keep from the model. Dependencies the page already has are left
 out; in results for the model, large ones go by name and the page fetches
 them through the view tool.
 
+Each call the page makes carries `_meta["shinymcp/sizes"]` (its plot
+outputs' sizes) and `_meta["shinymcp/pixelRatio"]`. A plot without a size
+of its own is drawn at its output's and marked `fit`; the page calls a
+tool again when its fitted plots don't match their outputs (after the
+model's call opens the app, and on resize).
+
 ### Hosts
 
 A card (shinychat) or pane carries a descriptor, not the page: instance

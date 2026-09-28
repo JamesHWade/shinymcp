@@ -15,8 +15,9 @@
 #'   (default 100).
 #' * `shinymcp.max_display_rows`: the most rows of a table a tool's result
 #'   shows on the page (default 1000).
-#' * `shinymcp.plot_scale`: pixel density of plots in tools' results
-#'   (default 1.5); see [mcp_result_plot()].
+#' * `shinymcp.plot_scale`: pixel density of plots in tools' results when
+#'   the page hasn't said what the screen's is (default 1.5); see
+#'   [mcp_result_plot()].
 #' * `shinymcp.max_inline_dependency_bytes`: in results for the model, a
 #'   JavaScript or CSS library larger than this (default 256 KB) goes by
 #'   name, and the page fetches it separately. Clients keep results in the
