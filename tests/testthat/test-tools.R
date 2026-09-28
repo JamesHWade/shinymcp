@@ -547,6 +547,28 @@ test_that("wire definitions carry the flat and nested UI resource keys", {
   expect_equal(flat[["_meta"]][["ui/resourceUri"]], "ui://demo")
 })
 
+test_that("UI metadata a tool declares itself goes only to clients that show apps", {
+  tool <- as_mcp_tool(list(
+    name = "chart",
+    `_meta` = list(
+      ui = list(resourceUri = "ui://own", visibility = list("model", "app")),
+      custom = "x"
+    ),
+    fun = function() NULL
+  ))
+  flat <- tool_wire_definition(
+    tool,
+    resource_uri = "ui://demo",
+    include_ui_meta = FALSE
+  )
+  expect_null(flat[["_meta"]][["ui"]])
+  expect_equal(flat[["_meta"]]$custom, "x")
+  expect_equal(flat[["_meta"]][["ui/resourceUri"]], "ui://demo")
+  # Clients that show apps get the app's page.
+  full <- tool_wire_definition(tool, resource_uri = "ui://demo")
+  expect_equal(full[["_meta"]][["ui"]]$resourceUri, "ui://demo")
+})
+
 test_that("wire definitions use a fallback outputSchema only when the tool has none", {
   fallback <- list(type = "object", properties = list(a = list()))
   plain <- as_mcp_tool(list(name = "p", fun = function() NULL))

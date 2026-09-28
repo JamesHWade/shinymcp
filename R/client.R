@@ -89,8 +89,9 @@ McpClient <- R6::R6Class(
     #' @description Create a client. Use [mcp_client()].
     #' @param url,headers,name,timeout See [mcp_client()].
     #' @param transport For tests: a function taking a request (a list with
-    #'   `method`, `url`, `headers`, `body`) and `async`, and returning a
-    #'   response (`status`, `headers`, `body`) or a promise of one.
+    #'   `method`, `url`, `headers`, `body`, and the JSON-RPC `id`), `async`,
+    #'   and `timeout`, and returning a response (`status`, `headers`,
+    #'   `body`) or a promise of one.
     initialize = function(
       url,
       headers = NULL,
@@ -122,7 +123,7 @@ McpClient <- R6::R6Class(
       }
       if (is.null(transport)) {
         rlang::check_installed(
-          "httr2",
+          "curl",
           reason = "to connect to MCP servers over HTTP."
         )
       }
@@ -130,7 +131,7 @@ McpClient <- R6::R6Class(
       self$name <- name %||% client_default_name(url)
       self$timeout <- timeout
       private$headers <- headers
-      private$transport <- transport %||% httr2_transport
+      private$transport <- transport %||% curl_transport
       invisible(self)
     },
 
@@ -470,7 +471,8 @@ McpClient <- R6::R6Class(
         method = "POST",
         url = self$url,
         headers = private$request_headers(wire),
-        body = charToRaw(enc2utf8(as.character(to_json(wire))))
+        body = charToRaw(enc2utf8(as.character(to_json(wire)))),
+        id = wire$id
       )
       finish <- function(response) {
         expired <- identical(as.integer(response$status), 404L) &&
@@ -716,22 +718,9 @@ read_client_response <- function(response, id) {
   } else {
     list()
   }
-  for (message in messages) {
-    # A result can be null, so look for the field, not its value.
-    if (
-      is.list(message) &&
-        identical(as.character(message$id), as.character(id)) &&
-        any(c("result", "error") %in% names(message))
-    ) {
-      return(message)
-    }
-  }
-  # An error the server sent without an id (it couldn't read ours).
-  for (message in messages) {
-    if (is.list(message) && !is.null(message$error)) {
-      message$id <- id
-      return(message)
-    }
+  found <- find_response(messages, id)
+  if (!is.null(found)) {
+    return(found)
   }
   text <- if (status >= 400) {
     paste0("The server answered with HTTP status ", status, ".")
@@ -743,6 +732,31 @@ read_client_response <- function(response, id) {
     id = id,
     error = list(code = RPC_INTERNAL_ERROR, message = text)
   )
+}
+
+#' The response to a request among JSON-RPC messages
+#'
+#' The message with the request's id, or else an error the server sent
+#' without one (it couldn't read ours). NULL when neither has come.
+#' @noRd
+find_response <- function(messages, id) {
+  for (message in messages) {
+    # A result can be null, so look for the field, not its value.
+    if (
+      is.list(message) &&
+        identical(as.character(message[["id"]]), as.character(id)) &&
+        any(c("result", "error") %in% names(message))
+    ) {
+      return(message)
+    }
+  }
+  for (message in messages) {
+    if (is.list(message) && !is.null(message[["error"]])) {
+      message$id <- id
+      return(message)
+    }
+  }
+  NULL
 }
 
 #' Parse the JSON-RPC messages in a server-sent event stream
@@ -794,29 +808,32 @@ client_abort <- function(message, method = NULL, error = NULL) {
 
 # ---- HTTP ----
 
-#' Perform a request: with httr2, or, returning a promise, with curl
+#' Perform a request with curl: return the response, or with `async`, a
+#' promise of it
 #'
 #' Responses of every status are returned, not raised: an MCP error comes
 #' with a JSON-RPC body the caller reads. Only failing to reach the server
 #' is an error.
 #' @noRd
-httr2_transport <- function(request, async = FALSE, timeout = 60) {
+curl_transport <- function(request, async = FALSE, timeout = 60) {
   if (async) {
     return(curl_request_async(request, timeout))
   }
-  req <- httr2::request(request$url)
-  req <- httr2::req_method(req, request$method)
-  req <- httr2::req_headers(req, !!!request$headers)
-  if (!is.null(request$body)) {
-    req <- httr2::req_body_raw(req, request$body, type = "application/json")
+  transfer <- curl_start(request, timeout)
+  repeat {
+    # A stream the server keeps open is looked at every tenth of a second,
+    # so it can end once the response is in.
+    run <- curl::multi_run(timeout = 0.1, poll = TRUE, pool = transfer$pool)
+    result <- transfer$settle()
+    if (!is.null(result) || run$pending == 0) break
   }
-  req <- httr2::req_error(req, is_error = function(resp) FALSE)
-  req <- httr2::req_timeout(req, timeout)
-  req <- httr2::req_user_agent(
-    req,
-    paste0("shinymcp/", utils::packageVersion("shinymcp"))
-  )
-  httr2_response(httr2::req_perform(req))
+  if (is.null(result)) {
+    shinymcp_abort("The request ended without an answer.", call = NULL)
+  }
+  if (!is.null(result$error)) {
+    stop(result$error)
+  }
+  result$response
 }
 
 #' Perform a request with curl and return a promise of the response
@@ -833,40 +850,27 @@ curl_request_async <- function(request, timeout = 60) {
     c("promises", "later", "curl"),
     reason = "to call MCP servers from Shiny."
   )
-  handle <- curl::new_handle(
-    url = request$url,
-    customrequest = request$method,
-    timeout_ms = round(timeout * 1000),
-    connecttimeout_ms = round(timeout * 1000),
-    useragent = paste0("shinymcp/", utils::packageVersion("shinymcp"))
-  )
-  if (!is.null(request$body)) {
-    curl::handle_setopt(handle, postfields = request$body)
-  }
-  if (length(request$headers)) {
-    curl::handle_setheaders(
-      handle,
-      .list = lapply(request$headers, as.character)
-    )
-  }
-  pool <- curl::new_pool()
+  transfer <- curl_start(request, timeout)
   promises::promise(function(resolve, reject) {
-    curl::multi_add(
-      handle,
-      done = function(res) resolve(curl_response(res)),
-      fail = function(message) reject(simpleError(message)),
-      pool = pool
-    )
     poll <- function(...) {
       pending <- tryCatch(
-        curl::multi_run(timeout = 0, pool = pool)$pending,
+        curl::multi_run(timeout = 0, pool = transfer$pool)$pending,
         error = function(e) {
           reject(e)
           0
         }
       )
+      result <- transfer$settle()
+      if (!is.null(result)) {
+        if (!is.null(result$error)) {
+          reject(result$error)
+        } else {
+          resolve(result$response)
+        }
+        return(invisible())
+      }
       if (pending > 0) {
-        fds <- curl::multi_fdset(pool = pool)
+        fds <- curl::multi_fdset(pool = transfer$pool)
         # curl's wait is in milliseconds (-1 for none); look again at
         # least each second.
         ms <- fds$timeout %||% -1
@@ -884,22 +888,135 @@ curl_request_async <- function(request, timeout = 60) {
   })
 }
 
+#' Start a request in a curl pool of its own
+#'
+#' The body is kept as it arrives. A server may answer with an event stream
+#' and leave it open after the response (the specification only says it
+#' should close it), so a stream is read as its events end, and the request
+#' is answered once the response to `request$id` is among them. curl can't
+#' end a transfer from its own callbacks, so after each run of the pool,
+#' `settle()` ends an answered one; it returns the `response`, or the
+#' `error`, once there is one.
 #' @noRd
-curl_response <- function(res) {
-  headers <- curl::parse_headers_list(res$headers)
-  names(headers) <- tolower(names(headers))
-  body <- rawToChar(res$content)
-  Encoding(body) <- "UTF-8"
-  list(status = res$status_code, headers = headers, body = body)
+curl_start <- function(request, timeout) {
+  handle <- curl::new_handle(
+    url = request$url,
+    customrequest = request$method,
+    timeout_ms = round(timeout * 1000),
+    connecttimeout_ms = round(timeout * 1000),
+    useragent = paste0("shinymcp/", utils::packageVersion("shinymcp"))
+  )
+  if (!is.null(request$body)) {
+    curl::handle_setopt(handle, postfields = request$body)
+  }
+  if (length(request$headers)) {
+    curl::handle_setheaders(
+      handle,
+      .list = lapply(request$headers, as.character)
+    )
+  }
+  pool <- curl::new_pool()
+  state <- new.env(parent = emptyenv())
+  # The body's chunks, joined once it's done, and those of a stream that
+  # come after its last complete event.
+  state$chunks <- list()
+  state$tail <- list()
+  state$stream <- NULL
+  state$unread <- FALSE
+  state$result <- NULL
+  finish <- function(status, headers) {
+    if (is.null(state$result)) {
+      body <- unlist(state$chunks) %||% raw()
+      state$result <- list(response = curl_response(status, headers, body))
+    }
+  }
+  curl::multi_add(
+    handle,
+    data = function(bytes, final = FALSE) {
+      state$chunks[[length(state$chunks) + 1L]] <- bytes
+      if (is.null(state$stream)) {
+        type <- curl_content_type(curl::handle_data(handle)$headers)
+        state$stream <- startsWith(type, "text/event-stream") &&
+          !is.null(request$id)
+      }
+      if (state$stream) {
+        state$tail[[length(state$tail) + 1L]] <- bytes
+        # Only a line break can end an event.
+        if (any(bytes == as.raw(10L) | bytes == as.raw(13L))) {
+          state$unread <- TRUE
+        }
+      }
+    },
+    done = function(res) finish(res$status_code, res$headers),
+    fail = function(message) {
+      if (is.null(state$result)) {
+        state$result <- list(error = simpleError(message))
+      }
+    },
+    pool = pool
+  )
+  list(
+    pool = pool,
+    settle = function() {
+      # A stream that is still open is read only now: most servers close
+      # it after the response, and then it's read once, whole.
+      if (is.null(state$result) && state$unread) {
+        state$unread <- FALSE
+        read <- sse_read(unlist(state$tail))
+        state$tail <- list(read$rest)
+        if (!is.null(find_response(read$messages, request$id))) {
+          info <- curl::handle_data(handle)
+          finish(info$status_code, info$headers)
+          curl::multi_cancel(handle)
+        }
+      }
+      state$result
+    }
+  )
 }
 
 #' @noRd
-httr2_response <- function(resp) {
-  headers <- as.list(httr2::resp_headers(resp))
+curl_response <- function(status, headers, body) {
+  headers <- curl::parse_headers_list(headers)
   names(headers) <- tolower(names(headers))
-  list(
-    status = httr2::resp_status(resp),
-    headers = headers,
-    body = if (httr2::resp_has_body(resp)) httr2::resp_body_string(resp) else ""
-  )
+  body <- rawToChar(body)
+  Encoding(body) <- "UTF-8"
+  list(status = status, headers = headers, body = body)
+}
+
+#' @noRd
+curl_content_type <- function(headers) {
+  tolower(curl::parse_headers_list(headers)[["content-type"]] %||% "")
+}
+
+#' Read the events a blank line has ended from a stream still arriving
+#'
+#' Returns their JSON-RPC messages and the bytes after them. Worked out on
+#' the bytes, since the stream may stop in the middle of a character.
+#' @noRd
+sse_read <- function(bytes) {
+  breaks <- which(bytes == as.raw(10L) | bytes == as.raw(13L))
+  before <- function(i) {
+    out <- raw(length(i))
+    out[i > 0] <- bytes[i[i > 0]]
+    out
+  }
+  this <- bytes[breaks]
+  one <- before(breaks - 1L)
+  two <- before(breaks - 2L)
+  lf <- as.raw(10L)
+  cr <- as.raw(13L)
+  # A line break straight after another ends an event: "\n\n", "\r\n\r\n",
+  # "\n\r\n", or "\r\r".
+  ends <- breaks[
+    (this == lf & (one == lf | (one == cr & two == lf))) |
+      (this == cr & one == cr)
+  ]
+  if (length(ends) == 0) {
+    return(list(messages = list(), rest = bytes))
+  }
+  end <- max(ends)
+  text <- rawToChar(bytes[seq_len(end)])
+  Encoding(text) <- "UTF-8"
+  list(messages = sse_messages(text), rest = bytes[-seq_len(end)])
 }

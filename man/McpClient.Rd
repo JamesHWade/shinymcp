@@ -55,8 +55,9 @@ instead, for use in Shiny.
     \describe{
       \item{\code{url, headers, name, timeout}}{See \code{\link[=mcp_client]{mcp_client()}}.}
       \item{\code{transport}}{For tests: a function taking a request (a list with
-\code{method}, \code{url}, \code{headers}, \code{body}) and \code{async}, and returning a
-response (\code{status}, \code{headers}, \code{body}) or a promise of one.}
+\code{method}, \code{url}, \code{headers}, \code{body}, and the JSON-RPC \code{id}), \code{async},
+and \code{timeout}, and returning a response (\code{status}, \code{headers},
+\code{body}) or a promise of one.}
     }
     \if{html}{\out{</div>}}
   }

@@ -414,7 +414,7 @@ test_that("every async method checks for promises before using it", {
 test_that("the client works over real HTTP", {
   skip_on_cran()
   skip_if_not_installed("httpuv")
-  skip_if_not_installed("httr2")
+  skip_if_not_installed("curl")
   skip_if_not_installed("later")
   handler <- mcp_http_handler(client_server(), local = TRUE)
   started <- start_local_server(
@@ -443,7 +443,7 @@ test_that("the client works over real HTTP", {
 test_that("async requests to a server that never answers time out", {
   skip_on_cran()
   skip_if_not_installed("httpuv")
-  skip_if_not_installed("httr2")
+  skip_if_not_installed("curl")
   skip_if_not_installed("later")
   # A socket that takes connections and never answers them. A port another
   # test has just let go of may not be free to bind yet, so try a few.
@@ -476,4 +476,148 @@ test_that("async requests to a server that never answers time out", {
     later::run_now(0.1)
   }
   expect_true(later::loop_empty())
+})
+
+# ---- Event streams a server leaves open ----
+
+# A response in an event stream, after a notification, as a server that
+# leaves the stream open writes it.
+open_stream_response <- function(id = "r1") {
+  paste0(
+    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n",
+    "event: message\r\n",
+    "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",",
+    "\"params\":{}}\r\n\r\n",
+    "event: message\r\n",
+    "data: {\"jsonrpc\":\"2.0\",\"id\":\"",
+    id,
+    "\",\"result\":{\"ok\":true}}\r\n\r\n"
+  )
+}
+
+stream_request <- function(port) {
+  list(
+    method = "POST",
+    url = sprintf("http://127.0.0.1:%d/mcp", port),
+    headers = list(`Content-Type` = "application/json"),
+    body = charToRaw('{"jsonrpc":"2.0","id":"r1","method":"ping"}'),
+    id = "r1"
+  )
+}
+
+# The transport a client uses when none is given.
+default_transport <- function() {
+  mcp_client("http://127.0.0.1/mcp")$.__enclos_env__$private$transport
+}
+
+test_that("only the events a blank line has ended are read from a stream", {
+  complete <- charToRaw(paste0(
+    "data: {\"a\":1}\r\n\r\n",
+    "data: {\"b\":\"caf\u00e9\"}\n\n"
+  ))
+  read <- sse_read(c(complete, charToRaw("data: {\"c\":")))
+  expect_equal(read$messages, list(list(a = 1L), list(b = "caf\u00e9")))
+  expect_identical(read$rest, charToRaw("data: {\"c\":"))
+  # The stream may stop in the middle of a character...
+  partial <- sse_read(c(complete, charToRaw("data: {\"c\":\""), as.raw(0xc3)))
+  expect_length(partial$messages, 2)
+  # ...or of the blank line that ends an event.
+  first <- sse_read(charToRaw("data: {\"a\":1}\r\n\r"))
+  expect_length(first$messages, 0)
+  expect_equal(
+    sse_read(c(first$rest, charToRaw("\n")))$messages,
+    list(list(a = 1L))
+  )
+  expect_length(sse_read(charToRaw("data: {\"a\":1}\n"))$messages, 0)
+  expect_length(sse_read(raw())$messages, 0)
+})
+
+test_that("a response in an event stream left open is read as it arrives", {
+  skip_on_cran()
+  skip_if_not_installed("curl")
+  skip_if_not_installed("httpuv")
+  skip_if_not_installed("later")
+  skip_if_not_installed("promises")
+  server <- NULL
+  for (i in 1:10) {
+    port <- httpuv::randomPort()
+    server <- tryCatch(
+      suppressWarnings(serverSocket(port)),
+      error = function(e) NULL
+    )
+    if (!is.null(server)) break
+  }
+  skip_if(is.null(server), "No port free for the server.")
+  on.exit(close(server), add = TRUE)
+
+  response <- NULL
+  promises::then(
+    default_transport()(stream_request(port), async = TRUE, timeout = 20),
+    function(r) response <<- r,
+    onRejected = function(e) response <<- e
+  )
+  # curl connects and sends the request as the event loop runs.
+  for (i in 1:10) {
+    later::run_now(0.05)
+  }
+  con <- socketAccept(server, blocking = TRUE, open = "r+b", timeout = 5)
+  on.exit(close(con), add = TRUE)
+  writeBin(charToRaw(open_stream_response()), con)
+  flush(con)
+
+  start <- Sys.time()
+  while (is.null(response) && Sys.time() < start + 10) {
+    later::run_now(0.05)
+  }
+  expect_lt(as.numeric(difftime(Sys.time(), start, units = "secs")), 5)
+  expect_equal(read_client_response(response, "r1")$result, list(ok = TRUE))
+})
+
+test_that("a blocking request reads a response in an event stream left open", {
+  skip_on_cran()
+  skip_if_not_installed("curl")
+  skip_if_not_installed("httpuv")
+  # The server runs in another R process: this one waits on the request.
+  # It stays until the client hangs up, or 20 seconds.
+  script <- withr::local_tempfile(fileext = ".R")
+  ready <- withr::local_tempfile()
+  writeLines(
+    c(
+      "args <- commandArgs(TRUE)",
+      "server <- serverSocket(as.integer(args[[1]]))",
+      "writeLines('ready', args[[2]])",
+      "con <- socketAccept(server, blocking = FALSE, open = 'r+b', timeout = 30)",
+      "Sys.sleep(0.2)",
+      paste0("writeBin(charToRaw(", deparse(open_stream_response()), "), con)"),
+      "flush(con)",
+      "deadline <- Sys.time() + 20",
+      "while (Sys.time() < deadline) {",
+      "  if (isTRUE(socketSelect(list(con), timeout = 0.2))) {",
+      "    got <- tryCatch(readBin(con, 'raw', 65536), error = function(e) raw())",
+      "    if (length(got) == 0) break",
+      "  }",
+      "}",
+      "close(con)",
+      "close(server)"
+    ),
+    script
+  )
+  port <- httpuv::randomPort()
+  system2(
+    file.path(R.home("bin"), "Rscript"),
+    c(shQuote(script), port, shQuote(ready)),
+    wait = FALSE,
+    stdout = FALSE,
+    stderr = FALSE
+  )
+  end <- Sys.time() + 20
+  while (!file.exists(ready) && Sys.time() < end) {
+    Sys.sleep(0.1)
+  }
+  skip_if_not(file.exists(ready), "The server didn't start.")
+
+  start <- Sys.time()
+  response <- default_transport()(stream_request(port), timeout = 20)
+  expect_lt(as.numeric(difftime(Sys.time(), start, units = "secs")), 5)
+  expect_equal(read_client_response(response, "r1")$result, list(ok = TRUE))
 })

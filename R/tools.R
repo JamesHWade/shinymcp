@@ -287,6 +287,9 @@ tool_wire_definition <- function(
       ui$visibility <- I(tool$visibility)
     }
     meta$ui <- ui
+  } else {
+    # Nor any the tool declared itself.
+    meta[["ui"]] <- NULL
   }
   def[["_meta"]] <- meta
   def

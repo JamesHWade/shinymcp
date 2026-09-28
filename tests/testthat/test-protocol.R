@@ -845,6 +845,24 @@ test_that("clients without MCP Apps support get no app-only tools and no nested 
     # The flat key stays for hosts that predate capability negotiation.
     expect_equal(tool[["_meta"]][["ui/resourceUri"]], "ui://fx")
   }
+
+  # Nor the UI metadata a tool declares itself.
+  own <- mcp_app(
+    htmltools::div(),
+    tools = list(list(
+      name = "chart",
+      `_meta` = list(ui = list(resourceUri = "ui://own")),
+      fun = function() "x"
+    )),
+    name = "own"
+  )
+  server <- McpServer$new(own)
+  session <- initialize_session(server, ui = FALSE)
+  listed <- server$handle(
+    serving_rpc("tools/list", id = 2),
+    list(session = session)
+  )$result$tools[[1]]
+  expect_null(listed[["_meta"]][["ui"]])
 })
 
 test_that("a client that doesn't show apps can't call tools only apps may", {
