@@ -96,7 +96,7 @@ test_that("the remote-host server serves its app", {
   env <- new.env()
   env$serve <- function(app, ...) app
   served <- source(
-    file.path(example_dir("remote-host"), "server.R"),
+    file.path(example_dir("remote-host"), "serve.R"),
     local = env
   )$value
   expect_s3_class(served, "McpApp")

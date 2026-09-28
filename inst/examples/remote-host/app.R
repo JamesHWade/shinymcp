@@ -5,7 +5,7 @@
 # its server, and the browser never sees a key.
 #
 # Start the server first, in another R session, from this folder:
-#   Rscript server.R
+#   Rscript serve.R
 # then run this app:
 #   shiny::runApp(system.file("examples", "remote-host", package = "shinymcp"))
 #

@@ -2,7 +2,7 @@
 # way it would be from Posit Connect. Run it in its own R session, from this
 # folder:
 #
-#   Rscript server.R
+#   Rscript serve.R
 
 library(shiny)
 library(shinymcp)
