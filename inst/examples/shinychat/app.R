@@ -12,32 +12,42 @@ library(bslib)
 library(shinychat)
 library(shinymcp)
 
-# A Shiny app, served live in the chat.
-faithful_app <- as_mcp_app(
-  shinyApp(
-    fluidPage(
-      sliderInput("bins", "Number of bins", min = 5, max = 50, value = 20),
-      plotOutput("histogram", height = "300px")
-    ),
-    function(input, output, session) {
-      output$histogram <- renderPlot({
-        hist(
-          faithful$waiting,
-          breaks = input$bins,
-          col = "#5b8db8",
-          border = "white",
-          main = NULL,
-          xlab = "Minutes to the next eruption"
-        )
-      })
-    }
+# A histogram, with a slider for the number of bins.
+faithful_app <- mcp_app(
+  fluidPage(
+    sliderInput("bins", "Number of bins", min = 5, max = 50, value = 20),
+    plotOutput("histogram", height = "300px")
   ),
+  tools = list(ellmer::tool(
+    function(bins = 20) {
+      list(
+        histogram = mcp_result_plot(
+          function() {
+            hist(
+              faithful$waiting,
+              breaks = bins,
+              col = "#5b8db8",
+              border = "white",
+              main = NULL,
+              xlab = "Minutes to the next eruption"
+            )
+          },
+          text = "Histogram of waiting times between Old Faithful eruptions."
+        )
+      )
+    },
+    name = "faithful_histogram",
+    description = "Show a histogram of waiting times between Old Faithful eruptions.",
+    arguments = list(
+      bins = ellmer::type_integer("Number of bins, 5 to 50.", required = FALSE)
+    ),
+    annotations = ellmer::tool_annotations(read_only_hint = TRUE)
+  )),
   name = "faithful",
-  title = "Old Faithful",
-  description = "Show a histogram of waiting times between Old Faithful eruptions."
+  title = "Old Faithful"
 )
 
-# An app built from a tool.
+# A summary of a dataset, with a select input to choose it.
 datasets <- c("mtcars", "faithful", "airquality", "pressure")
 summary_app <- mcp_app(
   htmltools::tagList(

@@ -16,9 +16,9 @@ of two ways: it starts the server itself and talks to it over standard input
 and output (stdio), or it connects to a URL (Streamable HTTP). shinymcp
 serves apps both ways, and inside a Shiny app for Posit Connect.
 
-Every way below works with an [`McpApp`](../reference/McpApp.html), a Shiny
-app object, a path to a Shiny app's directory, or a list of apps to serve
-from one server.
+Every way below works with an [`McpApp`](../reference/McpApp.html), a list
+of apps to serve from one server, or a path to a file or directory whose
+`app.R` makes one.
 
 ## While you work: `preview_app()`
 
@@ -47,10 +47,10 @@ start an MCP server as a program. Write the app in a script that ends with
 library(shiny)
 library(shinymcp)
 
-ui <- fluidPage(...)
-server <- function(input, output, session) { ... }
+show_mileage <- ellmer::tool(...)
 
-serve(as_mcp_app(shinyApp(ui, server), name = "mileage"))
+app <- mcp_app(fluidPage(...), tools = list(show_mileage), name = "mileage")
+serve(app)
 ```
 
 Run it in a terminal first: `Rscript ~/apps/mileage/app.R` should sit waiting
@@ -100,8 +100,7 @@ claude mcp add mileage -- Rscript /Users/you/apps/mileage/app.R
 ```
 
 Clients that can't show apps (Claude Code, which runs in a terminal, is one)
-still get every tool the model can call. Their results arrive as text: the
-input values and what each output shows.
+still get every tool the model can call, and their results as text.
 
 ## Over HTTP
 
@@ -128,8 +127,8 @@ and any server process can answer it.
 
 ## Posit Connect
 
-`mcp_endpoint()` adds an MCP endpoint to a Shiny app. The result is still a
-Shiny app, so it deploys like one, to Posit Connect, Shiny Server, or
+`mcp_endpoint()` turns an app into a Shiny app that answers MCP requests at
+`/mcp`. It deploys like any Shiny app, to Posit Connect, Shiny Server, or
 shinyapps.io:
 
 ```{r}
@@ -137,21 +136,27 @@ shinyapps.io:
 library(shiny)
 library(shinymcp)
 
-ui <- fluidPage(...)
-server <- function(input, output, session) { ... }
+show_mileage <- ellmer::tool(...)
 
+app <- mcp_app(fluidPage(...), tools = list(show_mileage), name = "mileage")
+mcp_endpoint(app)
+```
+
+Chat clients connect to the content's URL followed by `mcp`, for example
+`https://connect.example.com/content/1a2b3c4d/mcp`. People who open the
+content's URL itself get the preview page. Try it locally with
+`shiny::runApp()`: the preview is at `/` and the endpoint at `/mcp`.
+
+Given a Shiny app, `mcp_endpoint()` keeps it for people who open the URL,
+and serves the same app, live, to chat clients through `as_mcp_app()`:
+
+```{r}
 shinyApp(ui, server) |>
   mcp_endpoint(name = "mileage", description = "Fuel economy by number of cylinders.")
 ```
 
-People who open the content's URL get the Shiny app, as before. Chat
-clients connect to the same URL followed by `mcp`, for example
-`https://connect.example.com/content/1a2b3c4d/mcp`, and get the same app,
-live, in the chat. Try it locally with `shiny::runApp()`: the app is at `/`
-and the endpoint at `/mcp`.
-
-Given an `McpApp` (or a list of them) instead of a Shiny app,
-`mcp_endpoint()` serves the preview page at `/`.
+That form goes when Shiny's own MCP support is released and shinymcp stops
+serving live apps; see `vignette("shiny-apps")`.
 
 ### Signing in
 
@@ -164,22 +169,23 @@ claude mcp add --transport http mileage \
   --header "Authorization: Key $CONNECT_API_KEY"
 ```
 
-Connect checks the key and tells the app who the user is. The server
-function sees them as `session$user` and `session$groups`, and tool
-functions as `mcp_request()$user` and `mcp_request()$groups`, so an app can
-show each person only their data.
+Connect checks the key and tells the app who the user is. Tool functions
+see them as `mcp_request()$user` and `mcp_request()$groups` (and a live
+Shiny app's server function as `session$user` and `session$groups`), so an
+app can show each person only their data.
 
 ### Processes
 
-Each open view of a Shiny app keeps its session in the R process that
-started it. If Connect runs the app in several processes, a request can
-reach one that doesn't have the session. shinymcp then starts a new session
-from the inputs on the page and the app keeps working, but anything the
-server function kept outside its inputs starts over. For apps that keep
-such state, set **Max processes** to 1 in the content's runtime settings.
+Apps built from tools keep no state between calls, so Connect can run them
+in as many processes as you like.
 
-Apps built from tools with `mcp_app()` keep no state between calls and can
-run in as many processes as you like.
+A live Shiny app is different: each open view keeps its session in the R
+process that started it. If Connect runs the app in several processes, a
+request can reach one that doesn't have the session. shinymcp then starts a
+new session from the inputs on the page and the app keeps working, but
+anything the server function kept outside its inputs starts over. For apps
+that keep such state, set **Max processes** to 1 in the content's runtime
+settings.
 
 The [`posit-connect`](https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/posit-connect)
 example has a complete app and the client settings for Claude Code and

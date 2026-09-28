@@ -70,7 +70,7 @@ is_mcp_result <- function(x) {
 #' @param filename File name offered when the user downloads a PDF.
 #' @return A typed output value, to be returned from a tool inside a named
 #'   list or on its own.
-#' @family tool results
+#' @family writing tools
 #' @examples
 #' summarise_cars <- function(cyl = 4) {
 #'   cars <- mtcars[mtcars$cyl == cyl, ]
@@ -177,7 +177,7 @@ mcp_result_widget <- function(ui, model_value = NULL, text = NULL) {
 #' @param error If `TRUE`, the result is marked as a tool error. Use it for
 #'   failures the model should see and react to.
 #' @return An object a tool can return.
-#' @family tool results
+#' @family writing tools
 #' @export
 mcp_tool_result <- function(..., text = NULL, data = NULL, error = FALSE) {
   outputs <- list(...)

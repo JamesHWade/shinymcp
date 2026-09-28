@@ -327,7 +327,7 @@ with_request_context <- function(context, expr) {
 #' * `headers`: HTTP request headers (lowercase names), for the HTTP transport.
 #'
 #' @return A list, or `NULL` outside a request.
-#' @family runtime helpers
+#' @family writing tools
 #' @export
 #' @examples
 #' greet <- function(name = "world") {

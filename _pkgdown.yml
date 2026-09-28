@@ -10,7 +10,7 @@ template:
 
 home:
   title: shinymcp
-  description: Serve Shiny apps as MCP Apps in AI chat clients.
+  description: Build MCP Apps for AI chat clients from R functions and Shiny UI.
 
 navbar:
   structure:
@@ -21,25 +21,37 @@ articles:
   - title: Guides
     navbar: ~
     contents:
-      - shiny-apps
       - tools
       - deployment
       - hosting
+      - rewriting-as-tools
   - title: More
     navbar: More
     contents:
-      - rewriting-as-tools
+      - shiny-apps
       - protocol
       - troubleshooting
 
 reference:
   - title: Make an app
     contents:
-      - as_mcp_app
       - mcp_app
       - mcp_tool_module
-      - bindMcp
       - McpApp
+
+  - title: UI
+    contents:
+      - mcp_select
+      - mcp_plot
+      - mcp_submit_button
+      - mcp_input
+      - mcp_output
+
+  - title: Tools and their results
+    contents:
+      - mcp_result
+      - mcp_tool_result
+      - mcp_request
 
   - title: Run it
     contents:
@@ -53,27 +65,16 @@ reference:
       - as_shinychat_tool
       - mcp_host_ui
 
-  - title: Inside a Shiny app's server function
+  - title: Serving a Shiny app as it is
     desc: >
-      For Shiny apps served with `as_mcp_app()`. Outside an MCP App they do
+      For serving an existing Shiny app live, until Shiny's own MCP support
+      is released. Outside an MCP App, the helpers for server functions do
       nothing, so the app still runs as usual.
     contents:
+      - as_mcp_app
+      - bindMcp
       - mcp_model_context
       - mcp_host_context
-      - mcp_request
-
-  - title: UI for apps built from tools
-    contents:
-      - mcp_select
-      - mcp_plot
-      - mcp_submit_button
-      - mcp_input
-      - mcp_output
-
-  - title: Tool results
-    contents:
-      - mcp_result
-      - mcp_tool_result
 
   - title: Pages built by hand
     contents:

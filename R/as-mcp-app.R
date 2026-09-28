@@ -56,6 +56,17 @@
 #' on the page. Anything the server function kept outside its inputs (a
 #' `reactiveVal()` that counts clicks, say) starts over.
 #'
+#' @section Shiny's own MCP support:
+#' Shiny is gaining MCP support of its own
+#' (<https://github.com/rstudio/shiny/pull/4407>). Once it is released, it
+#' will be the way to put a live Shiny app in a chat, and shinymcp will stop
+#' serving live apps. [as_mcp_app()], [mcp_endpoint()], and
+#' [mcp_tool_module()] will take only apps built from tools, and [bindMcp()]
+#' and the helpers for server functions ([mcp_model_context()],
+#' [mcp_host_context()], and the rest) will be removed. For something the
+#' model should be able to use on its own, rewrite that part of the app as
+#' tools with [mcp_app()]; see `vignette("rewriting-as-tools")`.
+#'
 #' @param x A Shiny app (from [shiny::shinyApp()] or [shiny::shinyAppDir()]),
 #'   a path to an app directory (with `app.R`, or `ui.R` and `server.R`), or
 #'   an [McpApp] (returned unchanged).

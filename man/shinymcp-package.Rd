@@ -4,11 +4,11 @@
 \name{shinymcp-package}
 \alias{shinymcp}
 \alias{shinymcp-package}
-\title{shinymcp: Serve 'shiny' Apps as MCP Apps in AI Chat Clients}
+\title{shinymcp: Build MCP Apps from R Functions and 'shiny' UI}
 \description{
 \if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
 
-Serves 'shiny' apps as MCP Apps, the Model Context Protocol extension that lets AI chat clients show interactive pages in the conversation. An existing app runs as it is, its server function live in R, or an app can be built from tools the model can also call on their own. Includes an MCP server over standard input and output or HTTP, an endpoint for deploying apps to Posit Connect, a preview in the browser, and hosts for showing MCP Apps in 'shiny' and 'shinychat'.
+Builds MCP Apps, the Model Context Protocol extension that lets AI chat clients show interactive pages in the conversation. The tools are R functions the model can call on their own, and the page, written with 'shiny' UI functions, calls the same tools as the person uses it. Includes an MCP server over standard input and output or HTTP, an endpoint for deploying apps to Posit Connect, a preview in the browser, and hosts for showing apps in 'shiny' and 'shinychat'. Until 'shiny' serves apps to MCP clients itself, an existing 'shiny' app can also be served as it is.
 }
 \seealso{
 Useful links:

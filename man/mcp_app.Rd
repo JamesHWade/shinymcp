@@ -114,8 +114,9 @@ An MCP App is an interactive page that an AI chat client (Claude, ChatGPT,
 VS Code, Goose) shows inside the conversation, next to the tools that feed
 it. \code{mcp_app()} pairs a UI with those tools:
 \itemize{
-\item The \strong{UI} is ordinary htmltools: Shiny or bslib inputs and layouts,
-plus output placeholders such as \code{\link[=mcp_text]{mcp_text()}} and \code{\link[=mcp_plot]{mcp_plot()}}.
+\item The \strong{UI} is ordinary htmltools: Shiny or bslib inputs, outputs, and
+layouts, or shinymcp's own components such as \code{\link[=mcp_select]{mcp_select()}} and
+\code{\link[=mcp_plot]{mcp_plot()}}.
 \item The \strong{tools} are R functions, usually written with \code{\link[ellmer:tool]{ellmer::tool()}}.
 A tool's argument names match input ids, and the names of the list it
 returns match output ids. When the user changes an input, the app calls
@@ -123,9 +124,11 @@ the tools that take that input and fills in their outputs.
 }
 
 The model can call the same tools. When it does, the host shows the app
-and the app fills in from the result.
+and the app fills in from the result. Tools keep nothing between calls,
+so any R process can answer any call.
 
-To serve an existing Shiny app without writing tools, use \code{\link[=as_mcp_app]{as_mcp_app()}}.
+To make one from a Shiny app you already have, see
+\code{vignette("rewriting-as-tools")}.
 }
 \examples{
 \dontshow{if (rlang::is_installed("ellmer")) withAutoprint(\{ # examplesIf}

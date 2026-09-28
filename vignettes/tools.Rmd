@@ -15,16 +15,15 @@ knitr::opts_chunk$set(
 )
 ```
 
-The other way to make an MCP App starts from tools. Each tool is an R
-function the model can call on its own; the app is a page of inputs and
-outputs that calls the same functions when the person using it changes
-something. Nothing runs between calls, and every call stands alone.
+An app made with `mcp_app()` has two halves: tools, which are R functions
+the model can call on its own, and a page of inputs and outputs that calls
+the same functions when the person using it changes something. Nothing
+runs between calls. Every answer depends only on its arguments, so any R
+process can give it, and the tools are as useful in chat clients that
+can't show the page, or to other agents, as in ones that can.
 
-Build an app this way when the computation should be useful without the
-page (in chat clients that can't show apps, or to other agents), when you
-want each answer to depend only on its arguments, or when you are designing
-for chat from the start. To serve a Shiny app you already have, use
-`as_mcp_app()` instead; see `vignette("shiny-apps")`.
+To start from a Shiny app you already have, see
+`vignette("rewriting-as-tools")`.
 
 ## A first app
 
@@ -101,7 +100,9 @@ tools that take their id when pressed. Those tools run only then, as an
 
 `mcp_text()`, `mcp_plot()`, `mcp_table()`, and `mcp_html()` make the
 elements results are drawn into. Shiny's output functions work too, matched
-by id the same way.
+by id the same way. A plot is drawn at the size `mcp_result_plot()` gives
+it (800 by 500 pixels unless you say otherwise) and scaled to fit its
+output, so give it the shape of the box it goes in.
 
 A tool can return plain values: a string, a number, a data frame, an
 htmltools tag, a ggplot object. The `mcp_result_*()` functions say more

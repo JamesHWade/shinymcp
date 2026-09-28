@@ -92,14 +92,14 @@ test_that("the local-clients server serves both of its apps", {
     local = env
   )$value
   server <- McpServer$new(served)
-  expect_true(server$tool_app("faithful")$name == "faithful")
+  expect_true(server$tool_app("faithful_histogram")$name == "faithful")
   expect_true(server$tool_app("summarize_dataset")$name == "dataset-summary")
 })
 
 # Shiny apps that host MCP Apps: app.R must source into a Shiny app object.
 shiny_examples <- list(
   "shinychat" = c("shiny", "bslib", "ellmer", "shinychat"),
-  "shiny-host" = c("shiny", "bslib"),
+  "shiny-host" = c("shiny", "bslib", "ellmer"),
   "rpharma-hangout" = c("shiny", "bslib", "ellmer", "shinychat")
 )
 

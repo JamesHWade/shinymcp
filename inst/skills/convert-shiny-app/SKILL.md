@@ -1,25 +1,145 @@
 ---
 name: convert-shiny-app
-description: Make a Shiny app usable from AI chat clients (Claude, ChatGPT, VS Code) as an MCP App with the shinymcp R package, either by serving the app as it is or by rewriting it as tools. Use when asked to convert or port a Shiny app to MCP, to serve a Shiny app to a chat client or agent, or to build an MCP App in R.
+description: Make a Shiny app usable from AI chat clients (Claude, ChatGPT, VS Code) as an MCP App with the shinymcp R package, either by rewriting it as tools or by serving it as it is. Use when asked to convert or port a Shiny app to MCP, to serve a Shiny app to a chat client or agent, or to build an MCP App in R.
 ---
 
 # Shiny app to MCP App
 
-shinymcp serves Shiny apps as MCP Apps. A client that supports the MCP Apps
-extension shows the app in the conversation, and the model opens it through
-a tool, sets its inputs, and reads its outputs. Clients without the
-extension get the same tools, with text results.
+shinymcp builds MCP Apps: tools with a page that clients supporting the MCP
+Apps extension show in the conversation. Clients without the extension get
+the same tools, with text results.
 
-There are two routes:
+For an existing Shiny app there are two routes:
 
+- **Rewrite it as tools**, with `mcp_app()`: the app's UI, unchanged, with
+  plain R functions in place of the server function. Each call stands
+  alone, so the tools are useful without the page (in clients that can't
+  show apps, or to other agents) and run in any number of R processes.
+  Take this route when the model should use the computation itself, or
+  when the part it needs is a few inputs and outputs.
 - **Serve the app as it is**, with `as_mcp_app()`. The server function
-  keeps running in R, one session each time the app opens. Nothing is
-  rewritten. Take this route unless there is a reason not to.
-- **Rewrite it as tools**, with `mcp_app()`: plain R functions that take the
-  inputs and return the outputs, with no session. Take this route only when
-  the user asks for it, when the model must use the computation without the
-  app (in clients that can't show apps, or from other agents), or when each
-  call must stand alone, with nothing kept in the R process between calls.
+  keeps running in R, one session each time the app opens, and nothing is
+  rewritten. Take this route when the whole app should appear in the chat,
+  especially a large app or one that keeps state as the person works
+  (`reactiveVal()`, uploads, multi-step workflows).
+
+If it isn't clear which the user wants, ask.
+
+Shiny is gaining MCP support of its own
+(<https://github.com/rstudio/shiny/pull/4407>), and shinymcp will stop
+serving live apps once it is released. If the installed shiny has it
+(`exists("mcpConfigure", envir = asNamespace("shiny"))` is `TRUE`), serve
+the app as it is with Shiny's own support, following its documentation,
+instead of `as_mcp_app()`.
+
+## Rewriting the app as tools
+
+### 1. Plan the tools
+
+Read the server function and follow each output back, through the
+reactive expressions it uses, to the inputs. Outputs that use the same
+inputs become one tool; outputs that use different inputs become separate
+tools, so the page calls only the ones whose inputs changed. If the model
+needs only part of the app, rewrite only that part.
+
+Note what won't rewrite line by line (step 3): observers with side
+effects, state kept between interactions (`reactiveVal()`,
+`reactiveValues()`, uploaded data), and inputs created by `renderUI()`.
+
+### 2. Write the app
+
+Write it in its own directory, for example `/full/path/to/app_mcp/app.R`,
+so the Shiny app keeps working. Copy the UI as it is: tool arguments match
+inputs by id, and the names in the list a tool returns match outputs. Then
+write each tool as a function of its inputs:
+
+- `input$x` becomes the argument `x`, with the input's starting value as
+  its default;
+- a reactive expression becomes a variable, or a helper function when
+  several tools use it;
+- each render call becomes the value it rendered, in the returned list
+  under its output id.
+
+```r
+library(shiny)
+library(shinymcp)
+
+ui <- fluidPage(...)  # the app's UI, unchanged
+
+show_sales_trend <- ellmer::tool(
+  function(region = "West", months = 12) {
+    sales <- load_sales(region, months)
+    list(
+      trend = plot_trend(sales),               # was output$trend <- renderPlot(...)
+      summary = summarize_sales(sales)         # was output$summary <- renderText(...)
+    )
+  },
+  name = "show_sales_trend",
+  description = "Plot monthly sales for one region, with a one-line summary.",
+  arguments = list(
+    region = ellmer::type_enum(c("West", "East"), "Sales region.", required = FALSE),
+    months = ellmer::type_integer("Months to show, 1 to 36.", required = FALSE)
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
+)
+
+app <- mcp_app(ui, tools = list(show_sales_trend), name = "sales")
+
+if (interactive()) preview_app(app) else serve(app)
+```
+
+Return, by output:
+
+| Output | Return |
+|---|---|
+| `textOutput()`, `verbatimTextOutput()`, `mcp_text()` | a string |
+| `tableOutput()`, `mcp_table()` | a data frame |
+| `plotOutput()`, `mcp_plot()` | a ggplot object, or `mcp_result_plot(function() <base graphics code>)` |
+| `uiOutput()`, `htmlOutput()`, `mcp_html()` | an htmltools tag |
+| an htmlwidget's output | the widget (plotly, leaflet, DT) |
+
+Name and describe each tool for what it does: the model reads those, not
+the code. Use `ellmer::type_enum()` for fixed choices and `required =
+FALSE` for arguments with defaults.
+
+When an id can't match (two tools share the page, or a module prefixed
+it), mark the element with `mcp_input(tag, id = "argument")` or
+`mcp_output(tag, id = "output")`. `mcp_tool_result()` sets the text and
+structured data the model gets, when the defaults (each output's text, a
+table's rows) aren't what it needs.
+
+### 3. What doesn't rewrite line by line
+
+- **Side effects.** Code that writes files, sends messages, or changes a
+  database goes in its own tool, hidden from the model with
+  `mcp_app(tool_visibility = list(save_report = "app"))` and annotated
+  `ellmer::tool_annotations(read_only_hint = FALSE)`. To run it from a
+  button, as `observeEvent(input$save, ...)` did, give the tool an argument
+  named after the button's id: it runs when the button is pressed, and not
+  when its other inputs change.
+- **State between interactions** (`reactiveVal()`, uploaded data, a
+  multi-step workflow). A tool keeps nothing between calls. Pass the state
+  in as an argument, or leave that part of the app out.
+- **File uploads.** A tool can't take a file from the page. Take a path or
+  the data as an argument, for the model to supply.
+- **Inputs made by `renderUI()`.** Inputs in HTML that a tool returns
+  aren't connected to tools. Put every input in the UI from the start and
+  show the ones that apply with `conditionalPanel()`.
+
+### 4. Test
+
+`as_mcp_app()` loads the app from its `app.R` without serving it:
+
+```r
+app <- shinymcp::as_mcp_app("/full/path/to/app_mcp")
+app$call_tool("show_sales_trend", list(region = "East"))  # the R value
+app$run_tool("show_sales_trend", list(region = "East"))   # what a client gets
+```
+
+Because `app.R` ends with `if (interactive()) preview_app(app) else
+serve(app)`, the same file previews the app in an interactive session and
+serves it when a client starts it with `Rscript
+/full/path/to/app_mcp/app.R`.
 
 ## Serving the app as it is
 
@@ -142,140 +262,31 @@ notifications, modals, downloads, uploads, `invalidateLater()`, and packages
 built on Shiny's JavaScript (shinyWidgets, DT row selection,
 `plotly::event_data()`, shinyjs).
 
-### 7. Register the script with a client
+## Registering the app with a client
 
-Claude Desktop, in `claude_desktop_config.json`:
+Register the script that serves the app: `app_mcp/app.R` for a rewritten
+app, `mcp.R` for one served as it is. Claude Desktop, in
+`claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "sales": {
       "command": "Rscript",
-      "args": ["/full/path/to/mcp.R"]
+      "args": ["/full/path/to/app_mcp/app.R"]
     }
   }
 }
 ```
 
-Claude Code: `claude mcp add sales -- Rscript /full/path/to/mcp.R`.
+Claude Code: `claude mcp add sales -- Rscript /full/path/to/app_mcp/app.R`.
 
 On macOS, desktop clients don't see the shell's `PATH`; use the full path to
-`Rscript` (from `which Rscript`). To check the script, run
-`Rscript /full/path/to/mcp.R` in a terminal: it should wait without
-printing anything.
+`Rscript` (from `which Rscript`). To check the script, run it with
+`Rscript` in a terminal: it should wait without printing anything.
 
 For clients that connect to a URL, `serve(app, type = "http", port = 8080)`
 serves it at `http://127.0.0.1:8080/mcp`. To deploy to Posit Connect or
-Shiny Server, end `app.R` with `shinyApp(ui, server) |> mcp_endpoint(name =
-"sales")`: browsers get the Shiny app and chat clients connect to the
-content's URL followed by `/mcp`.
-
-## Rewriting the app as tools
-
-### 1. Plan the tools
-
-Read the server function and follow each output back, through the
-reactive expressions it uses, to the inputs. Outputs that use the same
-inputs become one tool; outputs that use different inputs become separate
-tools, so the page calls only the ones whose inputs changed. If the model
-needs only part of the app, rewrite only that part.
-
-Note what won't rewrite line by line (step 3): observers with side
-effects, state kept between interactions (`reactiveVal()`,
-`reactiveValues()`, uploaded data), and inputs created by `renderUI()`.
-
-### 2. Write the app
-
-Write it in its own directory, for example `/full/path/to/app_mcp/app.R`,
-so the Shiny app keeps working. Copy the UI as it is: tool arguments match
-inputs by id, and the names in the list a tool returns match outputs. Then
-write each tool as a function of its inputs:
-
-- `input$x` becomes the argument `x`, with the input's starting value as
-  its default;
-- a reactive expression becomes a variable, or a helper function when
-  several tools use it;
-- each render call becomes the value it rendered, in the returned list
-  under its output id.
-
-```r
-library(shiny)
-library(shinymcp)
-
-ui <- fluidPage(...)  # the app's UI, unchanged
-
-show_sales_trend <- ellmer::tool(
-  function(region = "West", months = 12) {
-    sales <- load_sales(region, months)
-    list(
-      trend = plot_trend(sales),               # was output$trend <- renderPlot(...)
-      summary = summarize_sales(sales)         # was output$summary <- renderText(...)
-    )
-  },
-  name = "show_sales_trend",
-  description = "Plot monthly sales for one region, with a one-line summary.",
-  arguments = list(
-    region = ellmer::type_enum(c("West", "East"), "Sales region.", required = FALSE),
-    months = ellmer::type_integer("Months to show, 1 to 36.", required = FALSE)
-  ),
-  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
-)
-
-app <- mcp_app(ui, tools = list(show_sales_trend), name = "sales")
-
-if (interactive()) preview_app(app) else serve(app)
-```
-
-Return, by output:
-
-| Output | Return |
-|---|---|
-| `textOutput()`, `verbatimTextOutput()`, `mcp_text()` | a string |
-| `tableOutput()`, `mcp_table()` | a data frame |
-| `plotOutput()`, `mcp_plot()` | a ggplot object, or `mcp_result_plot(function() <base graphics code>)` |
-| `uiOutput()`, `htmlOutput()`, `mcp_html()` | an htmltools tag |
-| an htmlwidget's output | the widget (plotly, leaflet, DT) |
-
-Name and describe each tool for what it does: the model reads those, not
-the code. Use `ellmer::type_enum()` for fixed choices and `required =
-FALSE` for arguments with defaults.
-
-When an id can't match (two tools share the page, or a module prefixed
-it), mark the element with `mcp_input(tag, id = "argument")` or
-`mcp_output(tag, id = "output")`. `mcp_tool_result()` sets the text and
-structured data the model gets, when the defaults (each output's text, a
-table's rows) aren't what it needs.
-
-### 3. What doesn't rewrite line by line
-
-- **Side effects.** Code that writes files, sends messages, or changes a
-  database goes in its own tool, hidden from the model with
-  `mcp_app(tool_visibility = list(save_report = "app"))` and annotated
-  `ellmer::tool_annotations(read_only_hint = FALSE)`. To run it from a
-  button, as `observeEvent(input$save, ...)` did, give the tool an argument
-  named after the button's id: it runs when the button is pressed, and not
-  when its other inputs change.
-- **State between interactions** (`reactiveVal()`, uploaded data, a
-  multi-step workflow). A tool keeps nothing between calls. Pass the state
-  in as an argument, or leave that part of the app out.
-- **File uploads.** A tool can't take a file from the page. Take a path or
-  the data as an argument, for the model to supply.
-- **Inputs made by `renderUI()`.** Inputs in HTML that a tool returns
-  aren't connected to tools. Put every input in the UI from the start and
-  show the ones that apply with `conditionalPanel()`.
-
-### 4. Test
-
-`as_mcp_app()` loads the app from its `app.R` without serving it:
-
-```r
-app <- shinymcp::as_mcp_app("/full/path/to/app_mcp")
-app$call_tool("show_sales_trend", list(region = "East"))  # the R value
-app$run_tool("show_sales_trend", list(region = "East"))   # what a client gets
-```
-
-Because `app.R` ends with `if (interactive()) preview_app(app) else
-serve(app)`, the same file previews the app in an interactive session and
-serves it when a client starts it with `Rscript
-/full/path/to/app_mcp/app.R`. Register it with a client as in step 7
-above.
+Shiny Server, end `app.R` with `mcp_endpoint(app)`, or, for a Shiny app
+served as it is, `shinyApp(ui, server) |> mcp_endpoint(name = "sales")`.
+Chat clients connect to the content's URL followed by `/mcp`.

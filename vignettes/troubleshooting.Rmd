@@ -59,16 +59,17 @@ Chat clients block anything the app doesn't carry itself.
 * Fonts don't load from the app itself, so icon fonts such as Font
   Awesome show nothing. Use SVG icons (the bsicons package, for example).
 
-## An input doesn't reach the server
+## An input doesn't reach the tool
 
-* In a Shiny app with anything marked by `bindMcp()`, the model can only
-  set marked inputs. The person can still change all of them.
+* A tool argument takes the value of the input with the same id.
+  `mcp_input(tag, id = "argument")` connects an input whose id differs.
 * An input from a package works if the package registers a Shiny input
   binding for it. If it uses JavaScript without one, call
   `Shiny.setInputValue("id", value)` from that JavaScript.
-* In an app built from tools, a tool argument takes the value of the input
-  with the same id. `mcp_input(tag, id = "argument")` connects an input
-  whose id differs.
+* Inputs in HTML that a tool returns aren't connected to tools. Put them
+  in the UI from the start.
+* In a live Shiny app with anything marked by `bindMcp()`, the model can
+  only set marked inputs. The person can still change all of them.
 
 ## A conditional panel doesn't show or hide
 
@@ -80,21 +81,20 @@ as `indexOf()` work; functions defined elsewhere on the page don't.
 
 ## An output doesn't update
 
-* In an app built from tools, the names of the list a tool returns must
-  match output ids.
-* `req()` that fails clears an output, as in Shiny; `validate()` shows its
-  message in it.
-* An error in a render function shows in the output, and in the text the
-  model receives.
+* The names of the list a tool returns must match output ids.
+  `mcp_output(tag, id = "name")` connects an output whose id differs.
+* In a live Shiny app, `req()` that fails clears an output, as in Shiny;
+  `validate()` shows its message in it. An error in a render function
+  shows in the output, and in the text the model receives.
 
-## The app stops with an error
+## A live Shiny app stops with an error
 
 An error in an observer ends a Shiny session, in a browser too. shinymcp
 reports it: a tool call from the model returns it as an error, and the page
 shows it above the app. The R console (or the client's log, for a stdio
 server) has the stack trace. The page's next change starts a new session.
 
-## The app forgets what the person did
+## A live Shiny app forgets what the person did
 
 Each view keeps its session in the R process that opened it, for up to an
 hour without use, and a process keeps at most 50 views (the
@@ -106,7 +106,8 @@ apps that keep such state.
 
 ## An upload is refused
 
-Uploads are limited by Shiny's `shiny.maxRequestSize` option, 5 MB unless
+Uploads work in live Shiny apps; a tool can't take a file from the page.
+They are limited by Shiny's `shiny.maxRequestSize` option, 5 MB unless
 the app sets it higher:
 
 ```{r}
@@ -117,5 +118,5 @@ options(shiny.maxRequestSize = 30 * 1024^2)
 
 The page tells the model through the client, which must support
 `ui/update-model-context`. The preview's Context tab shows what the app
-sent. In a Shiny app, `mcp_model_context()` replaces the default summary;
-`mcp_app(model_context = FALSE)` turns it off.
+sent. `mcp_app(model_context = FALSE)` turns it off; in a live Shiny app,
+`mcp_model_context()` replaces the default summary.

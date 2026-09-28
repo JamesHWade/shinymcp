@@ -3,18 +3,21 @@
 #' Serve a Shiny module as an MCP App
 #'
 #' @description
-#' Wraps a Shiny module (a UI function and a server function that take an
-#' `id`) as an [McpApp]. The module runs live, as with [as_mcp_app()]: its
-#' UI is the page and its server function runs in R for each view. The tool
-#' the model calls takes the module's inputs by their un-namespaced ids.
+#' Wraps a Shiny module (a UI function, and a server function, that take an
+#' `id`) as an [McpApp]. The module's UI is the page.
 #'
-#' Pass `handler` to skip the live runtime and compute the module's outputs
-#' with your own function instead. Its arguments are input ids and it
-#' returns a list named by output ids, as tools for [mcp_app()] do.
+#' With `handler`, a function of your own computes the module's outputs, as
+#' tools for [mcp_app()] do: its arguments are the module's input ids,
+#' without the namespace, and it returns a list named by output ids.
+#'
+#' Without it, the module's server function runs live, as with
+#' [as_mcp_app()], and the tool the model calls takes the module's inputs by
+#' their un-namespaced ids.
 #'
 #' The same module can be shown in a shinychat conversation with
 #' `shinychat::chat_tool_module()` and served here to MCP clients.
 #'
+#' @inheritSection as_mcp_app Shiny's own MCP support
 #' @param module_ui A module UI function, `function(id)`.
 #' @param module_server A module server function, `function(id, ...)`,
 #'   that calls [shiny::moduleServer()]. Not needed with `handler`.
@@ -40,19 +43,30 @@
 #'     plotOutput(ns("plot"), height = "250px")
 #'   )
 #' }
+#'
+#' # The module's UI, with a function in place of its server.
+#' app <- mcp_tool_module(
+#'   hist_ui,
+#'   name = "eruptions",
+#'   description = "Histogram of Old Faithful eruption times.",
+#'   handler = function(bins = 20) {
+#'     list(plot = mcp_result_plot(function() hist(faithful$eruptions, breaks = bins)))
+#'   }
+#' )
+#' preview_app(app)
+#'
+#' # The module's own server function, running live.
 #' hist_server <- function(id) {
 #'   moduleServer(id, function(input, output, session) {
 #'     output$plot <- renderPlot(hist(faithful$eruptions, breaks = input$bins))
 #'   })
 #' }
-#'
 #' app <- mcp_tool_module(
 #'   hist_ui,
 #'   hist_server,
 #'   name = "eruptions",
 #'   description = "Histogram of Old Faithful eruption times."
 #' )
-#' preview_app(app)
 #' }
 mcp_tool_module <- function(
   module_ui,

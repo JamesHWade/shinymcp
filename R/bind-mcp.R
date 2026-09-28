@@ -33,6 +33,7 @@
 #' htmlwidget outputs. For anything else, give `type`. Marking an element
 #' twice does nothing.
 #'
+#' @inheritSection as_mcp_app Shiny's own MCP support
 #' @param tag A tag or tag list from a Shiny input or output function.
 #' @param id The id to use, when it isn't the element's own.
 #' @param type For outputs: `"text"`, `"html"`, `"plot"`, `"table"`,

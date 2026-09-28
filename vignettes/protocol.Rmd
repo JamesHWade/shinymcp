@@ -65,7 +65,10 @@ which holds what the page draws: HTML, images, widget data, and the
 JavaScript libraries they need. Clients pass `_meta` to the page and keep
 it from the model.
 
-## Shiny apps
+## Live Shiny apps
+
+This is the part of shinymcp that Shiny's own MCP support will replace; see
+`vignette("shiny-apps")`.
 
 An app made with `as_mcp_app()` has two tools. The model's tool (named after
 the app) opens a *view*: a session of the app's server function, created
@@ -107,4 +110,6 @@ unprompted. `mcp_endpoint()` adds the same HTTP endpoint to a Shiny app.
 
 `preview_app()`, `mcp_host_ui()`, and `as_shinychat_tool()` are the client
 side: they show the page in a sandboxed iframe, answer its requests in R,
-and pass tool calls and results to it, as a chat client does.
+and pass tool calls and results to it, as a chat client does. They host
+apps made with shinymcp in the same R process, not apps from other MCP
+servers.

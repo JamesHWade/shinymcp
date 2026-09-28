@@ -14,7 +14,42 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 An MCP App doesn't need a desktop chat client. shinymcp can show one inside
 a [shinychat](https://posit-dev.github.io/shinychat/) conversation you
 build with ellmer, or anywhere in a Shiny app. The app runs the same way in
-both: in a sandboxed frame, with its tool calls answered in R.
+both: in a sandboxed frame, with its tool calls answered in R. These hosts
+show apps made with shinymcp, in the same R process as the Shiny app that
+hosts them; they don't connect to other MCP servers.
+
+The examples below host this app:
+
+```{r}
+library(shiny)
+library(shinymcp)
+
+show_mileage <- ellmer::tool(
+  function(cyl = "4") {
+    cars <- mtcars[mtcars$cyl == as.numeric(cyl), ]
+    list(
+      hist = mcp_result_plot(function() hist(cars$mpg, main = NULL, xlab = "Miles per gallon")),
+      summary = sprintf("%d cars; median %.1f mpg.", nrow(cars), median(cars$mpg))
+    )
+  },
+  name = "show_mileage",
+  description = "Show the fuel economy of the cars in mtcars with a given number of cylinders.",
+  arguments = list(
+    cyl = ellmer::type_enum(c("4", "6", "8"), "Number of cylinders.", required = FALSE)
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
+)
+
+app <- mcp_app(
+  fluidPage(
+    selectInput("cyl", "Cylinders", c(4, 6, 8)),
+    plotOutput("hist"),
+    textOutput("summary")
+  ),
+  tools = list(show_mileage),
+  name = "mileage"
+)
+```
 
 ## In a shinychat conversation
 
@@ -23,11 +58,7 @@ with the chat, and when the model calls one, shinychat shows the app, live,
 in the tool call's card:
 
 ```{r}
-library(shiny)
 library(shinychat)
-library(shinymcp)
-
-app <- as_mcp_app(shinyApp(ui, server), name = "mileage")
 
 ui <- bslib::page_fillable(chat_ui("chat"))
 
@@ -69,7 +100,7 @@ ui <- bslib::page_sidebar(
 )
 
 server <- function(input, output, session) {
-  host <- mcp_host_server("mileage", app, arguments = list(cyl = 6))
+  host <- mcp_host_server("mileage", app, arguments = list(cyl = "6"))
   output$context <- renderPrint(host$model_context())
 }
 ```

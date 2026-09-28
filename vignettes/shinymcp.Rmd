@@ -11,7 +11,8 @@ vignette: >
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
-  eval = requireNamespace("shiny", quietly = TRUE)
+  eval = requireNamespace("shiny", quietly = TRUE) &&
+    requireNamespace("ellmer", quietly = TRUE)
 )
 ```
 
@@ -20,48 +21,64 @@ conversation. The page belongs to an MCP server, which also offers tools the
 model can call. When the model calls a tool that has a page, the client
 shows the page with the result, and the person can keep working with it.
 
-This article takes a small Shiny app from your R session to Claude Desktop.
+This article builds a small app from one tool and takes it from your R
+session to Claude Desktop.
 
-## An app to start with
+## A tool and a page
 
-Any Shiny app will do. Here is a small one:
+The tool is an R function. The model will call it with arguments, so
+describe it and them for the model:
 
-```{r app, message = FALSE}
+```{r tool, message = FALSE}
 library(shiny)
 library(shinymcp)
 
-ui <- fluidPage(
-  titlePanel("Old Faithful eruptions"),
-  sliderInput("bins", "Number of bins", min = 5, max = 50, value = 20),
-  plotOutput("histogram"),
-  textOutput("caption")
+faithful_histogram <- ellmer::tool(
+  function(bins = 20) {
+    list(
+      histogram = mcp_result_plot(
+        function() hist(faithful$waiting, breaks = bins, main = NULL, xlab = "Minutes"),
+        text = "Histogram of waiting times between eruptions."
+      ),
+      caption = sprintf(
+        "%d eruptions; median wait %d minutes.",
+        nrow(faithful),
+        median(faithful$waiting)
+      )
+    )
+  },
+  name = "faithful_histogram",
+  description = "Show a histogram of waiting times between Old Faithful eruptions.",
+  arguments = list(
+    bins = ellmer::type_integer("Number of bins, 5 to 50.", required = FALSE)
+  ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
 )
-
-server <- function(input, output, session) {
-  output$histogram <- renderPlot({
-    hist(faithful$waiting, breaks = input$bins, main = NULL, xlab = "Minutes")
-  })
-  output$caption <- renderText({
-    sprintf("%d eruptions; median wait %d minutes.", nrow(faithful), median(faithful$waiting))
-  })
-}
 ```
 
-`as_mcp_app()` turns it into an MCP App without changes to the app:
+The page is Shiny UI. `mcp_app()` puts the two together:
 
-```{r as-mcp-app}
-app <- as_mcp_app(
-  shinyApp(ui, server),
+```{r app}
+app <- mcp_app(
+  ui = fluidPage(
+    titlePanel("Old Faithful eruptions"),
+    sliderInput("bins", "Number of bins", min = 5, max = 50, value = 20),
+    plotOutput("histogram"),
+    textOutput("caption")
+  ),
+  tools = list(faithful_histogram),
   name = "faithful",
-  title = "Old Faithful",
-  description = "Show a histogram of waiting times between Old Faithful eruptions."
+  title = "Old Faithful"
 )
 app
 ```
 
-The app has two tools. `faithful` is for the model; its arguments are the
-app's inputs. `faithful_view` is for the page only: it carries the person's
-changes to the app's session in R.
+Names connect the tool and the page. The argument `bins` takes its value
+from the input with id `bins`, and the list the tool returns fills the
+outputs `histogram` and `caption`. When the person moves the slider, the
+page calls the tool with the new value and draws what it returns. There is
+no server function: every call stands alone, and nothing is kept in R
+between calls.
 
 ## Preview it
 
@@ -70,7 +87,7 @@ preview_app(app)
 ```
 
 `preview_app()` starts a local MCP server for the app and opens a page that
-plays the part of a chat client. It calls `faithful` the way a model would
+plays the part of a chat client. It calls the tool the way a model would
 and shows the app in the same kind of sandboxed frame a client uses, under
 the same content security policy. Next to the app it shows:
 
@@ -86,16 +103,17 @@ theme and width menus to see the app in a dark chat or a narrow one.
 
 ## What the model sees
 
-You can call the model's tool from R to see the same result:
+`$run_tool()` returns what an MCP client receives:
 
 ```{r run-tool}
-result <- app$run_tool("faithful", list(bins = 30))
+result <- app$run_tool("faithful_histogram", list(bins = 30))
 cat(result$content[[1]]$text)
 ```
 
-The text is written for the model. The result also carries:
+The text is written for the model, and for clients that can't show the
+page. The result also carries:
 
-* `structuredContent`, the same facts as data:
+* `structuredContent`, one value per output:
 
   ```{r structured}
   str(result$structuredContent)
@@ -105,9 +123,8 @@ The text is written for the model. The result also carries:
 * in `_meta`, everything the page needs to draw the outputs. Clients pass
   this to the page and keep it from the model.
 
-The `view` field identifies this view of the app. Every time the model calls
-`faithful`, a new view opens with its own session. To change a view that is
-already open, the model passes its `view` id back with the new values.
+`$call_tool()` returns the tool's R value instead, which is what you want
+in tests.
 
 ## Put it in Claude Desktop
 
@@ -119,10 +136,14 @@ with `serve()`:
 library(shiny)
 library(shinymcp)
 
-ui <- fluidPage(...)
-server <- function(input, output, session) { ... }
+faithful_histogram <- ellmer::tool(...)
 
-app <- as_mcp_app(shinyApp(ui, server), name = "faithful", title = "Old Faithful")
+app <- mcp_app(
+  ui = fluidPage(...),
+  tools = list(faithful_histogram),
+  name = "faithful",
+  title = "Old Faithful"
+)
 serve(app)
 ```
 
@@ -152,9 +173,9 @@ the Old Faithful waiting times with 30 bins".
 
 ## Next steps
 
-* `vignette("shiny-apps")` explains what runs where when you serve a Shiny
-  app, and how to choose what the model sees and knows.
-* `vignette("tools")` shows the other way to build an app: from tools, with
-  no Shiny server function.
+* `vignette("tools")` covers inputs, outputs, and results in more depth,
+  and tools only the page may call.
 * `vignette("hosting")` puts apps in shinychat conversations and Shiny
   dashboards.
+* `vignette("rewriting-as-tools")` turns a Shiny app you already have into
+  an app like this one.

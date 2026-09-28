@@ -2269,6 +2269,7 @@ runtime_model_context <- function(inst, runtime, collected, publish = TRUE) {
 #' * `is_mcp_session()` is `TRUE` when the server function is running in
 #'   shinymcp's runtime.
 #'
+#' @inheritSection as_mcp_app Shiny's own MCP support
 #' @param text Text for the model (or the chat message).
 #' @param data A named list of structured data for the model.
 #' @param session The Shiny session. The default works inside a server
@@ -2276,7 +2277,7 @@ runtime_model_context <- function(inst, runtime, collected, publish = TRUE) {
 #' @return `mcp_model_context()` and `mcp_send_message()` invisibly return
 #'   `TRUE` when the message will be delivered, `FALSE` otherwise.
 #'   `is_mcp_session()` returns a logical.
-#' @family runtime helpers
+#' @family server function helpers
 #' @export
 #' @examples
 #' server <- function(input, output, session) {
@@ -2345,12 +2346,13 @@ is_mcp_session <- function(session = shiny::getDefaultReactiveDomain()) {
 #' first render, for the model's call that opened the app, sees an empty
 #' list.
 #'
+#' @inheritSection as_mcp_app Shiny's own MCP support
 #' @inheritParams mcp_model_context
 #' @return A named list with any of `theme` (`"light"` or `"dark"`),
 #'   `display_mode` (`"inline"`, `"fullscreen"`, or `"pip"`), `locale`,
 #'   `time_zone`, and `platform`. An empty list before the page has reported
 #'   them, and `NULL` outside shinymcp's runtime.
-#' @family runtime helpers
+#' @family server function helpers
 #' @export
 #' @examples
 #' server <- function(input, output, session) {

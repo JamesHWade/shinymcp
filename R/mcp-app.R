@@ -471,17 +471,20 @@ McpApp <- R6::R6Class(
 #' VS Code, Goose) shows inside the conversation, next to the tools that feed
 #' it. `mcp_app()` pairs a UI with those tools:
 #'
-#' * The **UI** is ordinary htmltools: Shiny or bslib inputs and layouts,
-#'   plus output placeholders such as [mcp_text()] and [mcp_plot()].
+#' * The **UI** is ordinary htmltools: Shiny or bslib inputs, outputs, and
+#'   layouts, or shinymcp's own components such as [mcp_select()] and
+#'   [mcp_plot()].
 #' * The **tools** are R functions, usually written with [ellmer::tool()].
 #'   A tool's argument names match input ids, and the names of the list it
 #'   returns match output ids. When the user changes an input, the app calls
 #'   the tools that take that input and fills in their outputs.
 #'
 #' The model can call the same tools. When it does, the host shows the app
-#' and the app fills in from the result.
+#' and the app fills in from the result. Tools keep nothing between calls,
+#' so any R process can answer any call.
 #'
-#' To serve an existing Shiny app without writing tools, use [as_mcp_app()].
+#' To make one from a Shiny app you already have, see
+#' `vignette("rewriting-as-tools")`.
 #'
 #' @param ui The app's UI: an htmltools tag or tag list, or a full page such
 #'   as [bslib::page_sidebar()].

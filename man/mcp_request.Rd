@@ -36,8 +36,8 @@ greet <- function(name = "world") {
 }
 }
 \seealso{
-Other runtime helpers:
-\code{\link[=mcp_host_context]{mcp_host_context()}},
-\code{\link[=mcp_model_context]{mcp_model_context()}}
+Other writing tools:
+\code{\link{mcp_result}},
+\code{\link[=mcp_tool_result]{mcp_tool_result()}}
 }
-\concept{runtime helpers}
+\concept{writing tools}

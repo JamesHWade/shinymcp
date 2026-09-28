@@ -1,8 +1,8 @@
 # Using MCP Apps from desktop clients
 
-`serve.R` serves two apps over stdio: the Old Faithful Shiny app, running
-live, and a dataset summary built from a tool. A client starts the script
-and talks to it on stdin and stdout.
+`serve.R` serves two apps over stdio, each built from one tool: a histogram
+of Old Faithful waiting times and a dataset summary. A client starts the
+script and talks to it on stdin and stdout.
 
 Find the script's full path:
 
@@ -40,8 +40,7 @@ claude mcp add shinymcp-examples -- Rscript /full/path/to/local-clients/serve.R
 ```
 
 Claude Code runs in a terminal and doesn't show apps, so the tools answer
-with text: the input values and a summary of each output. The same server
-works in both places.
+with text. The same server works in both places.
 
 ## VS Code
 

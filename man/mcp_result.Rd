@@ -94,7 +94,8 @@ summarise_cars <- function(cyl = 4) {
 }
 }
 \seealso{
-Other tool results:
+Other writing tools:
+\code{\link[=mcp_request]{mcp_request()}},
 \code{\link[=mcp_tool_result]{mcp_tool_result()}}
 }
-\concept{tool results}
+\concept{writing tools}

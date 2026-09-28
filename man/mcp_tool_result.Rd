@@ -36,7 +36,8 @@ to lead with record identifiers the model should quote back:
 }\if{html}{\out{</div>}}
 }
 \seealso{
-Other tool results:
+Other writing tools:
+\code{\link[=mcp_request]{mcp_request()}},
 \code{\link{mcp_result}}
 }
-\concept{tool results}
+\concept{writing tools}

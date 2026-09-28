@@ -23,6 +23,7 @@
 #' On Posit Connect the endpoint sits behind the content's access controls,
 #' and [mcp_request()] reports the signed-in user.
 #'
+#' @inheritSection as_mcp_app Shiny's own MCP support
 #' @param x An [McpApp], a list of apps, or a Shiny app.
 #' @param path Endpoint path.
 #' @param allowed_origins Browser origins, besides the app's own, allowed to
@@ -40,12 +41,13 @@
 #' @examples
 #' \dontrun{
 #' # app.R, deployed to Posit Connect with rsconnect::deployApp()
-#' library(shiny)
 #' library(shinymcp)
 #'
-#' ui <- fluidPage(...)
-#' server <- function(input, output, session) { ... }
+#' app <- mcp_app(ui, tools = list(summarize_dataset), name = "datasets")
+#' mcp_endpoint(app)
 #'
+#' # A Shiny app, served live to chat clients and as usual to browsers
+#' library(shiny)
 #' shinyApp(ui, server) |> mcp_endpoint(name = "explorer")
 #' }
 mcp_endpoint <- function(

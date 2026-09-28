@@ -11,21 +11,50 @@ library(shiny)
 library(bslib)
 library(shinymcp)
 
-cars_app <- as_mcp_app(
-  shinyApp(
-    fluidPage(
-      selectInput("cyl", "Cylinders", c(4, 6, 8)),
-      plotOutput("scatter", height = "280px"),
-      textOutput("count")
-    ),
-    function(input, output, session) {
-      cars <- reactive(mtcars[mtcars$cyl == input$cyl, ])
-      output$scatter <- renderPlot(
-        plot(cars()$wt, cars()$mpg, pch = 19, xlab = "Weight (1000 lb)", ylab = "Miles per gallon")
-      )
-      output$count <- renderText(paste(nrow(cars()), "cars"))
-    }
+show_cars <- ellmer::tool(
+  function(cyl = "4") {
+    cars <- mtcars[mtcars$cyl == as.numeric(cyl), ]
+    list(
+      scatter = mcp_result_plot(
+        function() {
+          plot(
+            cars$wt,
+            cars$mpg,
+            pch = 19,
+            xlab = "Weight (1000 lb)",
+            ylab = "Miles per gallon"
+          )
+        },
+        text = paste(
+          "Weight against fuel economy for the",
+          cyl,
+          "cylinder cars."
+        ),
+        width = 640,
+        height = 280
+      ),
+      count = paste(nrow(cars), "cars")
+    )
+  },
+  name = "show_cars",
+  description = "Plot weight against fuel economy for the cars in mtcars with a given number of cylinders.",
+  arguments = list(
+    cyl = ellmer::type_enum(
+      c("4", "6", "8"),
+      "Number of cylinders.",
+      required = FALSE
+    )
   ),
+  annotations = ellmer::tool_annotations(read_only_hint = TRUE)
+)
+
+cars_app <- mcp_app(
+  fluidPage(
+    selectInput("cyl", "Cylinders", c(4, 6, 8)),
+    plotOutput("scatter", height = "280px"),
+    textOutput("count")
+  ),
+  tools = list(show_cars),
   name = "cars",
   title = "Cars by cylinders"
 )
@@ -46,7 +75,7 @@ ui <- page_sidebar(
 )
 
 server <- function(input, output, session) {
-  host <- mcp_host_server("cars", cars_app, arguments = list(cyl = 6))
+  host <- mcp_host_server("cars", cars_app, arguments = list(cyl = "6"))
 
   output$context <- renderText({
     context <- host$model_context()

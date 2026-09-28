@@ -46,6 +46,19 @@ usually prompts a reply from the model. Hosts may ask the user first.
 shinymcp's runtime.
 }
 }
+\section{Shiny's own MCP support}{
+
+Shiny is gaining MCP support of its own
+(\url{https://github.com/rstudio/shiny/pull/4407}). Once it is released, it
+will be the way to put a live Shiny app in a chat, and shinymcp will stop
+serving live apps. \code{\link[=as_mcp_app]{as_mcp_app()}}, \code{\link[=mcp_endpoint]{mcp_endpoint()}}, and
+\code{\link[=mcp_tool_module]{mcp_tool_module()}} will take only apps built from tools, and \code{\link[=bindMcp]{bindMcp()}}
+and the helpers for server functions (\code{\link[=mcp_model_context]{mcp_model_context()}},
+\code{\link[=mcp_host_context]{mcp_host_context()}}, and the rest) will be removed. For something the
+model should be able to use on its own, rewrite that part of the app as
+tools with \code{\link[=mcp_app]{mcp_app()}}; see \code{vignette("rewriting-as-tools")}.
+}
+
 \examples{
 server <- function(input, output, session) {
   filtered <- shiny::reactive(mtcars[mtcars$cyl == input$cyl, ])
@@ -59,8 +72,7 @@ server <- function(input, output, session) {
 }
 }
 \seealso{
-Other runtime helpers:
-\code{\link[=mcp_host_context]{mcp_host_context()}},
-\code{\link[=mcp_request]{mcp_request()}}
+Other server function helpers:
+\code{\link[=mcp_host_context]{mcp_host_context()}}
 }
-\concept{runtime helpers}
+\concept{server function helpers}
