@@ -353,6 +353,11 @@ check_modern_headers <- function(message, headers) {
     # Header rules for notifications are not defined by this revision.
     return(NULL)
   }
+  # Headers mirror strings in the body. A method, or a name, that isn't one
+  # is left for the server to refuse, as an invalid request or params.
+  if (!is_string(message$method)) {
+    return(NULL)
+  }
   header_method <- headers[["mcp-method"]]
   if (is.null(header_method)) {
     return("Header mismatch: Mcp-Method header is required.")
@@ -371,7 +376,7 @@ check_modern_headers <- function(message, headers) {
     "resources/read" = message$params$uri,
     NULL
   )
-  if (!is.null(target)) {
+  if (is_string(target)) {
     header_name <- headers[["mcp-name"]]
     if (is.null(header_name)) {
       return("Header mismatch: Mcp-Name header is required.")

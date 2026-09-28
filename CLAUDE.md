@@ -254,12 +254,11 @@ config (`#shinymcp-config`) at the end of `<body>`.
 
 ## Dependencies
 
-**Core** (Imports): cli, htmltools, jsonlite, methods, R6, rlang,
-stats, tools, utils
+**Core** (Imports): cli, grDevices, htmltools, jsonlite, methods, R6,
+rlang, stats, tools, utils
 **Optional** (Suggests): base64enc, bslib, curl, DT, ellmer, ggplot2,
-grDevices, htmlwidgets, httpuv, httr2, knitr, later (>= 1.4.0),
-palmerpenguins, promises, rmarkdown, S7, shiny, shinychat, shinyWidgets,
-testthat, withr
+htmlwidgets, httpuv, httr2, knitr, later (>= 1.4.0), palmerpenguins,
+promises, rmarkdown, S7, shiny, shinychat, shinyWidgets, testthat, withr
 
 Suggests must be guarded at every call site (`rlang::check_installed()` or
 `requireNamespace()`), since R CMD check builds without them.

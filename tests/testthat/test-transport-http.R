@@ -509,6 +509,50 @@ test_that("a protocol version in _meta that isn't a string gets invalid params",
   }
 })
 
+test_that("a method or name that isn't a string is refused, not a header mismatch", {
+  handler <- new_handler()
+  meta <- '"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}'
+  cases <- list(
+    list(
+      body = sprintf(
+        '{"jsonrpc":"2.0","id":1,"method":{},"params":{%s}}',
+        meta
+      ),
+      method = "ping",
+      code = -32600L,
+      status = 400L
+    ),
+    list(
+      body = sprintf('{"jsonrpc":"2.0","id":1,"method":5,"params":{%s}}', meta),
+      method = "5",
+      code = -32600L,
+      status = 400L
+    ),
+    list(
+      body = sprintf(
+        '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":{"x":1},%s}}',
+        meta
+      ),
+      method = "tools/call",
+      code = -32602L
+    )
+  )
+  for (case in cases) {
+    headers <- list(
+      `MCP-Protocol-Version` = "2026-07-28",
+      `Mcp-Method` = case$method,
+      `Mcp-Name` = "x"
+    )
+    response <- handler(serving_request(case$body, headers = headers))
+    error <- serving_body(response)$error
+    if (!is.null(case$status)) {
+      expect_equal(response$status, case$status, info = case$body)
+    }
+    expect_equal(error$code, case$code, info = case$body)
+    expect_true(is.character(error$message) && length(error$message) == 1)
+  }
+})
+
 test_that("a request body is parsed as JSON text, never read as a file path", {
   path <- tempfile(fileext = ".json")
   on.exit(unlink(path), add = TRUE)
