@@ -194,6 +194,19 @@ mcp_tool_result <- function(..., text = NULL, data = NULL, error = FALSE) {
       class = "shinymcp_error_validation"
     )
   }
+  # Structured content is a JSON object.
+  named <- is.list(data) &&
+    !is.data.frame(data) &&
+    (length(data) == 0 || (!is.null(names(data)) && all(nzchar(names(data)))))
+  if (!is.null(data) && !named) {
+    shinymcp_abort(
+      c(
+        "{.arg data} must be a named list: a tool's structured content is a JSON object.",
+        "i" = "Name other values in one, as in {.code data = list(rows = x)}."
+      ),
+      class = "shinymcp_error_validation"
+    )
+  }
   if (!is.null(text)) {
     text <- paste(as.character(text), collapse = "\n")
   }

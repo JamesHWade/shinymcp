@@ -194,6 +194,30 @@ test_that("normalize_json_schema treats a nullable object as an object", {
   )
 })
 
+test_that("normalize_json_schema treats a schema with properties as an object", {
+  schema <- normalize_json_schema(list(
+    type = "object",
+    properties = list(
+      filter = list(properties = list(), required = "field"),
+      options = list(
+        description = "No type, and properties of its own.",
+        properties = list(inner = list(properties = list()))
+      ),
+      label = list(type = "string", enumNames = list("A", "B"))
+    )
+  ))
+  json <- as.character(to_json(schema))
+
+  expect_match(
+    json,
+    '"filter":{"properties":{},"required":["field"]}',
+    fixed = TRUE
+  )
+  expect_match(json, '"inner":{"properties":{}}', fixed = TRUE)
+  # Keys are matched exactly: enumNames isn't an enum.
+  expect_null(jsonlite::parse_json(json)$properties$label[["enum"]])
+})
+
 # ---- JSON Schema back to ellmer types ----
 
 test_that("schema_to_ellmer_types builds ellmer types from JSON Schema", {

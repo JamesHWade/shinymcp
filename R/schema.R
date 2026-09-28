@@ -141,22 +141,30 @@ normalize_json_schema <- function(schema) {
   if (!is.list(schema)) {
     return(schema)
   }
-  # A nullable object (`type = list("object", "null")`) is an object too.
-  if ("object" %in% as.character(unlist(schema$type))) {
-    if (is.null(schema$properties) || length(schema$properties) == 0) {
-      schema$properties <- json_object()
+  # Keys are matched exactly: `$` would read `enumNames` as `enum`. An
+  # object's type may be nullable (`type = list("object", "null")`), or left
+  # out of a subschema that gives `properties`.
+  object <- "object" %in%
+    as.character(unlist(schema[["type"]])) ||
+    !is.null(schema[["properties"]])
+  if (object) {
+    if (length(schema[["properties"]]) == 0) {
+      schema[["properties"]] <- json_object()
     } else {
-      schema$properties <- lapply(schema$properties, normalize_json_schema)
+      schema[["properties"]] <- lapply(
+        schema[["properties"]],
+        normalize_json_schema
+      )
     }
-    if (!is.null(schema$required)) {
-      schema$required <- I(as.character(unlist(schema$required)))
+    if (!is.null(schema[["required"]])) {
+      schema[["required"]] <- I(as.character(unlist(schema[["required"]])))
     }
   }
-  if (!is.null(schema$items)) {
-    schema$items <- normalize_json_schema(schema$items)
+  if (!is.null(schema[["items"]])) {
+    schema[["items"]] <- normalize_json_schema(schema[["items"]])
   }
-  if (!is.null(schema$enum)) {
-    schema$enum <- I(unlist(schema$enum))
+  if (!is.null(schema[["enum"]])) {
+    schema[["enum"]] <- I(unlist(schema[["enum"]]))
   }
   schema
 }

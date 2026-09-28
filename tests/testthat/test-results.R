@@ -859,6 +859,29 @@ test_that("mcp_tool_result() with no outputs is a text result", {
   )
 })
 
+test_that("mcp_tool_result() data must be a named list", {
+  not_objects <- list(
+    1,
+    "a",
+    list(1, 2),
+    list(a = 1, 2),
+    c(a = 1, b = 2),
+    data.frame(a = 1:2)
+  )
+  for (data in not_objects) {
+    expect_error(
+      mcp_tool_result(text = "x", data = data),
+      class = "shinymcp_error_validation"
+    )
+  }
+  empty <- build_tool_result(mcp_tool_result(text = "x", data = list()))
+  expect_match(
+    as.character(to_json(empty)),
+    '"structuredContent":{}',
+    fixed = TRUE
+  )
+})
+
 test_that("mcp_tool_result() outputs must be named", {
   expect_error(mcp_tool_result("a", "b"), class = "shinymcp_error_validation")
   expect_error(
