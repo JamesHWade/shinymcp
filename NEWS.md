@@ -89,6 +89,13 @@ section.
   card, so the card is saved with the app's result.
 * A host passes on only the requests an app's page may make: tools visible
   to the app, resource reads, and `ping`.
+* `mcp_host_server()`, `mcp_embed()`, `mcp_chat_host()`,
+  `as_shinychat_tool()`, and `mcp_content_result()` take `on_app_call`, a
+  function that sees each tool call an app's page makes before it's sent,
+  to let it through, refuse it with a reason the app is given, or record
+  who did what. It can return a promise, to ask someone first. A function
+  that fails, or doesn't answer `TRUE`, `FALSE`, or a reason, refuses the
+  call.
 * A chat host passes the model's arguments on as it sent them, so an array
   of one value reaches the app, or a remote server, as an array. `value_fn`
   gets them as parsed JSON, with arrays as lists.

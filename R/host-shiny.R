@@ -188,16 +188,29 @@ new_host_registry <- function() {
   registry$instances <- new.env(parent = emptyenv())
   registry$sources <- new.env(parent = emptyenv())
   registry$pages <- new.env(parent = emptyenv())
-  # Set by chat hosts, by key: what each does with its cards' messages.
+  # Set by chat hosts, by key: what each does with its cards' messages, and
+  # its check of their pages' calls.
   registry$chat_hosts <- list()
+  # By source key, every `on_app_call` the session's hosts gave for that
+  # source: the checks a restored card's calls go through.
+  registry$app_call_hooks <- new.env(parent = emptyenv())
   registry
 }
 
 #' Make a source known to the session, so restored cards can attach to it
+#'
+#' `on_app_call` is the check the host registering it gives the calls its
+#' pages make; the session keeps each one given for the source.
 #' @noRd
-register_host_source <- function(registry, source) {
+register_host_source <- function(registry, source, on_app_call = NULL) {
   source <- as_host_source(source)
   registry$sources[[source$key]] <- source
+  if (is.function(on_app_call)) {
+    registry$app_call_hooks[[source$key]] <- unique_functions(c(
+      registry$app_call_hooks[[source$key]],
+      list(on_app_call)
+    ))
+  }
   source
 }
 
@@ -353,11 +366,12 @@ register_shiny_host_instance <- function(
   debounce_ms = NULL,
   height = "auto",
   title = NULL,
-  owner = NULL
+  owner = NULL,
+  on_app_call = NULL
 ) {
   rlang::check_installed("promises", reason = "to host MCP Apps in Shiny.")
   registry <- ensure_shiny_host_registry(session)
-  source <- register_host_source(registry, source)
+  source <- register_host_source(registry, source, on_app_call)
   # Apps in this process are checked now, so a mistake is an error here. A
   # remote server's tools are listed without blocking the session, and a
   # problem shows where the app would be.
@@ -381,6 +395,7 @@ register_shiny_host_instance <- function(
   )
   # The chat host whose tool made the card.
   state$owner <- owner
+  state$on_app_call <- on_app_call
   if (!is.null(definition)) {
     state$ready <- promises::promise_resolve(settle_host_tool(
       state,
@@ -784,12 +799,14 @@ handle_host_event <- function(session, registry, event) {
     return(invisible())
   }
 
+  name <- json_field(params, "name")
+  # For a tool call, the tool's definition if the page may call it, else
+  # FALSE. Other requests are passed on.
   allowed <- if (identical(method, "tools/call")) {
     promises::then(state$source$tools_async(), function(tools) {
-      name <- json_field(params, "name")
       for (tool in tools) {
         if (identical(tool$name, name)) {
-          return(tool_wire_visible_to(tool, "app"))
+          return(if (tool_wire_visible_to(tool, "app")) tool else FALSE)
         }
       }
       FALSE
@@ -798,53 +815,230 @@ handle_host_event <- function(session, registry, event) {
     promises::promise_resolve(TRUE)
   }
 
+  forward <- function() {
+    promises::then(
+      state$source$send_async(message, host_call_context(session)),
+      onFulfilled = function(response) {
+        # Answers that arrive after the app closed (a long poll) go
+        # nowhere.
+        if (isTRUE(state$disposed)) {
+          return(invisible())
+        }
+        if (identical(method, "tools/call") && !is.null(response$result)) {
+          if (own()) {
+            mcp_host_record_call(
+              state,
+              name,
+              json_field(params, "arguments"),
+              response$result
+            )
+          } else {
+            mcp_host_track_views(state, response$result)
+          }
+        }
+        reply(response)
+      },
+      onRejected = function(e) {
+        reply(jsonrpc_error(id, RPC_INTERNAL_ERROR, conditionMessage(e)))
+      }
+    )
+  }
+
   promises::then(
     allowed,
-    onFulfilled = function(ok) {
-      if (!isTRUE(ok)) {
+    onFulfilled = function(tool) {
+      if (isFALSE(tool)) {
         reply(jsonrpc_error(
           id,
           RPC_INVALID_PARAMS,
           paste0(
             "The app can't call the tool ",
-            as.character(to_json(json_field(params, "name") %||% "")),
+            as.character(to_json(name %||% "")),
             "."
           )
         ))
         return(invisible())
       }
-      promises::then(
-        state$source$send_async(message, host_call_context(session)),
-        onFulfilled = function(response) {
-          # Answers that arrive after the app closed (a long poll) go
-          # nowhere.
-          if (isTRUE(state$disposed)) {
-            return(invisible())
-          }
-          if (identical(method, "tools/call") && !is.null(response$result)) {
-            if (own()) {
-              mcp_host_record_call(
-                state,
-                json_field(params, "name"),
-                json_field(params, "arguments"),
-                response$result
-              )
-            } else {
-              mcp_host_track_views(state, response$result)
-            }
-          }
-          reply(response)
-        },
-        onRejected = function(e) {
-          reply(jsonrpc_error(id, RPC_INTERNAL_ERROR, conditionMessage(e)))
-        }
+      # The host's own check of the tool calls the page makes.
+      hooks <- if (identical(method, "tools/call")) {
+        host_app_call_hooks(registry, state)
+      }
+      if (length(hooks) == 0) {
+        return(forward())
+      }
+      call <- host_app_call(
+        session,
+        registry,
+        state,
+        name,
+        json_field(params, "arguments"),
+        tool
       )
+      promises::then(check_app_call(hooks, call), function(verdict) {
+        if (isTRUE(verdict$ok)) {
+          return(forward())
+        }
+        # Refused: answered as the host's refusal, never sent to the
+        # source, and not recorded as the instance's call.
+        reply(jsonrpc_error(
+          id,
+          RPC_INVALID_PARAMS,
+          verdict$reason %||%
+            paste0(
+              "The host refused the call to ",
+              as.character(to_json(name)),
+              "."
+            )
+        ))
+      })
     },
     onRejected = function(e) {
       reply(jsonrpc_error(id, RPC_INTERNAL_ERROR, conditionMessage(e)))
     }
   )
   invisible()
+}
+
+# ---- Checking the page's calls ----
+
+#' Check an `on_app_call` argument
+#' @noRd
+check_app_call_hook <- function(on_app_call, call = rlang::caller_env()) {
+  if (!is.null(on_app_call) && !is.function(on_app_call)) {
+    shinymcp_abort(
+      "{.arg on_app_call} must be a function or `NULL`.",
+      class = "shinymcp_error_validation",
+      call = call
+    )
+  }
+  invisible(on_app_call)
+}
+
+#' The `on_app_call` functions a page's tool calls go through
+#'
+#' The one the host that made the instance gave, and, for a card, the one
+#' of the chat host it belongs to. A card restored from a descriptor also
+#' goes through every one the session was given for its source: the
+#' descriptor comes from the browser, which could name any owner, so it
+#' can't say which host made the card.
+#' @noRd
+host_app_call_hooks <- function(registry, state) {
+  hooks <- list(state$on_app_call)
+  if (identical(state$kind, "card")) {
+    hooks <- c(hooks, list(card_chat_host(registry, state)$on_app_call))
+  }
+  if (isTRUE(state$restored)) {
+    hooks <- c(hooks, registry$app_call_hooks[[state$source$key]])
+  }
+  unique_functions(Filter(is.function, hooks))
+}
+
+#' Functions, each kept once
+#' @noRd
+unique_functions <- function(fns) {
+  kept <- list()
+  for (fn in fns) {
+    if (!any(vapply(kept, identical, logical(1), fn))) {
+      kept <- c(kept, list(fn))
+    }
+  }
+  kept
+}
+
+#' What `on_app_call` is told about a call the page makes
+#' @noRd
+host_app_call <- function(session, registry, state, name, arguments, tool) {
+  chat <- if (identical(state$kind, "card")) card_chat_key(registry, state)
+  if (!is.null(chat) && !chat %in% names(registry$chat_hosts)) {
+    chat <- NULL
+  }
+  list(
+    name = name,
+    arguments = arguments %||% list(),
+    tool = tool,
+    instance_id = state$instance_id,
+    kind = state$kind,
+    source = state$source$key,
+    chat = chat,
+    title = state$title,
+    session = session
+  )
+}
+
+#' Ask each `on_app_call` function in turn whether the page may make a call
+#'
+#' @return A promise of `list(ok = TRUE)`, or of a refusal,
+#'   `list(ok = FALSE, reason = )` with the reason the function gave, if
+#'   any. It never rejects: an error, a rejected promise, or anything that
+#'   isn't an answer refuses the call.
+#' @noRd
+check_app_call <- function(hooks, call) {
+  if (length(hooks) == 0) {
+    return(promises::promise_resolve(list(ok = TRUE)))
+  }
+  verdict <- promises::then(ask_app_call_hook(hooks[[1]], call), function(v) {
+    if (isTRUE(v$ok)) check_app_call(hooks[-1], call) else v
+  })
+  promises::catch(verdict, function(e) list(ok = FALSE))
+}
+
+#' @noRd
+ask_app_call_hook <- function(hook, call) {
+  value <- tryCatch(
+    # A function may read reactive values; the page's calls are answered
+    # outside any reactive context.
+    if (requireNamespace("shiny", quietly = TRUE)) {
+      shiny::isolate(hook(call))
+    } else {
+      hook(call)
+    },
+    error = function(e) e
+  )
+  if (inherits(value, "error")) {
+    return(promises::promise_resolve(
+      app_call_hook_failed(call, value, "failed")
+    ))
+  }
+  if (promises::is.promising(value)) {
+    return(promises::then(
+      value,
+      onFulfilled = function(value) app_call_verdict(call, value),
+      onRejected = function(e) {
+        app_call_hook_failed(call, e, "returned a promise that was rejected")
+      }
+    ))
+  }
+  promises::promise_resolve(app_call_verdict(call, value))
+}
+
+#' Read what `on_app_call` returned: `TRUE`, `FALSE`, or a reason
+#' @noRd
+app_call_verdict <- function(call, value) {
+  if (isTRUE(value)) {
+    return(list(ok = TRUE))
+  }
+  if (isFALSE(value)) {
+    return(list(ok = FALSE))
+  }
+  if (is.character(value) && length(value) == 1 && !is.na(value)) {
+    return(list(ok = FALSE, reason = if (nzchar(value)) value))
+  }
+  cli::cli_warn(c(
+    "The app's call to {.val {call$name}} was refused.",
+    "x" = "{.arg on_app_call} must return {.code TRUE}, {.code FALSE}, or a string, not {.obj_type_friendly {value}}."
+  ))
+  list(ok = FALSE)
+}
+
+#' A function that failed refuses the call; its author is told why
+#' @noRd
+app_call_hook_failed <- function(call, error, what) {
+  problem <- conditionMessage(error)
+  cli::cli_warn(c(
+    "The app's call to {.val {call$name}} was refused.",
+    "x" = "{.arg on_app_call} {what}: {problem}"
+  ))
+  list(ok = FALSE)
 }
 
 # ---- Panes ----
@@ -869,6 +1063,45 @@ handle_host_event <- function(session, registry, event) {
 #' When the pane opens, R calls the app's tool with `arguments`, as a model
 #' would, and passes the result to the app.
 #'
+#' @section Checking the app's calls:
+#' The app's page calls its tools as the person uses it: to fill its
+#' outputs when an input changes, or when they press a button such as
+#' "Save". `on_app_call` sees each of these calls before it's sent to the
+#' app's server, to let it through, refuse it, or keep a record of who did
+#' what. It's called with a list describing the call:
+#'
+#' * `name`: the tool's name.
+#' * `arguments`: its arguments, as the page sent them (parsed JSON: arrays
+#'   are lists).
+#' * `tool`: the tool's definition from the app's server, with its
+#'   `annotations`, such as `destructiveHint`.
+#' * `instance_id`: the id of the pane or card.
+#' * `kind`: `"pane"` or `"card"`.
+#' * `source`: the name of where the app comes from: the [McpApp]'s name,
+#'   or the [mcp_client()]'s `name`.
+#' * `chat`: for a card, the [mcp_chat_host()] it belongs to: its
+#'   `chat_id`, else `"chat-1"`, `"chat-2"`, and so on, by its place among
+#'   the session's chat hosts. Otherwise `NULL`.
+#' * `title`: the app's title.
+#' * `session`: the Shiny session. On Posit Connect, `session$user` is the
+#'   signed-in user.
+#'
+#' Return `TRUE` to let the call through, and `FALSE` or a string to refuse
+#' it. The app's page is given the string as the call's error, so write it
+#' for the person using the app. To ask someone first, return a promise
+#' that resolves to one of these: the app waits for the answer, and the
+#' rest of the session carries on. Anything else, an error, or a rejected
+#' promise refuses the call, with a warning. A refused call never reaches
+#' the app's server.
+#'
+#' A page can call a tool each time an input changes, so keep the function
+#' quick, and ask a person only about the tools that need it.
+#'
+#' Only the tool calls the app's page makes are checked. Reading the app's
+#' resources isn't, and neither is the call that opens the app. The
+#' model's calls are the chat's to check, with ellmer's `on_tool_request()`
+#' callback (see [ellmer::tool_reject()]).
+#'
 #' @param id Module id.
 #' @param source Where the app comes from: an [McpApp] (or a list of
 #'   them), or an [McpClient] from [mcp_client()].
@@ -884,6 +1117,10 @@ handle_host_event <- function(session, registry, event) {
 #'   "manual"` shows a Run button and calls tools only when it's pressed or
 #'   when `execute()` is called.
 #' @param height `"auto"` to follow the app's size, or a CSS height.
+#' @param on_app_call A function that checks each tool call the app's page
+#'   makes before it's sent, to let it through, refuse it, or record it.
+#'   See "Checking the app's calls" below. `NULL`, the default, lets
+#'   through every call the app may make.
 #' @return `mcp_host_ui()` and `mcp_embed()` return UI. `mcp_host_server()`
 #'   returns a list of reactives and functions:
 #'
@@ -915,6 +1152,14 @@ handle_host_event <- function(session, registry, event) {
 #'   sales <- mcp_client("https://connect.example.com/sales/mcp")
 #'   mcp_host_server("explorer", sales, arguments = list(region = "West"))
 #' }
+#'
+#' # Record each call the app's page makes, and refuse one tool
+#' server <- function(input, output, session) {
+#'   mcp_host_server("explorer", app, on_app_call = function(call) {
+#'     message(call$session$user, " called ", call$name)
+#'     if (call$name == "delete_notes") "Notes can't be deleted here." else TRUE
+#'   })
+#' }
 #' }
 mcp_host_ui <- function(id, height = "auto") {
   rlang::check_installed("shiny", reason = "for `mcp_host_ui()`.")
@@ -930,12 +1175,14 @@ mcp_host_server <- function(
   arguments = NULL,
   trigger = NULL,
   debounce_ms = NULL,
-  height = "auto"
+  height = "auto",
+  on_app_call = NULL
 ) {
   rlang::check_installed(
     c("shiny", "promises", "later"),
     reason = "for `mcp_host_server()`."
   )
+  check_app_call_hook(on_app_call)
   source <- as_host_source(source)
   shiny::moduleServer(id, function(input, output, session) {
     root <- root_shiny_session(session)
@@ -947,7 +1194,8 @@ mcp_host_server <- function(
       arguments = arguments,
       trigger = trigger,
       debounce_ms = debounce_ms,
-      height = height
+      height = height,
+      on_app_call = on_app_call
     )
     state <- registered$state
     reactive_state <- host_reactives(state)
@@ -1020,12 +1268,14 @@ mcp_embed <- function(
   arguments = NULL,
   trigger = NULL,
   debounce_ms = NULL,
-  height = "auto"
+  height = "auto",
+  on_app_call = NULL
 ) {
   rlang::check_installed(
     c("shiny", "promises", "later"),
     reason = "for `mcp_embed()`."
   )
+  check_app_call_hook(on_app_call)
   session <- active_shiny_session()
   if (is.null(session)) {
     if (is.null(id)) {
@@ -1045,7 +1295,8 @@ mcp_embed <- function(
     arguments = arguments,
     trigger = trigger,
     debounce_ms = debounce_ms,
-    height = height
+    height = height,
+    on_app_call = on_app_call
   )
   start_host_call(session, registered$state)
   dom_id <- sanitize_dom_id(id %||% registered$state$instance_id)

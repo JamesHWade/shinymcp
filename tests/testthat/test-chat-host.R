@@ -631,3 +631,145 @@ test_that("sources need names of their own", {
   sources <- as_host_sources(chat_host_app())
   expect_equal(names(sources), "greeter")
 })
+
+# ---- Checking the cards' calls (on_app_call) ----
+
+test_that("a chat host's on_app_call checks its cards' calls, not the model's", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinychat")
+  skip_if_not_installed("S7")
+  skip_if_not_installed("later")
+  session <- shiny::MockShinySession$new()
+  seen <- list()
+  host <- mcp_chat_host(
+    composer_chat(),
+    chat_host_app(),
+    on_app_call = function(call) {
+      seen[[length(seen) + 1]] <<- call
+      if (identical(call$arguments$name, "Bo")) "Not Bo." else TRUE
+    },
+    session = session
+  )
+  registry <- session$userData$.shinymcp_hosts
+
+  # The model opens the app: its call isn't the page's.
+  card <- helper_value(host$tools[[1]](name = "Ada"))
+  expect_length(seen, 0)
+  id <- helper_markup_config(as.character(card@extra$display$html))$instanceId
+
+  fake <- helper_fake_session()
+  refused <- helper_page_call(fake, registry, id, "greet", list(name = "Bo"))
+  expect_equal(refused$error$message, "Not Bo.")
+  allowed <- helper_page_call(fake, registry, id, "greet", list(name = "Cy"))
+  expect_equal(allowed$result$structuredContent$message, "Hello Cy")
+
+  expect_length(seen, 2)
+  expect_equal(seen[[1]]$instance_id, id)
+  expect_equal(seen[[1]]$kind, "card")
+  expect_equal(seen[[1]]$chat, "chat-1")
+  expect_equal(seen[[1]]$source, "greeter")
+  expect_equal(seen[[1]]$title, "Greeter")
+  expect_equal(registry$instances[[id]]$last_tool_call$arguments$name, "Cy")
+})
+
+test_that("each chat's cards are checked by that chat's on_app_call", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinychat")
+  skip_if_not_installed("S7")
+  skip_if_not_installed("later")
+  session <- shiny::MockShinySession$new()
+  checked <- character()
+  check <- function(name, answer) {
+    function(call) {
+      checked <<- c(checked, paste(name, call$instance_id, call$chat))
+      answer
+    }
+  }
+  mcp_chat_host(
+    composer_chat(),
+    chat_host_app(),
+    on_app_call = check("first", TRUE),
+    session = session
+  )
+  mcp_chat_host(
+    composer_chat(),
+    chat_host_app(),
+    on_app_call = check("second", "Not from this chat."),
+    session = session
+  )
+  registry <- session$userData$.shinymcp_hosts
+  owned_card(registry, "a", "chat-1", "Showing apples.")
+  owned_card(registry, "b", "chat-2", "Showing bananas.")
+  fake <- helper_fake_session()
+
+  a <- helper_page_call(fake, registry, "a", "greet")
+  b <- helper_page_call(fake, registry, "b", "greet")
+  expect_equal(a$result$structuredContent$message, "Hello world")
+  expect_equal(b$error$message, "Not from this chat.")
+  expect_equal(checked, c("first a chat-1", "second b chat-2"))
+})
+
+test_that("a chat's cards built by hand or restored are checked by its on_app_call", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinychat")
+  skip_if_not_installed("S7")
+  skip_if_not_installed("later")
+  session <- shiny::MockShinySession$new()
+  checked <- character()
+  mcp_chat_host(
+    composer_chat(),
+    chat_host_app(),
+    on_app_call = function(call) {
+      checked <<- c(checked, paste(call$instance_id, call$chat))
+      TRUE
+    },
+    session = session
+  )
+  registry <- session$userData$.shinymcp_hosts
+  fake <- helper_fake_session()
+
+  # With one chat, a card built by hand is its own.
+  card_with_context(registry, "c", "Showing cherries.")
+  helper_page_call(fake, registry, "c", "greet")
+
+  # A card restored with the conversation, checked once.
+  handle_host_event(
+    fake,
+    registry,
+    list(
+      type = "attach",
+      instanceId = "d",
+      requestId = "a1",
+      descriptor = list(
+        instanceId = "d",
+        source = "greeter",
+        tool = "greet",
+        owner = "chat-1"
+      )
+    )
+  )
+  helper_drain()
+  helper_page_call(fake, registry, "d", "greet")
+
+  expect_equal(checked, c("c chat-1", "d chat-1"))
+})
+
+test_that("mcp_chat_host() needs on_app_call to be a function", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("shinychat")
+  skip_if_not_installed("S7")
+  expect_error(
+    mcp_chat_host(
+      composer_chat(),
+      chat_host_app(),
+      on_app_call = list(),
+      session = shiny::MockShinySession$new()
+    ),
+    "must be a function",
+    class = "shinymcp_error_validation"
+  )
+})

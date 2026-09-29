@@ -672,3 +672,62 @@ test_that("the model value is the structured content, else the text", {
   )
   expect_equal(result_text(NULL), "")
 })
+
+# ---- Checking the cards' calls (on_app_call) ----
+
+test_that("as_shinychat_tool() and mcp_content_result() cards check their pages' calls", {
+  skip_if_not_installed("ellmer")
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  session <- shiny::MockShinySession$new()
+  local_mocked_bindings(active_shiny_session = function() session)
+  seen <- list()
+  check <- function(call) {
+    seen[[length(seen) + 1]] <<- call
+    if (call$name == "approve") "Approve it in the approvals app." else TRUE
+  }
+
+  tool <- as_shinychat_tool(card_app(), tool = "greet", on_app_call = check)
+  card <- helper_value(tool(name = "Ada"))
+  # The model's call isn't the page's.
+  expect_length(seen, 0)
+  id <- helper_markup_config(as.character(card@extra$display$html))$instanceId
+  registry <- session$userData$.shinymcp_hosts
+  fake <- helper_fake_session()
+
+  refused <- helper_page_call(fake, registry, id, "approve")
+  expect_equal(refused$error$message, "Approve it in the approvals app.")
+  allowed <- helper_page_call(fake, registry, id, "greet", list(name = "Bo"))
+  expect_equal(allowed$result$structuredContent$message, "Hello Bo")
+  expect_equal(seen[[1]]$instance_id, id)
+  expect_equal(seen[[1]]$kind, "card")
+  expect_equal(seen[[1]]$source, "greeting-card")
+  expect_null(seen[[1]]$chat)
+
+  # A card built by hand.
+  built <- helper_value(mcp_content_result(
+    card_app(),
+    value = "shown",
+    arguments = list(name = "Cy"),
+    on_app_call = function(call) FALSE
+  ))
+  built_id <- helper_markup_config(
+    as.character(built@extra$display$html)
+  )$instanceId
+  refused <- helper_page_call(fake, registry, built_id, "greet")
+  expect_equal(
+    refused$error$message,
+    "The host refused the call to \"greet\"."
+  )
+
+  expect_error(
+    as_shinychat_tool(card_app(), on_app_call = "no"),
+    "must be a function",
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    mcp_content_result(card_app(), value = 1, on_app_call = 1),
+    "must be a function",
+    class = "shinymcp_error_validation"
+  )
+})

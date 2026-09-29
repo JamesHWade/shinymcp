@@ -14,7 +14,8 @@ as_shinychat_tool(
   icon = NULL,
   open = TRUE,
   show_request = FALSE,
-  full_screen = TRUE
+  full_screen = TRUE,
+  on_app_call = NULL
 )
 
 mcp_content_result(
@@ -27,7 +28,8 @@ mcp_content_result(
   open = TRUE,
   show_request = FALSE,
   full_screen = TRUE,
-  text = NULL
+  text = NULL,
+  on_app_call = NULL
 )
 }
 \arguments{
@@ -55,6 +57,12 @@ taking the same arguments as \code{value_fn}). Default to the tool's title.}
 \item{show_request}{Whether the card shows the call's arguments.}
 
 \item{full_screen}{Whether the card offers a full-screen view.}
+
+\item{on_app_call}{A function that checks each tool call the app's page
+makes in the card before it's sent, to let it through, refuse it, or
+record it. See "Checking the app's calls" below. If the card belongs to
+an \code{\link[=mcp_chat_host]{mcp_chat_host()}}, that chat host's function checks the call too.
+\code{NULL}, the default, lets through every call the app may make.}
 
 \item{value}{For \code{mcp_content_result()}, the value for the model.}
 
@@ -92,6 +100,48 @@ the list the client already has, and is an error without one.
 \code{mcp_content_result()} builds a card by hand, for a result you append to
 the chat yourself.
 }
+\section{Checking the app's calls}{
+
+The app's page calls its tools as the person uses it: to fill its
+outputs when an input changes, or when they press a button such as
+"Save". \code{on_app_call} sees each of these calls before it's sent to the
+app's server, to let it through, refuse it, or keep a record of who did
+what. It's called with a list describing the call:
+\itemize{
+\item \code{name}: the tool's name.
+\item \code{arguments}: its arguments, as the page sent them (parsed JSON: arrays
+are lists).
+\item \code{tool}: the tool's definition from the app's server, with its
+\code{annotations}, such as \code{destructiveHint}.
+\item \code{instance_id}: the id of the pane or card.
+\item \code{kind}: \code{"pane"} or \code{"card"}.
+\item \code{source}: the name of where the app comes from: the \link{McpApp}'s name,
+or the \code{\link[=mcp_client]{mcp_client()}}'s \code{name}.
+\item \code{chat}: for a card, the \code{\link[=mcp_chat_host]{mcp_chat_host()}} it belongs to: its
+\code{chat_id}, else \code{"chat-1"}, \code{"chat-2"}, and so on, by its place among
+the session's chat hosts. Otherwise \code{NULL}.
+\item \code{title}: the app's title.
+\item \code{session}: the Shiny session. On Posit Connect, \code{session$user} is the
+signed-in user.
+}
+
+Return \code{TRUE} to let the call through, and \code{FALSE} or a string to refuse
+it. The app's page is given the string as the call's error, so write it
+for the person using the app. To ask someone first, return a promise
+that resolves to one of these: the app waits for the answer, and the
+rest of the session carries on. Anything else, an error, or a rejected
+promise refuses the call, with a warning. A refused call never reaches
+the app's server.
+
+A page can call a tool each time an input changes, so keep the function
+quick, and ask a person only about the tools that need it.
+
+Only the tool calls the app's page makes are checked. Reading the app's
+resources isn't, and neither is the call that opens the app. The
+model's calls are the chat's to check, with ellmer's \code{on_tool_request()}
+callback (see \code{\link[ellmer:tool_reject]{ellmer::tool_reject()}}).
+}
+
 \examples{
 \dontrun{
 chat <- ellmer::chat("anthropic/claude-sonnet-5")

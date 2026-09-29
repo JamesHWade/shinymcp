@@ -863,6 +863,419 @@ test_that("dispose events shut the instance down and forget it", {
   expect_length(session$sent, 0)
 })
 
+# ---- The host's check of the page's calls (on_app_call) ----
+
+# An instance whose page's calls go through `on_app_call`, with a count of
+# the requests its source was sent.
+checked_instance <- function(on_app_call, kind = "pane", app = host_app()) {
+  state <- new_mcp_host_state(app, "i1", tool = "greet", kind = kind)
+  state$on_app_call <- on_app_call
+  sent <- new.env(parent = emptyenv())
+  sent$n <- 0
+  send <- state$source$send_async
+  state$source$send_async <- function(message, context = list()) {
+    sent$n <- sent$n + 1
+    send(message, context)
+  }
+  list(state = state, registry = helper_host_registry(i1 = state), sent = sent)
+}
+
+test_that("on_app_call sees each tool call the page makes before it's sent", {
+  skip_if_not_installed("later")
+  seen <- list()
+  pane <- checked_instance(function(call) {
+    seen[[length(seen) + 1]] <<- list(call = call, sent = pane$sent$n)
+    TRUE
+  })
+  session <- helper_fake_session(user = "ada")
+
+  response <- helper_page_call(
+    session,
+    pane$registry,
+    "i1",
+    "greet",
+    list(name = "Bo")
+  )
+  expect_length(seen, 1)
+  expect_equal(seen[[1]]$sent, 0)
+  expect_equal(pane$sent$n, 1)
+  expect_equal(
+    response$result$structuredContent,
+    list(message = "Hello Bo (for ada)")
+  )
+  expect_equal(pane$state$last_tool_call$arguments, list(name = "Bo"))
+
+  # Only tool calls: reading the app's resources isn't checked.
+  handle_host_event(
+    session,
+    pane$registry,
+    helper_host_request("i1", "resources/read", list(uri = "ui://greeter"))
+  )
+  helper_drain()
+  expect_length(seen, 1)
+  expect_equal(pane$sent$n, 2)
+})
+
+test_that("on_app_call is told the tool, its arguments, and where the call comes from", {
+  skip_if_not_installed("later")
+  app <- mcp_app(
+    htmltools::div(),
+    tools = list(list(
+      name = "save",
+      description = "Save the note.",
+      fun = function(note = "") "saved",
+      annotations = list(destructive_hint = TRUE)
+    )),
+    name = "notes",
+    title = "Notes"
+  )
+  seen <- list()
+  pane <- checked_instance(
+    function(call) {
+      seen[[length(seen) + 1]] <<- call
+      TRUE
+    },
+    app = app
+  )
+  session <- helper_fake_session(user = "ada")
+
+  helper_page_call(session, pane$registry, "i1", "save", list(note = "Hi"))
+  helper_page_call(session, pane$registry, "i1", "save")
+  call <- seen[[1]]
+  expect_named(
+    call,
+    c(
+      "name",
+      "arguments",
+      "tool",
+      "instance_id",
+      "kind",
+      "source",
+      "chat",
+      "title",
+      "session"
+    )
+  )
+  expect_equal(call$name, "save")
+  expect_equal(call$arguments, list(note = "Hi"))
+  expect_equal(call$tool$name, "save")
+  expect_equal(call$tool$description, "Save the note.")
+  expect_true(call$tool$annotations$destructiveHint)
+  expect_equal(call$instance_id, "i1")
+  expect_equal(call$kind, "pane")
+  expect_equal(call$source, "notes")
+  expect_null(call$chat)
+  expect_equal(call$title, "Notes")
+  expect_identical(call$session, session)
+  # A call without arguments has none.
+  expect_equal(seen[[2]]$arguments, list())
+})
+
+test_that("on_app_call refuses a call with FALSE or a reason", {
+  skip_if_not_installed("later")
+  pane <- checked_instance(function(call) {
+    switch(
+      call$arguments$name,
+      Ann = FALSE,
+      Bo = "Bo needs a manager's approval.",
+      TRUE
+    )
+  })
+  session <- helper_fake_session()
+
+  refused <- helper_page_call(
+    session,
+    pane$registry,
+    "i1",
+    "greet",
+    list(name = "Ann")
+  )
+  expect_equal(refused$id, 1)
+  expect_equal(refused$error$code, RPC_INVALID_PARAMS)
+  expect_equal(
+    refused$error$message,
+    "The host refused the call to \"greet\"."
+  )
+  expect_null(refused$result)
+
+  reason <- helper_page_call(
+    session,
+    pane$registry,
+    "i1",
+    "greet",
+    list(name = "Bo"),
+    id = 2
+  )
+  expect_equal(reason$id, 2)
+  expect_equal(reason$error$code, RPC_INVALID_PARAMS)
+  expect_equal(reason$error$message, "Bo needs a manager's approval.")
+
+  # Neither reached the source or was recorded as the pane's call.
+  expect_equal(pane$sent$n, 0)
+  expect_null(pane$state$last_tool_call)
+
+  allowed <- helper_page_call(
+    session,
+    pane$registry,
+    "i1",
+    "greet",
+    list(name = "Cy")
+  )
+  expect_equal(
+    allowed$result$structuredContent$message,
+    "Hello Cy (for nobody)"
+  )
+  expect_equal(pane$sent$n, 1)
+})
+
+test_that("on_app_call can answer with a promise", {
+  skip_if_not_installed("later")
+  pending <- list()
+  pane <- checked_instance(function(call) {
+    promises::promise(function(resolve, reject) {
+      pending[[call$arguments$name]] <<- resolve
+    })
+  })
+  session <- helper_fake_session()
+  ask <- function(name) {
+    handle_host_event(
+      session,
+      pane$registry,
+      helper_host_request(
+        "i1",
+        "tools/call",
+        list(name = "greet", arguments = list(name = name))
+      )
+    )
+    helper_drain()
+  }
+  answer <- function(name, value) {
+    pending[[name]](value)
+    helper_drain()
+    responses <- helper_sent(session, "shinymcp-host-response")
+    responses[[length(responses)]]$response
+  }
+
+  ask("Ann")
+  # Nothing is sent, or answered, while the host decides.
+  expect_length(session$sent, 0)
+  expect_equal(pane$sent$n, 0)
+  expect_equal(
+    answer("Ann", FALSE)$error$message,
+    "The host refused the call to \"greet\"."
+  )
+
+  ask("Bo")
+  expect_equal(answer("Bo", "Not now.")$error$message, "Not now.")
+  expect_equal(pane$sent$n, 0)
+
+  ask("Cy")
+  expect_equal(
+    answer("Cy", TRUE)$result$structuredContent$message,
+    "Hello Cy (for nobody)"
+  )
+  expect_equal(pane$sent$n, 1)
+})
+
+test_that("an on_app_call that fails or doesn't answer refuses the call", {
+  skip_if_not_installed("later")
+  answers <- list(
+    error = function() stop("no policy"),
+    rejected = function() promises::promise_reject(simpleError("no answer")),
+    null = function() NULL,
+    vector = function() c(TRUE, TRUE),
+    na = function() NA,
+    promised_null = function() promises::promise_resolve(NULL)
+  )
+  pane <- checked_instance(function(call) answers[[call$arguments$name]]())
+  session <- helper_fake_session()
+
+  for (name in names(answers)) {
+    expect_warning(
+      response <- helper_page_call(
+        session,
+        pane$registry,
+        "i1",
+        "greet",
+        list(name = name)
+      ),
+      "call to \"greet\" was refused",
+      fixed = TRUE
+    )
+    expect_equal(response$error$code, RPC_INVALID_PARAMS)
+    expect_equal(
+      response$error$message,
+      "The host refused the call to \"greet\"."
+    )
+  }
+  expect_equal(pane$sent$n, 0)
+  expect_null(pane$state$last_tool_call)
+
+  # The app's author is told what went wrong; the page isn't.
+  expect_warning(
+    helper_page_call(
+      session,
+      pane$registry,
+      "i1",
+      "greet",
+      list(name = "error")
+    ),
+    "no policy"
+  )
+  expect_warning(
+    helper_page_call(
+      session,
+      pane$registry,
+      "i1",
+      "greet",
+      list(name = "rejected")
+    ),
+    "no answer"
+  )
+  expect_warning(
+    helper_page_call(
+      session,
+      pane$registry,
+      "i1",
+      "greet",
+      list(name = "null")
+    ),
+    "or a string, not NULL"
+  )
+})
+
+test_that("without on_app_call, the page's calls go to the source as before", {
+  skip_if_not_installed("later")
+  pane <- checked_instance(NULL)
+  expect_length(host_app_call_hooks(pane$registry, pane$state), 0)
+  expect_length(ls(pane$registry$app_call_hooks), 0)
+  session <- helper_fake_session()
+
+  expect_no_warning(
+    response <- helper_page_call(
+      session,
+      pane$registry,
+      "i1",
+      "greet",
+      list(name = "Bo")
+    )
+  )
+  expect_equal(
+    response$result$structuredContent$message,
+    "Hello Bo (for nobody)"
+  )
+  expect_equal(pane$sent$n, 1)
+  expect_equal(pane$state$last_tool_call$arguments, list(name = "Bo"))
+})
+
+test_that("a tool the page may not call is refused before on_app_call sees it", {
+  skip_if_not_installed("later")
+  seen <- character()
+  pane <- checked_instance(function(call) {
+    seen <<- c(seen, call$name)
+    TRUE
+  })
+  session <- helper_fake_session()
+
+  peek <- helper_page_call(session, pane$registry, "i1", "peek")
+  expect_equal(peek$error$message, "The app can't call the tool \"peek\".")
+  helper_page_call(session, pane$registry, "i1", "nope")
+  expect_length(seen, 0)
+  expect_equal(pane$sent$n, 0)
+})
+
+test_that("on_app_call can read reactive values", {
+  skip_if_not_installed("later")
+  skip_if_not_installed("shiny")
+  allowed <- shiny::reactiveVal("greet")
+  pane <- checked_instance(function(call) call$name %in% allowed())
+  session <- helper_fake_session()
+
+  expect_no_warning(helper_page_call(session, pane$registry, "i1", "greet"))
+  expect_equal(pane$sent$n, 1)
+  allowed("approve")
+  refused <- helper_page_call(session, pane$registry, "i1", "greet")
+  expect_equal(
+    refused$error$message,
+    "The host refused the call to \"greet\"."
+  )
+})
+
+test_that("a restored card's calls go through every check the session has for its source", {
+  skip_if_not_installed("later")
+  checked <- character()
+  pane_check <- function(call) {
+    checked <<- c(checked, "pane")
+    TRUE
+  }
+  chat_check <- function(call) {
+    checked <<- c(checked, "chat")
+    if (call$arguments$name == "Bo") "Not Bo." else TRUE
+  }
+  session <- helper_fake_session()
+  registry <- new_host_registry()
+  # A pane and a chat host show the same app; each registers its check,
+  # once.
+  app <- host_app()
+  register_host_source(registry, app, pane_check)
+  register_host_source(registry, app, chat_check)
+  register_host_source(registry, app, chat_check)
+  expect_length(registry$app_call_hooks$greeter, 2)
+
+  # The card says it's a chat's that isn't here: the descriptor comes from
+  # the browser, so it can't choose the card's checks.
+  handle_host_event(
+    session,
+    registry,
+    host_attach_event(list(
+      instanceId = "c1",
+      source = "greeter",
+      tool = "greet",
+      owner = "elsewhere"
+    ))
+  )
+  helper_drain()
+  expect_true(helper_sent(session, "shinymcp-host-attached")[[1]]$ok)
+
+  refused <- helper_page_call(
+    session,
+    registry,
+    "c1",
+    "greet",
+    list(name = "Bo")
+  )
+  expect_equal(refused$error$message, "Not Bo.")
+  expect_equal(checked, c("pane", "chat"))
+  expect_null(host_instance(registry, "c1")$last_tool_call)
+
+  allowed <- helper_page_call(
+    session,
+    registry,
+    "c1",
+    "greet",
+    list(name = "Cy")
+  )
+  expect_equal(
+    allowed$result$structuredContent$message,
+    "Hello Cy (for nobody)"
+  )
+})
+
+test_that("on_app_call must be a function", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  expect_error(
+    mcp_host_server("h", host_app(), on_app_call = "allow"),
+    "must be a function",
+    class = "shinymcp_error_validation"
+  )
+  expect_error(
+    mcp_embed(host_app(), id = "h", on_app_call = TRUE),
+    "must be a function",
+    class = "shinymcp_error_validation"
+  )
+})
+
 # ---- Host state ----
 
 test_that("new host state starts empty", {
@@ -1542,6 +1955,77 @@ test_that("mcp_host_server() refuses a tool the app doesn't have", {
   )
 })
 
+test_that("mcp_host_server() checks the page's calls with on_app_call", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  capture <- helper_capture_session()
+  seen <- list()
+
+  shiny::testServer(
+    function(id) {
+      mcp_host_server(
+        id,
+        host_app(),
+        arguments = list(name = "Ada"),
+        on_app_call = function(call) {
+          seen[[length(seen) + 1]] <<- call
+          if (call$name == "approve") "Ask a manager to approve it." else TRUE
+        }
+      )
+    },
+    args = list(id = "h"),
+    session = capture$session,
+    {
+      host <- session$returned
+      root <- session$rootScope()
+      id <- host$instance_id()
+      helper_drain()
+      session$flushReact()
+      # The call that opens the pane is the Shiny app's, not the page's.
+      expect_length(seen, 0)
+      expect_equal(host$last_tool_call()$arguments, list(name = "Ada"))
+
+      request <- function(name, request_id) {
+        root$setInputs(
+          shinymcp_host_event = helper_host_request(
+            id,
+            "tools/call",
+            list(name = name),
+            request_id = request_id
+          )
+        )
+        helper_drain()
+        session$flushReact()
+      }
+      request("approve", "q1")
+      request("greet", "q2")
+
+      responses <- capture$messages("shinymcp-host-response")
+      by_request <- stats::setNames(
+        lapply(responses, `[[`, "response"),
+        vapply(responses, function(r) r$requestId, "")
+      )
+      expect_equal(
+        by_request$q1$error$message,
+        "Ask a manager to approve it."
+      )
+      expect_equal(
+        by_request$q2$result$structuredContent$message,
+        "Hello world (for nobody)"
+      )
+      expect_equal(host$last_tool_call()$name, "greet")
+      expect_equal(
+        vapply(seen, function(call) call$name, ""),
+        c("approve", "greet")
+      )
+      expect_equal(seen[[1]]$instance_id, id)
+      expect_equal(seen[[1]]$kind, "pane")
+      expect_null(seen[[1]]$chat)
+      expect_identical(seen[[1]]$session, root)
+    }
+  )
+})
+
 # ---- mcp_embed() ----
 
 test_that("mcp_embed() needs a session or an id", {
@@ -1606,6 +2090,32 @@ test_that("mcp_embed() in a session registers the app and calls its tool", {
   second <- as.character(mcp_embed(app, id = "1st"))
   expect_match(second, '<div id="shinymcp-1st"', fixed = TRUE)
   expect_length(ls(registry$instances), 2)
+})
+
+test_that("mcp_embed() checks the page's calls with on_app_call", {
+  skip_if_not_installed("shiny")
+  skip_if_not_installed("later")
+  session <- shiny::MockShinySession$new()
+  local_mocked_bindings(active_shiny_session = function() session)
+
+  ui <- mcp_embed(host_app(), on_app_call = function(call) {
+    call$name != "approve"
+  })
+  id <- helper_markup_config(as.character(ui))$instanceId
+  registry <- session$userData$.shinymcp_hosts
+  helper_drain()
+  fake <- helper_fake_session()
+
+  refused <- helper_page_call(fake, registry, id, "approve")
+  expect_equal(
+    refused$error$message,
+    "The host refused the call to \"approve\"."
+  )
+  allowed <- helper_page_call(fake, registry, id, "greet")
+  expect_equal(
+    allowed$result$structuredContent$message,
+    "Hello world (for nobody)"
+  )
 })
 
 # ---- Apps from a remote server ----

@@ -43,6 +43,14 @@
 #' its tools opened. A card built with [mcp_content_result()] belongs to
 #' the session's chat when there's only one.
 #'
+#' `on_app_call` checks the tool calls that apps' pages make in the chat's
+#' cards, such as when the person presses a button in one; the model's own
+#' calls aren't passed to it. It applies to the cards the chat's tools
+#' open, cards restored with the conversation, and cards built with
+#' [mcp_content_result()] while it's the session's only chat.
+#'
+#' @inheritSection mcp_host_ui Checking the app's calls
+#'
 #' @param chat The value of [shinychat::chat_server()], or an ellmer chat.
 #'   With an ellmer chat, pass `chat_id` too, so apps' messages can reach
 #'   the input box.
@@ -57,6 +65,10 @@
 #'   puts them in the input box, `"submit"` sends them at once (for apps you
 #'   trust), `"ignore"` drops them.
 #' @param chat_id With an ellmer chat, the id of the [shinychat::chat_ui()].
+#' @param on_app_call A function that checks each tool call the pages of
+#'   the chat's cards make before it's sent, to let it through, refuse it,
+#'   or record it. See "Checking the app's calls" below. `NULL`, the
+#'   default, lets through every call the apps may make.
 #' @param ... Passed to [as_shinychat_tool()]: `value_fn`, `summary`,
 #'   `title`, `icon`, `open`, `show_request`, and `full_screen`.
 #' @param session The Shiny session.
@@ -86,6 +98,7 @@ mcp_chat_host <- function(
   context = TRUE,
   messages = c("compose", "submit", "ignore"),
   chat_id = NULL,
+  on_app_call = NULL,
   ...,
   session = shiny::getDefaultReactiveDomain()
 ) {
@@ -94,6 +107,7 @@ mcp_chat_host <- function(
     reason = "to host MCP Apps in a shinychat conversation."
   )
   messages <- rlang::arg_match(messages)
+  check_app_call_hook(on_app_call)
   session <- root_shiny_session(session)
   if (is.null(session)) {
     shinymcp_abort(
@@ -107,7 +121,7 @@ mcp_chat_host <- function(
   sources <- as_host_sources(sources)
   registry <- ensure_shiny_host_registry(session)
   for (source in sources) {
-    register_host_source(registry, source)
+    register_host_source(registry, source, on_app_call)
   }
   # Several chats can share a session; each card is its chat's. The key is
   # saved with the card, so it has to be the same in every session: the
@@ -147,7 +161,12 @@ mcp_chat_host <- function(
       resolved$compose(text, submit = identical(messages, "submit"))
     }
   }
-  registry$chat_hosts[[key]] <- list(on_message = on_message)
+  # The cards that belong to the chat (see card_chat_key()) are checked by
+  # its on_app_call.
+  registry$chat_hosts[[key]] <- list(
+    on_message = on_message,
+    on_app_call = on_app_call
+  )
 
   invisible(list(
     context = function() host_context_text(registry, key),
