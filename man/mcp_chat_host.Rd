@@ -10,8 +10,8 @@ mcp_chat_host(
   context = TRUE,
   messages = c("compose", "submit", "ignore"),
   chat_id = NULL,
-  on_app_call = NULL,
   ...,
+  on_app_call = NULL,
   session = shiny::getDefaultReactiveDomain()
 )
 }
@@ -35,13 +35,13 @@ trust), \code{"ignore"} drops them.}
 
 \item{chat_id}{With an ellmer chat, the id of the \code{\link[shinychat:chat_ui]{shinychat::chat_ui()}}.}
 
+\item{...}{Passed to \code{\link[=as_shinychat_tool]{as_shinychat_tool()}}: \code{value_fn}, \code{summary},
+\code{title}, \code{icon}, \code{open}, \code{show_request}, and \code{full_screen}.}
+
 \item{on_app_call}{A function that checks each tool call the pages of
 the chat's cards make before it's sent, to let it through, refuse it,
 or record it. See "Checking the app's calls" below. \code{NULL}, the
 default, lets through every call the apps may make.}
-
-\item{...}{Passed to \code{\link[=as_shinychat_tool]{as_shinychat_tool()}}: \code{value_fn}, \code{summary},
-\code{title}, \code{icon}, \code{open}, \code{show_request}, and \code{full_screen}.}
 
 \item{session}{The Shiny session.}
 }

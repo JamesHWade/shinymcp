@@ -98,8 +98,8 @@ mcp_chat_host <- function(
   context = TRUE,
   messages = c("compose", "submit", "ignore"),
   chat_id = NULL,
-  on_app_call = NULL,
   ...,
+  on_app_call = NULL,
   session = shiny::getDefaultReactiveDomain()
 ) {
   rlang::check_installed(

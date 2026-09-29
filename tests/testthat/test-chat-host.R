@@ -773,3 +773,10 @@ test_that("mcp_chat_host() needs on_app_call to be a function", {
     class = "shinymcp_error_validation"
   )
 })
+
+test_that("mcp_chat_host() takes on_app_call by name only", {
+  # A sixth unnamed argument still reaches `...` (as_shinychat_tool()'s
+  # value_fn), as it did before on_app_call existed.
+  args <- names(formals(mcp_chat_host))
+  expect_gt(match("on_app_call", args), match("...", args))
+})
