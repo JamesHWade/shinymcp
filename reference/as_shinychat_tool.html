@@ -105,7 +105,8 @@ the chat yourself.</p>
 <span>  icon <span class="op">=</span> <span class="cn">NULL</span>,</span>
 <span>  open <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  show_request <span class="op">=</span> <span class="cn">FALSE</span>,</span>
-<span>  full_screen <span class="op">=</span> <span class="cn">TRUE</span></span>
+<span>  full_screen <span class="op">=</span> <span class="cn">TRUE</span>,</span>
+<span>  on_app_call <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span>
 <span></span>
 <span><span class="fu">mcp_content_result</span><span class="op">(</span></span>
@@ -118,7 +119,8 @@ the chat yourself.</p>
 <span>  open <span class="op">=</span> <span class="cn">TRUE</span>,</span>
 <span>  show_request <span class="op">=</span> <span class="cn">FALSE</span>,</span>
 <span>  full_screen <span class="op">=</span> <span class="cn">TRUE</span>,</span>
-<span>  text <span class="op">=</span> <span class="cn">NULL</span></span>
+<span>  text <span class="op">=</span> <span class="cn">NULL</span>,</span>
+<span>  on_app_call <span class="op">=</span> <span class="cn">NULL</span></span>
 <span><span class="op">)</span></span></code></pre></div>
     </div>
 
@@ -167,6 +169,14 @@ taking the same arguments as <code>value_fn</code>). Default to the tool's title
 <dd><p>Whether the card offers a full-screen view.</p></dd>
 
 
+<dt id="arg-on-app-call">on_app_call<a class="anchor" aria-label="anchor" href="#arg-on-app-call"></a></dt>
+<dd><p>A function that checks each tool call the app's page
+makes in the card before it's sent, to let it through, refuse it, or
+record it. See "Checking the app's calls" below. If the card belongs to
+an <code><a href="mcp_chat_host.html">mcp_chat_host()</a></code>, that chat host's function checks the call too.
+<code>NULL</code>, the default, lets through every call the app may make.</p></dd>
+
+
 <dt id="arg-value">value<a class="anchor" aria-label="anchor" href="#arg-value"></a></dt>
 <dd><p>For <code>mcp_content_result()</code>, the value for the model.</p></dd>
 
@@ -190,6 +200,51 @@ a Shiny session it calls the tool first and returns a promise of the
 card, which <code><a href="https://posit-dev.github.io/shinychat/r/reference/chat_append.html" class="external-link">shinychat::chat_append()</a></code> waits for; the card is saved
 with the app's opening result, so a restored conversation shows the app
 without calling the tool again.</p>
+    </div>
+    <div class="section level2">
+    <h2 id="checking-the-app-s-calls">Checking the app's calls<a class="anchor" aria-label="anchor" href="#checking-the-app-s-calls"></a></h2>
+
+
+<p>The app's page calls its tools as the person uses it: to fill its
+outputs when an input changes, or when they press a button such as
+"Save". <code>on_app_call</code> sees each of these calls before it's sent to the
+app's server, to let it through, refuse it, or keep a record of who did
+what. It's called with a list describing the call:</p><ul><li><p><code>name</code>: the tool's name.</p></li>
+<li><p><code>arguments</code>: its arguments, as the page sent them (parsed JSON: arrays
+are lists).</p></li>
+<li><p><code>tool</code>: the tool's definition from the app's server, with its
+<code>annotations</code>, such as <code>destructiveHint</code>.</p></li>
+<li><p><code>instance_id</code>: the id of the pane or card.</p></li>
+<li><p><code>kind</code>: <code>"pane"</code> or <code>"card"</code>.</p></li>
+<li><p><code>source</code>: the name of where the app comes from: the <a href="McpApp.html">McpApp</a>'s name,
+or the <code><a href="mcp_client.html">mcp_client()</a></code>'s <code>name</code>.</p></li>
+<li><p><code>chat</code>: for a card, the <code><a href="mcp_chat_host.html">mcp_chat_host()</a></code> it belongs to: its
+<code>chat_id</code>, else <code>"chat-1"</code>, <code>"chat-2"</code>, and so on, by its place among
+the session's chat hosts. Otherwise <code>NULL</code>.</p></li>
+<li><p><code>title</code>: the app's title.</p></li>
+<li><p><code>session</code>: the Shiny session. On Posit Connect, <code>session$user</code> is the
+signed-in user.</p></li>
+</ul><p>Return <code>TRUE</code> to let the call through, and <code>FALSE</code> or a string to refuse
+it. The app's page is given the string as the call's error, so write it
+for the person using the app. To ask someone first, return a promise
+that resolves to one of these: the app waits for the answer, and the
+rest of the session carries on. Anything else, an error, or a rejected
+promise refuses the call, with a warning. A refused call never reaches
+the app's server.</p>
+<p>A page can call a tool each time an input changes, so keep the function
+quick, and ask a person only about the tools that need it.</p>
+<p>Only the tool calls the app's page makes are checked. Reading the app's
+resources isn't, and neither is the call that opens the app. The
+model's calls are the chat's to check, with ellmer's <code>on_tool_request()</code>
+callback (see <code><a href="https://ellmer.tidyverse.org/reference/tool_reject.html" class="external-link">ellmer::tool_reject()</a></code>).</p>
+<p>A function can't be saved with a conversation. A card restored in a new
+session goes through the checks that session gives for the card's app,
+through <code><a href="mcp_chat_host.html">mcp_chat_host()</a></code> or <code>as_shinychat_tool()</code>. If the card had a
+check of its own and the new session gives none, its page's calls are
+refused. That mark is saved in the browser with the conversation, so it
+guards against a missing check, not against the person who edits their
+saved conversation: to check every call, give the check to
+<code><a href="mcp_chat_host.html">mcp_chat_host()</a></code> or <code>as_shinychat_tool()</code>.</p>
     </div>
     <div class="section level2">
     <h2 id="see-also">See also<a class="anchor" aria-label="anchor" href="#see-also"></a></h2>

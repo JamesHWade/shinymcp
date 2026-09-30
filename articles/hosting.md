@@ -235,14 +235,59 @@ sales$tools()
 sales$call_tool("open_sales_app", list(region = "West"))
 ```
 
+## Checking the calls apps make
+
+An app’s page calls its tools as the person uses it: to fill its
+outputs, or when they press a button such as “Save” or “Cancel order”.
+[`mcp_chat_host()`](https://jameshwade.github.io/shinymcp/reference/mcp_chat_host.md),
+[`mcp_host_server()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_ui.md),
+and the other hosts take `on_app_call`, a function that sees each of
+these calls before it’s sent. Use it to keep a record of who did what,
+or to refuse what shouldn’t be done from here:
+
+``` r
+
+app_call_policy <- function(call) {
+  message(
+    format(Sys.time()), " ", call$session$user,
+    " called ", call$name, " in ", call$title
+  )
+  if (call$name == "cancel_order") {
+    return("Cancel orders in the orders app.")
+  }
+  TRUE
+}
+
+server <- function(input, output, session) {
+  sales <- mcp_client("https://connect.example.com/sales/mcp")
+  chat <- chat_server("chat", ellmer::chat("anthropic/claude-sonnet-5"))
+  mcp_chat_host(chat, list(cars_app, sales), on_app_call = app_call_policy)
+}
+```
+
+The function gets a list describing the call: the tool’s `name` and its
+`arguments`, its definition (`tool`, with annotations such as
+`destructiveHint`), the app’s `title`, and the Shiny `session`, whose
+`user` is the signed-in user on Posit Connect. `TRUE` lets the call
+through. `FALSE` or a string refuses it, and the app is given the string
+as the reason. To ask someone first, return a promise that resolves to
+one of these once they answer; the session carries on meanwhile. An
+error, or any other answer, refuses the call.
+
+A page can call a tool each time an input changes, so ask a person only
+about the tools that need it. `on_app_call` sees only what the app’s
+page does: the model’s own calls are checked with ellmer’s
+`on_tool_request()` callback.
+
 ## What an app can do
 
 An app’s page runs in a sandboxed frame. It can’t reach the Shiny page,
 its cookies, or the Shiny session, and it can load only what the app
 declared (its `csp`); with nothing declared, it has no network access.
-It can call its own server’s tools that are visible to apps, read its
-resources, ask to open links (web and email only), download files, and
-ask for full screen. Everything else it asks for is refused.
+It can call its own server’s tools that are visible to apps (and that
+`on_app_call` lets through), read its resources, ask to open links (web
+and email only), download files, and ask for full screen. Everything
+else it asks for is refused.
 
 The model can call only the tools of the sources you give it.
 

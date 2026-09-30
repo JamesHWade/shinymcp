@@ -116,6 +116,17 @@ MCP support” section.
   saved with the app’s result.
 - A host passes on only the requests an app’s page may make: tools
   visible to the app, resource reads, and `ping`.
+- [`mcp_host_server()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_ui.md),
+  [`mcp_embed()`](https://jameshwade.github.io/shinymcp/reference/mcp_host_ui.md),
+  [`mcp_chat_host()`](https://jameshwade.github.io/shinymcp/reference/mcp_chat_host.md),
+  [`as_shinychat_tool()`](https://jameshwade.github.io/shinymcp/reference/as_shinychat_tool.md),
+  and
+  [`mcp_content_result()`](https://jameshwade.github.io/shinymcp/reference/as_shinychat_tool.md)
+  take `on_app_call`, a function that sees each tool call an app’s page
+  makes before it’s sent, to let it through, refuse it with a reason the
+  app is given, or record who did what. It can return a promise, to ask
+  someone first. A function that fails, or doesn’t answer `TRUE`,
+  `FALSE`, or a reason, refuses the call.
 - A chat host passes the model’s arguments on as it sent them, so an
   array of one value reaches the app, or a remote server, as an array.
   `value_fn` gets them as parsed JSON, with arrays as lists.

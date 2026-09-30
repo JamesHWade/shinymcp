@@ -280,15 +280,56 @@ from R:</p>
 <span><span class="va">sales</span><span class="op">$</span><span class="fu">call_tool</span><span class="op">(</span><span class="st">"open_sales_app"</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span>region <span class="op">=</span> <span class="st">"West"</span><span class="op">)</span><span class="op">)</span></span></code></pre></div>
 </div>
 <div class="section level2">
+<h2 id="checking-the-calls-apps-make">Checking the calls apps make<a class="anchor" aria-label="anchor" href="#checking-the-calls-apps-make"></a>
+</h2>
+<p>An app’s page calls its tools as the person uses it: to fill its
+outputs, or when they press a button such as “Save” or “Cancel order”.
+<code><a href="../reference/mcp_chat_host.html">mcp_chat_host()</a></code>, <code><a href="../reference/mcp_host_ui.html">mcp_host_server()</a></code>, and the
+other hosts take <code>on_app_call</code>, a function that sees each of
+these calls before it’s sent. Use it to keep a record of who did what,
+or to refuse what shouldn’t be done from here:</p>
+<div class="sourceCode" id="cb10"><pre class="downlit sourceCode r">
+<code class="sourceCode R"><span><span class="va">app_call_policy</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">call</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="fu"><a href="https://rdrr.io/r/base/message.html" class="external-link">message</a></span><span class="op">(</span></span>
+<span>    <span class="fu"><a href="https://rdrr.io/r/base/format.html" class="external-link">format</a></span><span class="op">(</span><span class="fu"><a href="https://rdrr.io/r/base/Sys.time.html" class="external-link">Sys.time</a></span><span class="op">(</span><span class="op">)</span><span class="op">)</span>, <span class="st">" "</span>, <span class="va">call</span><span class="op">$</span><span class="va">session</span><span class="op">$</span><span class="va">user</span>,</span>
+<span>    <span class="st">" called "</span>, <span class="va">call</span><span class="op">$</span><span class="va">name</span>, <span class="st">" in "</span>, <span class="va">call</span><span class="op">$</span><span class="va">title</span></span>
+<span>  <span class="op">)</span></span>
+<span>  <span class="kw">if</span> <span class="op">(</span><span class="va">call</span><span class="op">$</span><span class="va">name</span> <span class="op">==</span> <span class="st">"cancel_order"</span><span class="op">)</span> <span class="op">{</span></span>
+<span>    <span class="kw"><a href="https://rdrr.io/r/base/function.html" class="external-link">return</a></span><span class="op">(</span><span class="st">"Cancel orders in the orders app."</span><span class="op">)</span></span>
+<span>  <span class="op">}</span></span>
+<span>  <span class="cn">TRUE</span></span>
+<span><span class="op">}</span></span>
+<span></span>
+<span><span class="va">server</span> <span class="op">&lt;-</span> <span class="kw">function</span><span class="op">(</span><span class="va">input</span>, <span class="va">output</span>, <span class="va">session</span><span class="op">)</span> <span class="op">{</span></span>
+<span>  <span class="va">sales</span> <span class="op">&lt;-</span> <span class="fu"><a href="../reference/mcp_client.html">mcp_client</a></span><span class="op">(</span><span class="st">"https://connect.example.com/sales/mcp"</span><span class="op">)</span></span>
+<span>  <span class="va">chat</span> <span class="op">&lt;-</span> <span class="fu"><a href="https://posit-dev.github.io/shinychat/r/reference/chat_app.html" class="external-link">chat_server</a></span><span class="op">(</span><span class="st">"chat"</span>, <span class="fu">ellmer</span><span class="fu">::</span><span class="fu"><a href="https://ellmer.tidyverse.org/reference/chat-any.html" class="external-link">chat</a></span><span class="op">(</span><span class="st">"anthropic/claude-sonnet-5"</span><span class="op">)</span><span class="op">)</span></span>
+<span>  <span class="fu"><a href="../reference/mcp_chat_host.html">mcp_chat_host</a></span><span class="op">(</span><span class="va">chat</span>, <span class="fu"><a href="https://rdrr.io/r/base/list.html" class="external-link">list</a></span><span class="op">(</span><span class="va">cars_app</span>, <span class="va">sales</span><span class="op">)</span>, on_app_call <span class="op">=</span> <span class="va">app_call_policy</span><span class="op">)</span></span>
+<span><span class="op">}</span></span></code></pre></div>
+<p>The function gets a list describing the call: the tool’s
+<code>name</code> and its <code>arguments</code>, its definition
+(<code>tool</code>, with annotations such as
+<code>destructiveHint</code>), the app’s <code>title</code>, and the
+Shiny <code>session</code>, whose <code>user</code> is the signed-in
+user on Posit Connect. <code>TRUE</code> lets the call through.
+<code>FALSE</code> or a string refuses it, and the app is given the
+string as the reason. To ask someone first, return a promise that
+resolves to one of these once they answer; the session carries on
+meanwhile. An error, or any other answer, refuses the call.</p>
+<p>A page can call a tool each time an input changes, so ask a person
+only about the tools that need it. <code>on_app_call</code> sees only
+what the app’s page does: the model’s own calls are checked with
+ellmer’s <code>on_tool_request()</code> callback.</p>
+</div>
+<div class="section level2">
 <h2 id="what-an-app-can-do">What an app can do<a class="anchor" aria-label="anchor" href="#what-an-app-can-do"></a>
 </h2>
 <p>An app’s page runs in a sandboxed frame. It can’t reach the Shiny
 page, its cookies, or the Shiny session, and it can load only what the
 app declared (its <code>csp</code>); with nothing declared, it has no
 network access. It can call its own server’s tools that are visible to
-apps, read its resources, ask to open links (web and email only),
-download files, and ask for full screen. Everything else it asks for is
-refused.</p>
+apps (and that <code>on_app_call</code> lets through), read its
+resources, ask to open links (web and email only), download files, and
+ask for full screen. Everything else it asks for is refused.</p>
 <p>The model can call only the tools of the sources you give it.</p>
 <p>The <a href="https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/shinychat" class="external-link"><code>shinychat</code></a>,
 <a href="https://github.com/JamesHWade/shinymcp/tree/main/inst/examples/shiny-host" class="external-link"><code>shiny-host</code></a>,

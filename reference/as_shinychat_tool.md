@@ -33,7 +33,8 @@ as_shinychat_tool(
   icon = NULL,
   open = TRUE,
   show_request = FALSE,
-  full_screen = TRUE
+  full_screen = TRUE,
+  on_app_call = NULL
 )
 
 mcp_content_result(
@@ -46,7 +47,8 @@ mcp_content_result(
   open = TRUE,
   show_request = FALSE,
   full_screen = TRUE,
-  text = NULL
+  text = NULL,
+  on_app_call = NULL
 )
 ```
 
@@ -97,6 +99,15 @@ mcp_content_result(
 
   Whether the card offers a full-screen view.
 
+- on_app_call:
+
+  A function that checks each tool call the app's page makes in the card
+  before it's sent, to let it through, refuse it, or record it. See
+  "Checking the app's calls" below. If the card belongs to an
+  [`mcp_chat_host()`](https://jameshwade.github.io/shinymcp/reference/mcp_chat_host.md),
+  that chat host's function checks the call too. `NULL`, the default,
+  lets through every call the app may make.
+
 - value:
 
   For `mcp_content_result()`, the value for the model.
@@ -122,6 +133,71 @@ card, which
 [`shinychat::chat_append()`](https://posit-dev.github.io/shinychat/r/reference/chat_append.html)
 waits for; the card is saved with the app's opening result, so a
 restored conversation shows the app without calling the tool again.
+
+## Checking the app's calls
+
+The app's page calls its tools as the person uses it: to fill its
+outputs when an input changes, or when they press a button such as
+"Save". `on_app_call` sees each of these calls before it's sent to the
+app's server, to let it through, refuse it, or keep a record of who did
+what. It's called with a list describing the call:
+
+- `name`: the tool's name.
+
+- `arguments`: its arguments, as the page sent them (parsed JSON: arrays
+  are lists).
+
+- `tool`: the tool's definition from the app's server, with its
+  `annotations`, such as `destructiveHint`.
+
+- `instance_id`: the id of the pane or card.
+
+- `kind`: `"pane"` or `"card"`.
+
+- `source`: the name of where the app comes from: the
+  [McpApp](https://jameshwade.github.io/shinymcp/reference/McpApp.md)'s
+  name, or the
+  [`mcp_client()`](https://jameshwade.github.io/shinymcp/reference/mcp_client.md)'s
+  `name`.
+
+- `chat`: for a card, the
+  [`mcp_chat_host()`](https://jameshwade.github.io/shinymcp/reference/mcp_chat_host.md)
+  it belongs to: its `chat_id`, else `"chat-1"`, `"chat-2"`, and so on,
+  by its place among the session's chat hosts. Otherwise `NULL`.
+
+- `title`: the app's title.
+
+- `session`: the Shiny session. On Posit Connect, `session$user` is the
+  signed-in user.
+
+Return `TRUE` to let the call through, and `FALSE` or a string to refuse
+it. The app's page is given the string as the call's error, so write it
+for the person using the app. To ask someone first, return a promise
+that resolves to one of these: the app waits for the answer, and the
+rest of the session carries on. Anything else, an error, or a rejected
+promise refuses the call, with a warning. A refused call never reaches
+the app's server.
+
+A page can call a tool each time an input changes, so keep the function
+quick, and ask a person only about the tools that need it.
+
+Only the tool calls the app's page makes are checked. Reading the app's
+resources isn't, and neither is the call that opens the app. The model's
+calls are the chat's to check, with ellmer's `on_tool_request()`
+callback (see
+[`ellmer::tool_reject()`](https://ellmer.tidyverse.org/reference/tool_reject.html)).
+
+A function can't be saved with a conversation. A card restored in a new
+session goes through the checks that session gives for the card's app,
+through
+[`mcp_chat_host()`](https://jameshwade.github.io/shinymcp/reference/mcp_chat_host.md)
+or `as_shinychat_tool()`. If the card had a check of its own and the new
+session gives none, its page's calls are refused. That mark is saved in
+the browser with the conversation, so it guards against a missing check,
+not against the person who edits their saved conversation: to check
+every call, give the check to
+[`mcp_chat_host()`](https://jameshwade.github.io/shinymcp/reference/mcp_chat_host.md)
+or `as_shinychat_tool()`.
 
 ## See also
 
