@@ -1077,6 +1077,31 @@ test_that("on_app_call can answer with a promise", {
   expect_equal(pane$sent$n, 1)
 })
 
+test_that("a call approved after its app closed isn't sent", {
+  skip_if_not_installed("later")
+  approve <- NULL
+  pane <- checked_instance(function(call) {
+    promises::promise(function(resolve, reject) approve <<- resolve)
+  })
+  session <- helper_fake_session()
+  handle_host_event(
+    session,
+    pane$registry,
+    helper_host_request(
+      "i1",
+      "tools/call",
+      list(name = "greet", arguments = list(name = "Ann"))
+    )
+  )
+  helper_drain()
+  mcp_host_dispose(pane$registry$instances[["i1"]])
+  approve(TRUE)
+  helper_drain()
+
+  expect_equal(pane$sent$n, 0)
+  expect_length(helper_sent(session, "shinymcp-host-response"), 0)
+})
+
 test_that("an on_app_call that fails or doesn't answer refuses the call", {
   skip_if_not_installed("later")
   answers <- list(
