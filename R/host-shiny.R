@@ -396,6 +396,9 @@ register_shiny_host_instance <- function(
   # The chat host whose tool made the card.
   state$owner <- owner
   state$on_app_call <- on_app_call
+  # Its page's calls are checked by its own on_app_call or, for a card, its
+  # chat host's; a restored card must find a check again.
+  state$checked <- length(host_app_call_hooks(registry, state)) > 0
   if (!is.null(definition)) {
     state$ready <- promises::promise_resolve(settle_host_tool(
       state,
@@ -452,10 +455,10 @@ host_descriptor <- function(state, height = "auto", trigger = NULL) {
     result = state$result,
     title = state$title,
     owner = state$owner,
-    # The card's own on_app_call can't be saved; this marks that its page's
-    # calls were checked, so a restored card refuses them until the new
-    # session gives a check for its source.
-    checked = if (is.function(state$on_app_call)) TRUE,
+    # The checks on a card's calls can't be saved; this marks that its
+    # page's calls were checked, so a restored card refuses them until the
+    # new session gives a check for its source.
+    checked = if (isTRUE(state$checked) || is.function(state$on_app_call)) TRUE,
     height = height,
     trigger = trigger,
     version = as.character(utils::packageVersion("shinymcp"))

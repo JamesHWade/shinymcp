@@ -543,6 +543,30 @@ test_that("with one chat, cards built by hand are its own", {
   expect_equal(chat$composed, list("About cherries"))
 })
 
+test_that("a card checked by its chat host's on_app_call is saved as checked", {
+  skip_if_not_installed("shiny")
+  session <- shiny::MockShinySession$new()
+  registry <- ensure_shiny_host_registry(session)
+  registry$chat_hosts[["chat-1"]] <- list(on_app_call = function(call) TRUE)
+  checked <- register_shiny_host_instance(
+    session,
+    chat_host_app(),
+    instance_id = "c1",
+    kind = "card",
+    owner = "chat-1"
+  )
+  expect_true(checked$config$checked)
+
+  unchecked <- register_shiny_host_instance(
+    session,
+    chat_host_app(),
+    instance_id = "c2",
+    kind = "card",
+    owner = "chat-2"
+  )
+  expect_null(unchecked$config$checked)
+})
+
 test_that("a chat host's key is saved with its cards and read back on restore", {
   skip_if_not_installed("shiny")
   session <- shiny::MockShinySession$new()
