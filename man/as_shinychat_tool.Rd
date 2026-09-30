@@ -145,7 +145,10 @@ A function can't be saved with a conversation. A card restored in a new
 session goes through the checks that session gives for the card's app,
 through \code{\link[=mcp_chat_host]{mcp_chat_host()}} or \code{\link[=as_shinychat_tool]{as_shinychat_tool()}}. If the card had a
 check of its own and the new session gives none, its page's calls are
-refused.
+refused. That mark is saved in the browser with the conversation, so it
+guards against a missing check, not against the person who edits their
+saved conversation: to check every call, give the check to
+\code{\link[=mcp_chat_host]{mcp_chat_host()}} or \code{\link[=as_shinychat_tool]{as_shinychat_tool()}}.
 }
 
 \examples{

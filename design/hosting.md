@@ -276,6 +276,12 @@ The Shiny app can check them before they're sent (`on_app_call`, above).
   apply to it. Functions aren't saved, so a card that had its own check is
   saved as `checked`, and restored in a session with no check for its
   source it refuses its page's calls instead of letting them through.
+  The mark is part of the descriptor, which the browser keeps, so it
+  catches a check the new session forgot, not a person who removes it.
+  It isn't a boundary against that person: a source registered without a
+  check already lets them call its tools through any new card. A check
+  given to the source (`mcp_chat_host()`, `as_shinychat_tool()`) applies
+  to every restored card whatever its descriptor says.
 
 ## API
 
