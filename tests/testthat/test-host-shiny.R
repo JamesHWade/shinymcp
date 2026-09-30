@@ -1261,6 +1261,58 @@ test_that("a restored card's calls go through every check the session has for it
   )
 })
 
+test_that("a restored card that had its own check refuses calls until one is given", {
+  skip_if_not_installed("later")
+  app <- host_app()
+  first <- new_host_registry()
+  register_host_source(first, app)
+  state <- new_mcp_host_state(
+    first$sources$greeter,
+    instance_id = "c1",
+    tool = "greet",
+    kind = "card"
+  )
+  state$on_app_call <- function(call) TRUE
+  descriptor <- host_descriptor(state)
+  expect_true(descriptor$checked)
+  expect_null(
+    host_descriptor(new_mcp_host_state(
+      app,
+      instance_id = "c2",
+      tool = "greet"
+    ))$checked
+  )
+
+  session <- helper_fake_session()
+  registry <- new_host_registry()
+  register_host_source(registry, app)
+  handle_host_event(session, registry, host_attach_event(descriptor))
+  helper_drain()
+  refused <- helper_page_call(
+    session,
+    registry,
+    "c1",
+    "greet",
+    list(name = "Bo")
+  )
+  expect_match(refused$error$message, "no check for them")
+  expect_null(host_instance(registry, "c1")$last_tool_call)
+
+  # Once the session gives a check for the source, it decides.
+  register_host_source(registry, app, function(call) TRUE)
+  allowed <- helper_page_call(
+    session,
+    registry,
+    "c1",
+    "greet",
+    list(name = "Cy")
+  )
+  expect_equal(
+    allowed$result$structuredContent$message,
+    "Hello Cy (for nobody)"
+  )
+})
+
 test_that("on_app_call must be a function", {
   skip_if_not_installed("shiny")
   skip_if_not_installed("later")

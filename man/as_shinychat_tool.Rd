@@ -140,6 +140,12 @@ Only the tool calls the app's page makes are checked. Reading the app's
 resources isn't, and neither is the call that opens the app. The
 model's calls are the chat's to check, with ellmer's \code{on_tool_request()}
 callback (see \code{\link[ellmer:tool_reject]{ellmer::tool_reject()}}).
+
+A function can't be saved with a conversation. A card restored in a new
+session goes through the checks that session gives for the card's app,
+through \code{\link[=mcp_chat_host]{mcp_chat_host()}} or \code{\link[=as_shinychat_tool]{as_shinychat_tool()}}. If the card had a
+check of its own and the new session gives none, its page's calls are
+refused.
 }
 
 \examples{

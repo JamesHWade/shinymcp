@@ -452,6 +452,10 @@ host_descriptor <- function(state, height = "auto", trigger = NULL) {
     result = state$result,
     title = state$title,
     owner = state$owner,
+    # The card's own on_app_call can't be saved; this marks that its page's
+    # calls were checked, so a restored card refuses them until the new
+    # session gives a check for its source.
+    checked = if (is.function(state$on_app_call)) TRUE,
     height = height,
     trigger = trigger,
     version = as.character(utils::packageVersion("shinymcp"))
@@ -497,6 +501,7 @@ restore_host_instance <- function(registry, descriptor) {
     kind = "card"
   )
   state$restored <- TRUE
+  state$checked <- isTRUE(descriptor[["checked"]])
   owner <- descriptor[["owner"]]
   state$owner <- if (is_string(owner)) owner
   if (!is.null(definition)) {
@@ -920,7 +925,8 @@ check_app_call_hook <- function(on_app_call, call = rlang::caller_env()) {
 #' of the chat host it belongs to. A card restored from a descriptor also
 #' goes through every one the session was given for its source: the
 #' descriptor comes from the browser, which could name any owner, so it
-#' can't say which host made the card.
+#' can't say which host made the card. A restored card that had its own
+#' check, which can't be saved, is refused when no check applies.
 #' @noRd
 host_app_call_hooks <- function(registry, state) {
   hooks <- list(state$on_app_call)
@@ -930,7 +936,21 @@ host_app_call_hooks <- function(registry, state) {
   if (isTRUE(state$restored)) {
     hooks <- c(hooks, registry$app_call_hooks[[state$source$key]])
   }
-  unique_functions(Filter(is.function, hooks))
+  hooks <- unique_functions(Filter(is.function, hooks))
+  # A card whose own check didn't survive the save refuses its page's calls
+  # rather than letting them through unchecked.
+  if (isTRUE(state$checked) && length(hooks) == 0) {
+    hooks <- list(refuse_unchecked_restored_card)
+  }
+  hooks
+}
+
+refuse_unchecked_restored_card <- function(call) {
+  paste(
+    "This app's calls were checked when it was opened, and this session has",
+    "no check for them. Pass `on_app_call` to the chat host or tool that",
+    "shows it."
+  )
 }
 
 #' Functions, each kept once
@@ -1101,6 +1121,12 @@ app_call_hook_failed <- function(call, error, what) {
 #' resources isn't, and neither is the call that opens the app. The
 #' model's calls are the chat's to check, with ellmer's `on_tool_request()`
 #' callback (see [ellmer::tool_reject()]).
+#'
+#' A function can't be saved with a conversation. A card restored in a new
+#' session goes through the checks that session gives for the card's app,
+#' through [mcp_chat_host()] or [as_shinychat_tool()]. If the card had a
+#' check of its own and the new session gives none, its page's calls are
+#' refused.
 #'
 #' @param id Module id.
 #' @param source Where the app comes from: an [McpApp] (or a list of

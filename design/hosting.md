@@ -273,7 +273,9 @@ The Shiny app can check them before they're sent (`on_app_call`, above).
 - The model can call only the tools of the sources the Shiny app gave it.
 - The Shiny app can check every tool call a page makes before it's sent
   (`on_app_call`). A restored card's descriptor can't choose which checks
-  apply to it.
+  apply to it. Functions aren't saved, so a card that had its own check is
+  saved as `checked`, and restored in a session with no check for its
+  source it refuses its page's calls instead of letting them through.
 
 ## API
 
