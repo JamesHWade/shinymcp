@@ -15,7 +15,8 @@ mcp_host_server(
   arguments = NULL,
   trigger = NULL,
   debounce_ms = NULL,
-  height = "auto"
+  height = "auto",
+  on_app_call = NULL
 )
 
 mcp_embed(
@@ -25,7 +26,8 @@ mcp_embed(
   arguments = NULL,
   trigger = NULL,
   debounce_ms = NULL,
-  height = "auto"
+  height = "auto",
+  on_app_call = NULL
 )
 }
 \arguments{
@@ -48,6 +50,11 @@ one as \code{list(x)}.}
 \item{trigger, debounce_ms}{For apps made with shinymcp in this process:
 override the app's own \code{trigger} and \code{debounce_ms}. \code{trigger = "manual"} shows a Run button and calls tools only when it's pressed or
 when \code{execute()} is called.}
+
+\item{on_app_call}{A function that checks each tool call the app's page
+makes before it's sent, to let it through, refuse it, or record it.
+See "Checking the app's calls" below. \code{NULL}, the default, lets
+through every call the app may make.}
 }
 \value{
 \code{mcp_host_ui()} and \code{mcp_embed()} return UI. \code{mcp_host_server()}
@@ -84,6 +91,57 @@ such as inside \code{\link[shiny:renderUI]{shiny::renderUI()}}.
 When the pane opens, R calls the app's tool with \code{arguments}, as a model
 would, and passes the result to the app.
 }
+\section{Checking the app's calls}{
+
+The app's page calls its tools as the person uses it: to fill its
+outputs when an input changes, or when they press a button such as
+"Save". \code{on_app_call} sees each of these calls before it's sent to the
+app's server, to let it through, refuse it, or keep a record of who did
+what. It's called with a list describing the call:
+\itemize{
+\item \code{name}: the tool's name.
+\item \code{arguments}: its arguments, as the page sent them (parsed JSON: arrays
+are lists).
+\item \code{tool}: the tool's definition from the app's server, with its
+\code{annotations}, such as \code{destructiveHint}.
+\item \code{instance_id}: the id of the pane or card.
+\item \code{kind}: \code{"pane"} or \code{"card"}.
+\item \code{source}: the name of where the app comes from: the \link{McpApp}'s name,
+or the \code{\link[=mcp_client]{mcp_client()}}'s \code{name}.
+\item \code{chat}: for a card, the \code{\link[=mcp_chat_host]{mcp_chat_host()}} it belongs to: its
+\code{chat_id}, else \code{"chat-1"}, \code{"chat-2"}, and so on, by its place among
+the session's chat hosts. Otherwise \code{NULL}.
+\item \code{title}: the app's title.
+\item \code{session}: the Shiny session. On Posit Connect, \code{session$user} is the
+signed-in user.
+}
+
+Return \code{TRUE} to let the call through, and \code{FALSE} or a string to refuse
+it. The app's page is given the string as the call's error, so write it
+for the person using the app. To ask someone first, return a promise
+that resolves to one of these: the app waits for the answer, and the
+rest of the session carries on. Anything else, an error, or a rejected
+promise refuses the call, with a warning. A refused call never reaches
+the app's server.
+
+A page can call a tool each time an input changes, so keep the function
+quick, and ask a person only about the tools that need it.
+
+Only the tool calls the app's page makes are checked. Reading the app's
+resources isn't, and neither is the call that opens the app. The
+model's calls are the chat's to check, with ellmer's \code{on_tool_request()}
+callback (see \code{\link[ellmer:tool_reject]{ellmer::tool_reject()}}).
+
+A function can't be saved with a conversation. A card restored in a new
+session goes through the checks that session gives for the card's app,
+through \code{\link[=mcp_chat_host]{mcp_chat_host()}} or \code{\link[=as_shinychat_tool]{as_shinychat_tool()}}. If the card had a
+check of its own and the new session gives none, its page's calls are
+refused. That mark is saved in the browser with the conversation, so it
+guards against a missing check, not against the person who edits their
+saved conversation: to check every call, give the check to
+\code{\link[=mcp_chat_host]{mcp_chat_host()}} or \code{\link[=as_shinychat_tool]{as_shinychat_tool()}}.
+}
+
 \examples{
 \dontrun{
 library(shiny)
@@ -98,6 +156,14 @@ shinyApp(ui, server)
 server <- function(input, output, session) {
   sales <- mcp_client("https://connect.example.com/sales/mcp")
   mcp_host_server("explorer", sales, arguments = list(region = "West"))
+}
+
+# Record each call the app's page makes, and refuse one tool
+server <- function(input, output, session) {
+  mcp_host_server("explorer", app, on_app_call = function(call) {
+    message(call$session$user, " called ", call$name)
+    if (call$name == "delete_notes") "Notes can't be deleted here." else TRUE
+  })
 }
 }
 }

@@ -137,6 +137,62 @@ Shiny applies each input message in its own reactive cycle
 (`cycleStartAction()`), so a burst of requests over the one input the host
 uses isn't coalesced.
 
+### The host's check (`on_app_call`)
+
+2026-09-29. Visibility says which tools a page may call; it can't say
+whether this person may call this one now, or leave a record of who did.
+Hosts that govern tool calls need that: an agent runtime whose permissions
+and hooks decide every call the model makes (deputy, say) needs the calls
+a page makes to pass the same policy, and a host that has a person approve
+durable actions needs to know who pressed what.
+
+Every host that creates instances (`mcp_host_server()`, `mcp_embed()`,
+`mcp_chat_host()`, `as_shinychat_tool()`, `mcp_content_result()`) takes
+`on_app_call`. It is called for each `tools/call` from the page that
+passed the visibility check, before the request goes to the source, with
+one list: `name`, `arguments`, `tool` (the definition from the source's
+list, so a policy can read its annotations), `instance_id`, `kind`,
+`source`, `chat` (the key of the chat host a card belongs to), `title`,
+and `session`.
+
+- **Answers.** `TRUE` sends the call. `FALSE` or a string refuses it; the
+  string is the reason. A promise of one of these is waited for: the page
+  waits (the host script sets no timeout on its requests) and the session
+  carries on. Anything else, an error, or a rejected promise refuses the
+  call, and warns the app's author; the page is told only that the host
+  refused. The function runs in `isolate()`, since the page's requests are
+  answered outside any reactive context, so it can read reactive values.
+- **A refusal** is answered like a tool the page can't see: a JSON-RPC
+  error, `-32602`, whose message is the reason, or "The host refused the
+  call to …". The call is never sent and never recorded as the instance's
+  call. Without a function (the default), the request goes to the source
+  as before, with no extra step.
+- **Only `tools/call`.** Resource reads, the lists and `ping` change
+  nothing, a page makes many of them to load what it shows, and a policy
+  written for tools would have to allow them one by one. What a server's
+  resources expose is the server's decision, made with the credentials
+  the source sends.
+- **Only the page's calls.** The call that opens a pane or card is the
+  Shiny app's own (its `arguments`, `open()`, `mcp_content_result()`), and
+  the model's calls go through ellmer, where the chat's runtime already
+  decides them (`Chat$on_tool_request()`).
+- **Which function.** An instance keeps the function of the host that made
+  it: the pane's, or its card tool's. A card is also checked by the
+  function of the chat host it belongs to, found the way its context and
+  messages are (the key saved with it, else the session's only chat host),
+  so `mcp_chat_host(on_app_call = )` covers the cards its tools open, cards
+  built by hand while it's the only chat, and cards restored with its
+  conversation. When several apply, each is called once, in turn, and all
+  must let the call through.
+- **Restored cards.** A restored card is recreated from a descriptor the
+  browser sent, and the browser can name any registered source and any
+  owner, or none. So a restored card's calls also go through every
+  function the session was given for its source: each host registers its
+  function with the sources it shows. A descriptor naming an owner that
+  isn't here, or one without a function, doesn't escape the checks of the
+  session's other hosts of that source. If one of them has no function,
+  the person could already call the source's tools unchecked through it.
+
 ## The model loop
 
 **Tools.** Each source's tools the model may call become ellmer tools
@@ -181,6 +237,7 @@ Outside a chat, `messages()` returns them.
 
 **Calls the page makes.** Tool calls the page makes (a button in the app)
 reach the model only through the app's context. That's the app's decision.
+The Shiny app can check them before they're sent (`on_app_call`, above).
 
 ## Lifecycle
 
@@ -214,6 +271,17 @@ reach the model only through the app's context. That's the app's decision.
 - Links open only for `http`, `https`, and `mailto`, with `noopener`.
   Downloads are saved from blobs in the host page.
 - The model can call only the tools of the sources the Shiny app gave it.
+- The Shiny app can check every tool call a page makes before it's sent
+  (`on_app_call`). A restored card's descriptor can't choose which checks
+  apply to it. Functions aren't saved, so a card that had its own check is
+  saved as `checked`, and restored in a session with no check for its
+  source it refuses its page's calls instead of letting them through.
+  The mark is part of the descriptor, which the browser keeps, so it
+  catches a check the new session forgot, not a person who removes it.
+  It isn't a boundary against that person: a source registered without a
+  check already lets them call its tools through any new card. A check
+  given to the source (`mcp_chat_host()`, `as_shinychat_tool()`) applies
+  to every restored card whatever its descriptor says.
 
 ## API
 
@@ -255,6 +323,10 @@ behave well in these hosts.
   including a server that answers with SSE, session expiry, and errors.
 - The proxy policy: refused methods and tools, visibility from a remote
   server, attach for unknown instances and sources.
+- The host's check: calls let through, refused with and without a reason
+  and by a promise, refused when the function fails or doesn't answer;
+  the fields it's given; panes, a chat host's cards, and restored cards
+  that name another owner.
 - Context injection with a scripted ellmer chat: added before a message,
   not before tool results, removed after the reply, bounded.
 - In a browser: a pane and a chat card for an in-process app, for a remote

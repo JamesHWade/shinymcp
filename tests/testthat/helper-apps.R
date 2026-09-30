@@ -159,6 +159,28 @@ helper_host_request <- function(
   )
 }
 
+# A tool call from an instance's page, once answered: the JSON-RPC response
+# R sends the page.
+helper_page_call <- function(
+  session,
+  registry,
+  instance_id,
+  name,
+  arguments = NULL,
+  id = 1
+) {
+  params <- list(name = name)
+  params$arguments <- arguments
+  handle_host_event(
+    session,
+    registry,
+    helper_host_request(instance_id, "tools/call", params, id = id)
+  )
+  helper_drain()
+  responses <- helper_sent(session, "shinymcp-host-response")
+  responses[[length(responses)]]$response
+}
+
 # A PNG file, drawn with base graphics.
 helper_png_file <- function(width = 20, height = 20) {
   path <- tempfile(fileext = ".png")

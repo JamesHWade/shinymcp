@@ -21,6 +21,8 @@
 #' `mcp_content_result()` builds a card by hand, for a result you append to
 #' the chat yourself.
 #'
+#' @inheritSection mcp_host_ui Checking the app's calls
+#'
 #' @param source Where the tools come from: an [McpApp] (or a list of
 #'   them), or an [McpClient] from [mcp_client()].
 #' @param tool Names of the tools to wrap. Defaults to every tool the model
@@ -38,6 +40,11 @@
 #' @param open Whether the card starts expanded.
 #' @param show_request Whether the card shows the call's arguments.
 #' @param full_screen Whether the card offers a full-screen view.
+#' @param on_app_call A function that checks each tool call the app's page
+#'   makes in the card before it's sent, to let it through, refuse it, or
+#'   record it. See "Checking the app's calls" below. If the card belongs to
+#'   an [mcp_chat_host()], that chat host's function checks the call too.
+#'   `NULL`, the default, lets through every call the app may make.
 #' @return For one tool, an [ellmer::tool()]; for several, a named list of
 #'   them. `mcp_content_result()` returns an [ellmer::ContentToolResult]. In
 #'   a Shiny session it calls the tool first and returns a promise of the
@@ -60,12 +67,14 @@ as_shinychat_tool <- function(
   icon = NULL,
   open = TRUE,
   show_request = FALSE,
-  full_screen = TRUE
+  full_screen = TRUE,
+  on_app_call = NULL
 ) {
   rlang::check_installed(
     "ellmer",
     reason = "to use MCP Apps in a shinychat conversation."
   )
+  check_app_call_hook(on_app_call)
   source <- as_host_source(source)
   # In a Shiny session a remote server's tools come from the list its
   # client already has: listing them would hold up the session.
@@ -98,7 +107,8 @@ as_shinychat_tool <- function(
       icon = icon,
       open = open,
       show_request = show_request,
-      full_screen = full_screen
+      full_screen = full_screen,
+      on_app_call = on_app_call
     )
   )
   if (length(tools) == 1) tools[[1]] else tools
@@ -247,7 +257,8 @@ shinychat_card <- function(source, definition, arguments, call, session, card) {
     arguments = arguments,
     result = result,
     session = session,
-    owner = card$owner
+    owner = card$owner,
+    on_app_call = card$on_app_call
   )
 }
 
@@ -312,7 +323,8 @@ live_card_result <- function(
   result = NULL,
   request = NULL,
   session = NULL,
-  owner = NULL
+  owner = NULL,
+  on_app_call = NULL
 ) {
   rlang::check_installed("ellmer", reason = "for shinychat tool results.")
   display <- compact_list(list(
@@ -332,7 +344,8 @@ live_card_result <- function(
       result = result,
       kind = "card",
       title = if (is.character(title)) title,
-      owner = owner
+      owner = owner,
+      on_app_call = on_app_call
     )
     if (is.null(result)) {
       start_host_call(root_shiny_session(session), registered$state)
@@ -371,9 +384,11 @@ mcp_content_result <- function(
   open = TRUE,
   show_request = FALSE,
   full_screen = TRUE,
-  text = NULL
+  text = NULL,
+  on_app_call = NULL
 ) {
   rlang::check_installed("ellmer", reason = "for shinychat tool results.")
+  check_app_call_hook(on_app_call)
   source <- as_host_source(source)
   # The card is saved naming its tool. Picking a remote server's default
   # would mean listing its tools here, holding up the session.
@@ -411,7 +426,8 @@ mcp_content_result <- function(
       arguments = arguments,
       result = result,
       request = request,
-      session = session
+      session = session,
+      on_app_call = on_app_call
     )
   }
   session <- active_shiny_session()

@@ -48,6 +48,8 @@ new_mcp_host_state <- function(
   state$on_tool_call <- NULL
   state$on_message <- NULL
   state$on_size <- NULL
+  # The host's check of the tool calls the page makes (`on_app_call`).
+  state$on_app_call <- NULL
   state
 }
 
