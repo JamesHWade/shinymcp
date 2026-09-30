@@ -824,6 +824,11 @@ handle_host_event <- function(session, registry, event) {
   }
 
   forward <- function() {
+    # A check that answered after the app closed (the person decided late)
+    # sends nothing: the call was for a page that's gone.
+    if (isTRUE(state$disposed)) {
+      return(invisible())
+    }
     promises::then(
       state$source$send_async(message, host_call_context(session)),
       onFulfilled = function(response) {
