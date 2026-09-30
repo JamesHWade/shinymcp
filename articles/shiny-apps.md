@@ -107,7 +107,7 @@ model, and carries the same facts as structured data:
 
 result <- app$run_tool("mileage", list(cyl = "6", bins = 5))
 cat(result$content[[1]]$text)
-#> The mileage app is open in the conversation (view view-589c12c4cfd5976c).
+#> The mileage app is open in the conversation (view view-b0cfafaee5dfca80).
 #> 
 #> Inputs: cyl = "6"; bins = 5.
 #> 
